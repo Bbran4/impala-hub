@@ -254,3 +254,92 @@ def test_sales_desk_rfq_numbering_and_audit():
         detail = client.get("/api/sales-desk/rfqs/" + first.json()["id"], headers=auth)
         assert detail.status_code == 200
         assert any(item["action"] == "created" for item in detail.json()["audit_history"])
+
+
+def _sd_create_user(username: str, role: str, sales_code: str | None = None) -> tuple[str, str]:
+    from app import sales_desk_auth as auth
+    import secrets
+    password = "workflow-test-password-2026"
+    salt, password_hash = auth._hash_password(password)
+    user_id, now = secrets.token_hex(16), auth._now()
+    with auth._connect() as db:
+        db.execute(
+            """INSERT INTO sd_users
+            (id,username,display_name,password_salt,password_hash,role,sales_code,is_active,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,1,?,?)""",
+            (user_id, username, username, salt, password_hash, role, sales_code, now, now),
+        )
+    return username, password
+
+
+def _sd_login(client, username: str, password: str) -> dict:
+    response = client.post("/api/sales-desk/auth/login", json={"username": username, "password": password})
+    assert response.status_code == 200, response.text
+    return {"Authorization": "Bearer " + response.json()["access_token"]}
+
+
+def test_sales_desk_config_and_claim_workflow():
+    import secrets
+    from app import sales_desk_auth as auth
+
+    auth.init_auth_db()
+    admin_name = "workflow-admin-" + secrets.token_hex(3)
+    admin_user, admin_password = _sd_create_user(admin_name, "administrator")
+    with TestClient(app) as client:
+        admin = _sd_login(client, admin_user, admin_password)
+        media = client.post("/api/sales-desk/config/media-platforms", headers=admin, json={"name": "Source-" + secrets.token_hex(3)})
+        assert media.status_code == 201, media.text
+        code_a = client.post("/api/sales-desk/config/sales-codes", headers=admin, json={"code": "WFA" + secrets.token_hex(2), "display_name": "Workflow A"})
+        code_b = client.post("/api/sales-desk/config/sales-codes", headers=admin, json={"code": "WFB" + secrets.token_hex(2), "display_name": "Workflow B"})
+        assert code_a.status_code == code_b.status_code == 201
+        user_a, pass_a = _sd_create_user("workflow-a-" + secrets.token_hex(3), "salesperson", code_a.json()["code"])
+        user_b, pass_b = _sd_create_user("workflow-b-" + secrets.token_hex(3), "salesperson", code_b.json()["code"])
+        salesperson_a = _sd_login(client, user_a, pass_a)
+        salesperson_b = _sd_login(client, user_b, pass_b)
+
+        created = client.post("/api/sales-desk/rfqs", headers=admin, json={
+            "media_platform_id": media.json()["id"], "customer_name": "Claim test customer"
+        })
+        assert created.status_code == 201, created.text
+        rfq = created.json()
+        assert rfq["sales_code"] is None
+        assert rfq["rfq_no"].startswith("IMP")
+
+        dashboard = client.get("/api/sales-desk/dashboard", headers=admin)
+        assert dashboard.status_code == 200
+        assert dashboard.json()["unclaimed"] >= 1
+
+        claimed = client.post(f"/api/sales-desk/rfqs/{rfq['id']}/claim", headers=salesperson_a)
+        assert claimed.status_code == 200, claimed.text
+        assert claimed.json()["sales_code"] == code_a.json()["code"]
+        assert claimed.json()["claimed_at"]
+        conflict = client.post(f"/api/sales-desk/rfqs/{rfq['id']}/claim", headers=salesperson_b)
+        assert conflict.status_code == 409
+
+        hidden = client.get(f"/api/sales-desk/rfqs/{rfq['id']}", headers=salesperson_b)
+        assert hidden.status_code == 404
+        assert client.post(f"/api/sales-desk/rfqs/{rfq['id']}/assign", headers=salesperson_a, json={"sales_code_id": code_b.json()["id"]}).status_code == 403
+
+        reassigned = client.post(f"/api/sales-desk/rfqs/{rfq['id']}/assign", headers=admin, json={"sales_code_id": code_b.json()["id"]})
+        assert reassigned.status_code == 200, reassigned.text
+        history = client.get(f"/api/sales-desk/rfqs/{rfq['id']}/history", headers=admin).json()
+        assert any(entry["action"] == "claimed" for entry in history)
+        assert any(entry["action"] == "reassigned" for entry in history)
+
+
+def test_sales_desk_status_closed_flag_and_deactivation():
+    import secrets
+    from app import sales_desk_auth as auth
+
+    auth.init_auth_db()
+    admin_user, admin_password = _sd_create_user("status-admin-" + secrets.token_hex(3), "administrator")
+    with TestClient(app) as client:
+        admin = _sd_login(client, admin_user, admin_password)
+        status = client.post("/api/sales-desk/config/statuses", headers=admin, json={
+            "name": "Closed test " + secrets.token_hex(3), "sort_order": 20, "is_closed": True
+        })
+        assert status.status_code == 201, status.text
+        assert status.json()["is_closed"] == 1
+        patched = client.patch(f"/api/sales-desk/config/statuses/{status.json()['id']}", headers=admin, json={"is_closed": False})
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["is_closed"] == 0
