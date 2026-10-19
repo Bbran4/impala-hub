@@ -98,8 +98,9 @@ Automatic ingestion from Facebook, WhatsApp, email or website forms; quotation g
 ## Delivery status
 
 - [x] Phase 1 foundation: Sales Desk user/session schema, password login/logout, current-user endpoint, administrator-only user provisioning and role validation added on the feature branch.
-- [ ] Phase 1 completion: execute automated tests, verify deployment bootstrap, and bind salesperson accounts to the configured sales-code table.
-- [ ] Phase 2: RFQ records, Johannesburg-date numbering, and RFQ audit history.
+- [x] Phase 1 code: Sales Desk sign-in is available in the frontend; salesperson accounts must reference an active configured sales-code record.
+- [x] Phase 2 implementation: RFQ schema, unique daily reference allocation using an immediate SQLite write transaction, Johannesburg business-date numbering, record endpoints, and audit history.
+- [ ] Verification: run the automated backend tests and frontend build, including concurrent RFQ creation tests. Code has been committed but is not yet verified by a CI run.
 - [ ] Phase 3: configurable media platforms, sales codes and statuses.
 - [ ] Phase 4: RFQ queue, filters, search, detail and editing.
 - [ ] Phase 5: self-claiming, administrator assignment and concurrent-claim protection.
