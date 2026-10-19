@@ -158,9 +158,9 @@ export default function App() {
     setBusy(true); setError('')
     try {
       const result = await sdApi(`/api/sales-desk/rfqs/${rfq.id}/convert-to-invoice`, { method: 'POST' })
+      await sdRefresh()
       setSdSelectedRfq(result); setSdDetailDraft(result)
       setNotice(`Invoice ${result.rfq_no} created. The original Quote was kept.`)
-      await sdRefresh()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
 
