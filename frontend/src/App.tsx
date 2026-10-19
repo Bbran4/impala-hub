@@ -167,12 +167,18 @@ export default function App() {
   async function sdMoveConfigOption(kind: 'media-platforms' | 'statuses', options: any[], index: number, direction: -1 | 1) {
     const targetIndex = index + direction
     if (targetIndex < 0 || targetIndex >= options.length) return
-    const current = options[index]
-    const target = options[targetIndex]
+    const reordered = [...options]
+    const [moved] = reordered.splice(index, 1)
+    reordered.splice(targetIndex, 0, moved)
     setBusy(true); setError('')
     try {
-      await sdApi(`/api/sales-desk/config/${kind}/${current.id}`, { method: 'PATCH', body: JSON.stringify({ sort_order: target.sort_order }) })
-      await sdApi(`/api/sales-desk/config/${kind}/${target.id}`, { method: 'PATCH', body: JSON.stringify({ sort_order: current.sort_order }) })
+      for (const [sort_order, option] of reordered.entries()) {
+        if (Number(option.sort_order) !== sort_order) {
+          await sdApi(`/api/sales-desk/config/${kind}/${option.id}`, {
+            method: 'PATCH', body: JSON.stringify({ sort_order }),
+          })
+        }
+      }
       setNotice('Configuration order saved.')
       await sdRefresh()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
