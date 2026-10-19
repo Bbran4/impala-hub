@@ -155,7 +155,9 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             # engagement figures and leave unavailable insight values untouched.
             insights = {"reach": None, "impressions": None}
             try:
-                insights = client.post_insights(item["id"])
+                get_insights = getattr(client, "post_insights", None)
+                if get_insights:
+                    insights = get_insights(item["id"])
             except FacebookError as exc:
                 log.info("Organic insights unavailable for Facebook post %s: %s", item["id"], exc)
             if item["id"] in known:
