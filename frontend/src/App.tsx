@@ -35,6 +35,8 @@ export default function App() {
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [integrations, setIntegrations] = useState<any[]>([])
+  const [facebookPages, setFacebookPages] = useState<Array<{id: string; name: string}>>([])
+  const [selectedFacebookPage, setSelectedFacebookPage] = useState('')
   const [filter, setFilter] = useState('all')
   const [campaignFilter, setCampaignFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -63,7 +65,24 @@ export default function App() {
       setPosts(p); setCampaigns(c); setIntegrations(i); setError('')
     } catch (e) { handleError(e) }
   }
-  useEffect(() => { if (key) void load() }, [key])
+  useEffect(() => {
+    if (key) {
+      void load()
+      const params = new URLSearchParams(window.location.search)
+      const oauthResult = params.get('facebook_oauth')
+      if (oauthResult === 'choose_page') {
+        setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.')
+        void loadFacebookPages()
+      } else if (oauthResult === 'error') {
+        setError('Facebook authorization did not finish (' + (params.get('reason') || 'unknown error').replaceAll('_', ' ') + '). Check Meta setup and try again.')
+      }
+      if (oauthResult) {
+        params.delete('facebook_oauth'); params.delete('reason')
+        const query = params.toString()
+        window.history.replaceState({}, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash)
+      }
+    }
+  }, [key])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -128,6 +147,45 @@ export default function App() {
     try {
       const r = await api('/api/integrations/facebook/sync', { method: 'POST' })
       setNotice(`Facebook synced: ${r.imported} new ${r.imported === 1 ? 'post' : 'posts'}, ${r.updated} updated.`)
+      await load()
+    } catch (e) { handleError(e) } finally { setBusy(false) }
+  }
+
+  async function loadFacebookPages() {
+    try {
+      const result = await api('/api/integrations/facebook/pages')
+      setFacebookPages(result.pages || [])
+      if (result.connected_page_id) setSelectedFacebookPage(result.connected_page_id)
+      else if (result.pages?.length) setSelectedFacebookPage(result.pages[0].id)
+    } catch (e) { handleError(e) }
+  }
+
+  async function connectFacebook() {
+    setBusy(true); setError('')
+    try {
+      const result = await api('/api/integrations/facebook/oauth-url', { method: 'POST' })
+      window.location.assign(result.url)
+    } catch (e) { handleError(e); setBusy(false) }
+  }
+
+  async function chooseFacebookPage() {
+    if (!selectedFacebookPage) return
+    setBusy(true); setError('')
+    try {
+      const result = await api('/api/integrations/facebook/select-page', { method: 'POST', body: JSON.stringify({ page_id: selectedFacebookPage }) })
+      setNotice('Connected Facebook Page: ' + result.page_name)
+      setFacebookPages([])
+      await load()
+    } catch (e) { handleError(e) } finally { setBusy(false) }
+  }
+
+  async function disconnectFacebook() {
+    if (!window.confirm('Disconnect the Facebook Page saved through Connect Facebook?')) return
+    setBusy(true); setError('')
+    try {
+      await api('/api/integrations/facebook/disconnect', { method: 'POST' })
+      setNotice('Saved Facebook OAuth connection removed.')
+      setFacebookPages([])
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
   }
@@ -484,12 +542,25 @@ export default function App() {
                     {i.provider === 'facebook' && i.granted_permissions?.length > 0 && <p><strong>Granted permissions:</strong> {i.granted_permissions.join(', ')}</p>}
                     {i.provider === 'facebook' && i.missing_permissions?.length > 0 && <p><strong>Missing permissions:</strong> {i.missing_permissions.join(', ')}</p>}
                     {i.provider === 'facebook' && i.diagnostic_note && <p>{i.diagnostic_note}</p>}
+                    {i.provider === 'facebook' && i.token_warning && <p className="token-warning"><strong>Token warning:</strong> {i.token_warning}</p>}
+                    {i.provider === 'facebook' && i.connection_source && <p><strong>Connection method:</strong> {i.connection_source === 'oauth' ? 'Meta OAuth' : 'Backend environment token'}</p>}
                   </div>
                   <span className="status-badge">
                     {i.status === 'connected' ? `Connected${i.account_name ? `: ${i.account_name}` : ''}` : i.status === 'warning' ? 'Permission warning' : i.status === 'error' ? 'Connection error' : 'Not connected'}
                   </span>
                   {i.provider === 'facebook'
-                    ? <button className="secondary" disabled={busy || i.status === 'not_connected'} onClick={() => void checkFacebookConnection()}>{busy ? 'Checking...' : 'Check connection'}</button>
+                    ? <div className="integration-actions">
+                        <button className="primary" disabled={busy} onClick={() => void connectFacebook()}>{busy ? 'Working...' : (i.status === 'connected' ? 'Reconnect Facebook' : 'Connect Facebook')}</button>
+                        <button className="secondary" disabled={busy || i.status === 'not_connected'} onClick={() => void checkFacebookConnection()}>{busy ? 'Checking...' : 'Check connection'}</button>
+                        {i.connection_source === 'oauth' && <button className="secondary" disabled={busy} onClick={() => void disconnectFacebook()}>Disconnect</button>}
+                        {facebookPages.length > 0 && <div className="facebook-page-picker">
+                          <label htmlFor="facebook-page-select">Choose a Facebook Page</label>
+                          <select id="facebook-page-select" value={selectedFacebookPage} onChange={(e) => setSelectedFacebookPage(e.target.value)}>
+                            {facebookPages.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+                          </select>
+                          <button className="secondary" disabled={busy || !selectedFacebookPage} onClick={() => void chooseFacebookPage()}>Use this Page</button>
+                        </div>}
+                      </div>
                     : <button className="secondary" disabled>{'Connect later'}</button>}
                 </div>
               ))}
@@ -498,7 +569,7 @@ export default function App() {
               <Settings size={20} />
               <div>
                 <b>Connection management</b>
-                <p>The current connection uses server-side Page credentials in backend/.env. To disconnect, remove FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN and restart the API. To reconnect, configure a valid Page token and restart. A full Meta OAuth connect/disconnect flow still requires the Meta app ID, app secret, and configured redirect URL.</p>
+                <p>Connect Facebook to authorize through Meta, then select the Page Impala Hub should manage. Page access tokens are encrypted before being stored by the backend. Keep your Meta app secret and encryption key private in backend/.env.</p>
               </div>
             </div>
           </>
