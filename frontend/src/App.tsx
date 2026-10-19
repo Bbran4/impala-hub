@@ -132,7 +132,7 @@ export default function App() {
   async function sdRefresh() {
     const [cfg, result, dashboard] = await Promise.all([
       sdApi('/api/sales-desk/config'),
-      sdApi('/api/sales-desk/rfqs?limit=500'),
+      sdApi(`/api/sales-desk/rfqs?limit=500&unclaimed_only=${sdUnclaimedOnly}`),
       sdApi('/api/sales-desk/dashboard'),
     ])
     setSdConfig(cfg); setSdRfqs(result.items || []); setSdDashboard(dashboard)
