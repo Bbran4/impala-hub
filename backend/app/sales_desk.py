@@ -429,10 +429,16 @@ def patch_rfq(rfq_id: str, payload: RFQPatchIn, user: dict = Depends(current_use
         for field in ("customer_name", "contact_number", "email_address", "query_information", "remarks", "document_number"):
             if field in normalized and isinstance(normalized[field], str):
                 normalized[field] = normalized[field].strip()
-        if "media_platform_id" in normalized and not db.execute("SELECT 1 FROM sd_media_platforms WHERE id=? AND is_active=1", (normalized["media_platform_id"],)).fetchone():
-            raise HTTPException(422, "Choose an active media platform")
-        if "status_id" in normalized and not db.execute("SELECT 1 FROM sd_statuses WHERE id=? AND is_active=1", (normalized["status_id"],)).fetchone():
-            raise HTTPException(422, "Choose an active status")
+        if "media_platform_id" in normalized:
+            valid_media = db.execute("SELECT 1 FROM sd_media_platforms WHERE id=? AND (is_active=1 OR id=?)",
+                                     (normalized["media_platform_id"], row["media_platform_id"])).fetchone()
+            if not valid_media:
+                raise HTTPException(422, "Choose an active media platform")
+        if "status_id" in normalized:
+            valid_status = db.execute("SELECT 1 FROM sd_statuses WHERE id=? AND (is_active=1 OR id=?)",
+                                      (normalized["status_id"], row["status_id"])).fetchone()
+            if not valid_status:
+                raise HTTPException(422, "Choose an active status")
         allowed = {"media_platform_id","customer_name","contact_number","email_address","query_information","remarks","status_id","document_number"}
         if set(normalized) - allowed:
             raise HTTPException(422, "Unsupported RFQ field")
