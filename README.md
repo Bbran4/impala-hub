@@ -599,4 +599,4 @@ Key decisions:
 - Media platforms, sales codes and statuses are administrator-configurable; referenced options are deactivated rather than deleted.
 - Important prerequisite: the existing shared API key does not identify individual employees. Role-aware RFQ access must not be released until individual identity, roles and salesperson-to-sales-code mapping are enforced server-side.
 
-Current status: **specification and implementation branch created; functional RFQ endpoints and UI are not yet implemented**. Follow the milestone checklist in the linked specification and keep the existing Marketing workspace intact.
+Current status: the Sales Desk app card and RFQ workspace navigation shell are implemented on `feature/sales-desk-rfqs`. The live RFQ data service, working filters, claiming/assignment and role-aware access controls are still pending. Do not treat the placeholder table as live RFQ data. Follow the milestone checklist in the linked specification and keep the existing Marketing workspace intact.
