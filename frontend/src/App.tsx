@@ -7,7 +7,8 @@ import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
 import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
-import { api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign, API } from './lib'
+import SalesDesk from './SalesDesk'
+import { api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
@@ -38,22 +39,6 @@ const OAUTH_REASONS: Record<string, string> = {
 export default function App() {
   const [key, setKey] = useState(getKey())
   const [keyEntry, setKeyEntry] = useState('')
-  const [sdToken, setSdToken] = useState(() => sessionStorage.getItem('impala_sales_desk_token') || '')
-  const [sdUser, setSdUser] = useState<any>(null)
-  const [sdUsername, setSdUsername] = useState('')
-  const [sdPassword, setSdPassword] = useState('')
-  const [sdRfqs, setSdRfqs] = useState<any[]>([])
-  const [sdConfig, setSdConfig] = useState<any>({ media_platforms: [], sales_codes: [], statuses: [] })
-  const [sdSearch, setSdSearch] = useState('')
-  const [sdStatusFilter, setSdStatusFilter] = useState('')
-  const [sdSalesCodeFilter, setSdSalesCodeFilter] = useState('')
-  const [sdSort, setSdSort] = useState('received_asc')
-  const [sdSelectedRfq, setSdSelectedRfq] = useState<any>(null)
-  const [sdDashboard, setSdDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
-  const [sdCreateOpen, setSdCreateOpen] = useState(false)
-  const [sdDraft, setSdDraft] = useState<any>({ media_platform_id: '', customer_name: '', contact_number: '', email_address: '', query_information: '', remarks: '', document_number: '' })
-  const [sdConfigDraft, setSdConfigDraft] = useState<any>({ mediaName: '', mediaSort: 0, salesCode: '', salesName: '', statusName: '', statusSort: 0, statusClosed: false })
-  const [sdDetailDraft, setSdDetailDraft] = useState<any>(null)
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -73,126 +58,6 @@ export default function App() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'board' | 'calendar'>('list')
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
-
-  async function sdApi(path: string, init: RequestInit = {}) {
-    let response: Response
-    try {
-      response = await fetch(`${API}${path}`, {
-        ...init, headers: { 'Content-Type': 'application/json', ...(sdToken ? { Authorization: `Bearer ${sdToken}` } : {}), ...(init.headers || {}) },
-      })
-    } catch {
-      throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL. Sales Desk sign-in does not depend on Marketing configuration.`)
-    }
-    const body = response.status === 204 ? null : await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : `Sales Desk request failed (${response.status})`)
-    return body
-  }
-
-  async function sdLogin() {
-    setBusy(true); setError('')
-    try {
-      let response: Response
-      try {
-        response = await fetch(`${API}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: sdUsername, password: sdPassword }) })
-      } catch {
-        throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL. Marketing configuration is not required for Sales Desk sign-in.`)
-      }
-      const body = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(body?.detail || 'Sign-in failed')
-      sessionStorage.setItem('impala_sales_desk_token', body.access_token)
-      setSdToken(body.access_token); setSdUser(body.user); setSdPassword('')
-      setNotice(`Signed in to Sales Desk as ${body.user.display_name}.`)
-    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-
-  async function sdLogout() {
-    try { await sdApi('/api/sales-desk/auth/logout', { method: 'POST' }) } catch {}
-    sessionStorage.removeItem('impala_sales_desk_token'); setSdToken(''); setSdUser(null); setSdRfqs([]); setSdSelectedRfq(null)
-  }
-
-  async function loadSalesDesk() {
-    if (!sdToken) return
-    try {
-      const [me, cfg, result, dashboard] = await Promise.all([
-        sdApi('/api/sales-desk/auth/me'),
-        sdApi('/api/sales-desk/config'),
-        sdApi('/api/sales-desk/rfqs?limit=500'),
-        sdApi('/api/sales-desk/dashboard'),
-      ])
-      setSdUser(me); setSdConfig(cfg); setSdRfqs(result.items || []); setSdDashboard(dashboard)
-    } catch (e) {
-      const message = (e as Error).message
-      if (message.toLowerCase().includes('session') || message.toLowerCase().includes('sign in')) {
-        sessionStorage.removeItem('impala_sales_desk_token'); setSdToken(''); setSdUser(null)
-      }
-      setError(message)
-    }
-  }
-
-  async function sdRefresh() {
-    const [cfg, result, dashboard] = await Promise.all([
-      sdApi('/api/sales-desk/config'),
-      sdApi('/api/sales-desk/rfqs?limit=500'),
-      sdApi('/api/sales-desk/dashboard'),
-    ])
-    setSdConfig(cfg); setSdRfqs(result.items || []); setSdDashboard(dashboard)
-    if (sdSelectedRfq?.id) {
-      const detail = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}`)
-      setSdSelectedRfq(detail); setSdDetailDraft(detail)
-    }
-  }
-
-  async function sdCreateRfq() {
-    setBusy(true); setError('')
-    try {
-      const result = await sdApi('/api/sales-desk/rfqs', { method: 'POST', body: JSON.stringify(sdDraft) })
-      setSdCreateOpen(false); setSdDraft({ media_platform_id: '', customer_name: '', contact_number: '', email_address: '', query_information: '', remarks: '', document_number: '' })
-      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice(`RFQ ${result.rfq_no} created.`)
-      await sdRefresh()
-    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-
-  async function sdSaveRfq() {
-    if (!sdSelectedRfq || !sdDetailDraft) return
-    setBusy(true); setError('')
-    try {
-      const body = sdUser?.role === 'salesperson'
-        ? { remarks: sdDetailDraft.remarks, query_information: sdDetailDraft.query_information, document_number: sdDetailDraft.document_number }
-        : { media_platform_id: sdDetailDraft.media_platform_id, customer_name: sdDetailDraft.customer_name, contact_number: sdDetailDraft.contact_number, email_address: sdDetailDraft.email_address, query_information: sdDetailDraft.query_information, remarks: sdDetailDraft.remarks, document_number: sdDetailDraft.document_number, status_id: sdDetailDraft.status_id }
-      const result = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}`, { method: 'PATCH', body: JSON.stringify(body) })
-      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice('RFQ changes saved.')
-      await sdRefresh()
-    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-
-  async function sdClaimRfq(rfq: any) {
-    setBusy(true); setError('')
-    try {
-      const result = await sdApi(`/api/sales-desk/rfqs/${rfq.id}/claim`, { method: 'POST' })
-      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice(`Claimed ${result.rfq_no} for your sales code.`)
-      await sdRefresh()
-    } catch (e) { setError((e as Error).message); await loadSalesDesk() } finally { setBusy(false) }
-  }
-
-  async function sdAssignRfq(sales_code_id: string) {
-    if (!sdSelectedRfq) return
-    setBusy(true); setError('')
-    try {
-      const result = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}/assign`, { method: 'POST', body: JSON.stringify({ sales_code_id: sales_code_id || null }) })
-      setSdSelectedRfq((current: any) => current ? { ...current, sales_code_id: result.sales_code_id, sales_code: result.sales_code, salesperson_name: result.salesperson_name, claimed_at: result.claimed_at, updated_at: result.updated_at, audit_history: result.audit_history || current.audit_history } : result); setSdDetailDraft((draft: any) => draft ? { ...draft, sales_code_id: result.sales_code_id, sales_code: result.sales_code, salesperson_name: result.salesperson_name, claimed_at: result.claimed_at, updated_at: result.updated_at } : result); setNotice('RFQ assignment updated.')
-      await sdRefresh()
-    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-
-  async function sdConfigAction(path: string, body: any, method = 'POST') {
-    setBusy(true); setError('')
-    try {
-      await sdApi(path, { method, body: JSON.stringify(body) })
-      setNotice('Configuration saved.')
-      setSdConfigDraft((d: any) => ({ ...d, mediaName: '', salesCode: '', salesName: '', statusName: '' }))
-      await sdRefresh()
-    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -232,7 +97,6 @@ export default function App() {
 
   // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
   useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
-  useEffect(() => { if (isSalesDeskPage && sdToken) void loadSalesDesk() }, [page, sdToken])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -453,17 +317,6 @@ export default function App() {
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
   const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration'
-  const filteredRfqs = sdRfqs.filter((r) =>
-    (!sdStatusFilter || r.status_id === sdStatusFilter) &&
-    (!sdSalesCodeFilter || r.sales_code_id === sdSalesCodeFilter) &&
-    (!sdSearch || `${r.rfq_no} ${r.customer_name} ${r.document_number}`.toLowerCase().includes(sdSearch.toLowerCase())),
-  ).sort((a, b) => {
-    if (sdSort === 'customer') return String(a.customer_name).localeCompare(String(b.customer_name))
-    if (sdSort === 'rfq_no') return String(b.rfq_no).localeCompare(String(a.rfq_no))
-    if (sdSort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
-    const unclaimedOrder = Number(!!a.sales_code) - Number(!!b.sales_code)
-    return unclaimedOrder || String(a.received_at).localeCompare(String(b.received_at))
-  })
 
   return (
     <div className="shell">
@@ -573,106 +426,7 @@ export default function App() {
           </section>
         )}
 
-        {isSalesDeskPage && (
-          <section className="rfq-workspace">
-            <div className="apps-intro">
-              <span className="eyebrow">SALES DESK</span>
-              <h2>{page === 'RFQ Configuration' ? 'RFQ Configuration' : 'Request for Quotations'}</h2>
-              <p>{page === 'RFQ Configuration'
-                ? 'Manage media platforms, salesperson sales codes, and RFQ statuses.'
-                : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>
-            </div>
-            {!sdToken ? (
-              <div className="rfq-empty-card">
-                <h3>Sign in to Sales Desk</h3>
-                <p>Use your individual Sales Desk account. Marketing API credentials are not used for Sales Desk access.</p>
-                <div className="sd-login-form">
-                  <label>Username<input autoComplete="username" value={sdUsername} onChange={(e) => setSdUsername(e.target.value)} /></label>
-                  <label>Password<input type="password" autoComplete="current-password" value={sdPassword} onChange={(e) => setSdPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void sdLogin() }} /></label>
-                  <button className="primary" disabled={busy || !sdUsername.trim() || !sdPassword} onClick={() => void sdLogin()}>{busy ? 'Signing in…' : 'Sign in'}</button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="sd-session-bar"><span>Signed in as <b>{sdUser?.display_name || sdUsername}</b>{sdUser?.role ? ` · ${sdUser.role}` : ''}</span><button className="secondary" onClick={() => void sdLogout()}>Sign out</button></div>
-                {page === 'RFQs' ? (
-                  <>
-                    <div className="sd-metrics">
-                      {[['Unclaimed', sdDashboard.unclaimed], ['Claimed', sdDashboard.claimed], ['Received today', sdDashboard.received_today], ['Open RFQs', sdDashboard.open]].map(([label, value]: any) => (
-                        <div className="sd-metric" key={label}><span>{label}</span><strong>{value}</strong></div>
-                      ))}
-                    </div>
-                    <div className="rfq-toolbar">
-                      <label>Filter by status<select value={sdStatusFilter} onChange={(e) => setSdStatusFilter(e.target.value)}><option value="">All statuses</option>{sdConfig.statuses.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-                      <label>Filter by sales code<select value={sdSalesCodeFilter} onChange={(e) => setSdSalesCodeFilter(e.target.value)} disabled={sdUser?.role === 'salesperson'}><option value="">All salespeople</option>{sdConfig.sales_codes.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.code} · {s.display_name}</option>)}</select></label>
-                      <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={sdSearch} onChange={(e) => setSdSearch(e.target.value)} /></label>
-                      <label>Sort by<select value={sdSort} onChange={(e) => setSdSort(e.target.value)}><option value="received_asc">Oldest received</option><option value="received_desc">Newest received</option><option value="customer">Customer name</option><option value="rfq_no">RFQ number</option></select></label>
-                      {['administrator', 'manager'].includes(sdUser?.role) && <button className="primary" onClick={() => { setSdDraft({ media_platform_id: sdConfig.media_platforms.find((m: any) => m.is_active)?.id || '', customer_name: '', contact_number: '', email_address: '', query_information: '', remarks: '', document_number: '' }); setSdCreateOpen(!sdCreateOpen) }}><Plus size={16}/> New RFQ</button>}
-                    </div>
-                    {sdCreateOpen && (
-                      <div className="rfq-empty-card sd-form-card">
-                        <h3>Create RFQ</h3>
-                        <div className="sd-form-grid">
-                          <label>Media platform<select value={sdDraft.media_platform_id} onChange={(e) => setSdDraft({ ...sdDraft, media_platform_id: e.target.value })}><option value="">Choose platform</option>{sdConfig.media_platforms.filter((m: any) => m.is_active).map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
-                          <label>Customer name<input value={sdDraft.customer_name} onChange={(e) => setSdDraft({ ...sdDraft, customer_name: e.target.value })}/></label>
-                          <label>Contact number<input value={sdDraft.contact_number} onChange={(e) => setSdDraft({ ...sdDraft, contact_number: e.target.value })}/></label>
-                          <label>Email address<input type="email" value={sdDraft.email_address} onChange={(e) => setSdDraft({ ...sdDraft, email_address: e.target.value })}/></label>
-                          <label>Document number<input value={sdDraft.document_number} onChange={(e) => setSdDraft({ ...sdDraft, document_number: e.target.value })}/></label>
-                          <label className="sd-wide">Query information<textarea rows={3} value={sdDraft.query_information} onChange={(e) => setSdDraft({ ...sdDraft, query_information: e.target.value })}/></label>
-                          <label className="sd-wide">Remarks<textarea rows={2} value={sdDraft.remarks} onChange={(e) => setSdDraft({ ...sdDraft, remarks: e.target.value })}/></label>
-                        </div>
-                        <div className="sd-actions"><button className="primary" disabled={busy || !sdDraft.media_platform_id || !sdDraft.customer_name.trim()} onClick={() => void sdCreateRfq()}>{busy ? 'Saving…' : 'Create RFQ'}</button><button className="secondary" onClick={() => setSdCreateOpen(false)}>Cancel</button></div>
-                      </div>
-                    )}
-                    <div className="rfq-table-wrap"><table className="rfq-table">
-                      <thead><tr><th>RFQ No.</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th>Actions</th></tr></thead>
-                      <tbody>{filteredRfqs.length ? filteredRfqs.map((r: any) => <tr key={r.id} className="rfq-data-row"><td>{r.rfq_no}</td><td>{r.received_at ? new Date(r.received_at).toLocaleString() : '—'}</td><td>{r.customer_name}</td><td>{r.media_platform || '—'}</td><td>{r.sales_code || 'Unclaimed'}</td><td>{r.status}</td><td className="sd-actions-cell"><button className="secondary" onClick={() => void sdApi(`/api/sales-desk/rfqs/${r.id}`).then((detail) => { setSdSelectedRfq(detail); setSdDetailDraft(detail) }).catch((e) => setError(e.message))}>View</button>{sdUser?.role === 'salesperson' && !r.sales_code && <button className="primary" disabled={busy} onClick={() => void sdClaimRfq(r)}>Claim</button>}</td></tr>) : <tr><td colSpan={7}><div className="rfq-empty"><ClipboardList size={28}/><h3>{sdRfqs.length ? 'No matching RFQs' : 'No RFQs yet'}</h3><p>Incoming enquiries and manually captured RFQs will appear here.</p></div></td></tr>}</tbody>
-                    </table></div>
-                    {sdSelectedRfq && sdDetailDraft && (
-                      <div className="rfq-empty-card sd-form-card">
-                        <div className="sd-detail-heading"><div><span className="eyebrow">RFQ DETAIL</span><h3>{sdSelectedRfq.rfq_no} · {sdSelectedRfq.customer_name}</h3></div><button className="secondary" onClick={() => { setSdSelectedRfq(null); setSdDetailDraft(null) }}>Close details</button></div>
-                        <div className="sd-form-grid">
-                          <label>Customer name<input disabled={sdUser?.role === 'salesperson'} value={sdDetailDraft.customer_name || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, customer_name: e.target.value })}/></label>
-                          <label>Media platform<select disabled={sdUser?.role === 'salesperson'} value={sdDetailDraft.media_platform_id || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, media_platform_id: e.target.value })}>{sdConfig.media_platforms.filter((m: any) => m.is_active || m.id === sdDetailDraft.media_platform_id).map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
-                          <label>Contact number<input disabled={sdUser?.role === 'salesperson'} value={sdDetailDraft.contact_number || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, contact_number: e.target.value })}/></label>
-                          <label>Email address<input disabled={sdUser?.role === 'salesperson'} value={sdDetailDraft.email_address || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, email_address: e.target.value })}/></label>
-                          <label>Document number<input value={sdDetailDraft.document_number || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, document_number: e.target.value })}/></label>
-                          <label>Status<select disabled={sdUser?.role === 'salesperson'} value={sdDetailDraft.status_id || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, status_id: e.target.value })}>{sdConfig.statuses.filter((s: any) => s.is_active || s.id === sdDetailDraft.status_id).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-                          <label className="sd-wide">Query information<textarea rows={3} value={sdDetailDraft.query_information || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, query_information: e.target.value })}/></label>
-                          <label className="sd-wide">Remarks<textarea rows={2} value={sdDetailDraft.remarks || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, remarks: e.target.value })}/></label>
-                        </div>
-                        <p><b>Received:</b> {sdSelectedRfq.received_at ? new Date(sdSelectedRfq.received_at).toLocaleString() : '—'} · <b>Claimed:</b> {sdSelectedRfq.claimed_at ? new Date(sdSelectedRfq.claimed_at).toLocaleString() : 'Not claimed'} · <b>Salesperson:</b> {sdSelectedRfq.salesperson_name || sdSelectedRfq.sales_code || 'Unclaimed'}</p>
-                        {sdUser?.role === 'administrator' && <label>Assign sales code<select value={sdSelectedRfq.sales_code_id || ''} onChange={(e) => void sdAssignRfq(e.target.value)}><option value="">Unassigned</option>{sdConfig.sales_codes.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.code} · {s.display_name}</option>)}</select></label>}
-                        <div className="sd-actions"><button className="primary" disabled={busy} onClick={() => void sdSaveRfq()}>{busy ? 'Saving…' : 'Save changes'}</button>{sdUser?.role === 'salesperson' && !sdSelectedRfq.sales_code && <button className="primary" disabled={busy} onClick={() => void sdClaimRfq(sdSelectedRfq)}>Claim this RFQ</button>}</div>
-                        {sdSelectedRfq.audit_history?.length > 0 && <div className="sd-history"><h4>History</h4>{sdSelectedRfq.audit_history.slice().reverse().map((h: any, i: number) => <p key={i}><b>{h.action}</b> · {new Date(h.created_at).toLocaleString()} · {JSON.stringify(h.changes)}</p>)}</div>}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  sdUser?.role !== 'administrator' ? <div className="rfq-empty-card"><Settings size={26}/><h3>Administrator access required</h3><p>Only administrators can manage Sales Desk configuration.</p></div> : (
-                    <div className="sd-config-layout">
-                      <div className="rfq-empty-card sd-form-card">
-                        <h3>Media platforms</h3><p>Add enquiry sources and deactivate old options without removing historical RFQs.</p>
-                        <div className="sd-config-add"><input placeholder="New platform name" value={sdConfigDraft.mediaName} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, mediaName: e.target.value })}/><button className="primary" disabled={busy || !sdConfigDraft.mediaName.trim()} onClick={() => void sdConfigAction('/api/sales-desk/config/media-platforms', { name: sdConfigDraft.mediaName, sort_order: Number(sdConfigDraft.mediaSort || 0) })}>Add</button></div>
-                        {sdConfig.media_platforms.map((m: any) => <div className="sd-config-row" key={m.id}><div><b>{m.name}</b><small>Order {m.sort_order} · {m.is_active ? 'Active' : 'Inactive'}</small></div><div className="sd-actions"><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { sort_order: Math.max(0, Number(m.sort_order) - 1) }, 'PATCH')}>↑</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { sort_order: Number(m.sort_order) + 1 }, 'PATCH')}>↓</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { is_active: !m.is_active }, 'PATCH')}>{m.is_active ? 'Deactivate' : 'Activate'}</button><button className="secondary" onClick={() => { const name = window.prompt('Rename media platform', m.name); if (name?.trim()) void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { name }, 'PATCH') }}>Rename</button></div></div>)}
-                      </div>
-                      <div className="rfq-empty-card sd-form-card">
-                        <h3>Sales codes</h3><p>Salesperson accounts are linked to these configured codes.</p>
-                        <div className="sd-config-add"><input placeholder="Code (e.g. SP01)" value={sdConfigDraft.salesCode} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, salesCode: e.target.value })}/><input placeholder="Display name" value={sdConfigDraft.salesName} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, salesName: e.target.value })}/><button className="primary" disabled={busy || !sdConfigDraft.salesCode.trim() || !sdConfigDraft.salesName.trim()} onClick={() => void sdConfigAction('/api/sales-desk/config/sales-codes', { code: sdConfigDraft.salesCode, display_name: sdConfigDraft.salesName })}>Add</button></div>
-                        {sdConfig.sales_codes.map((s: any) => <div className="sd-config-row" key={s.id}><div><b>{s.code} · {s.display_name}</b><small>{s.is_active ? 'Active' : 'Inactive'}</small></div><div className="sd-actions"><button className="secondary" onClick={() => { const name = window.prompt('Sales code display name', s.display_name); if (name?.trim()) void sdConfigAction(`/api/sales-desk/config/sales-codes/${s.id}`, { display_name: name }, 'PATCH') }}>Edit name</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/sales-codes/${s.id}`, { is_active: !s.is_active }, 'PATCH')}>{s.is_active ? 'Deactivate' : 'Activate'}</button></div></div>)}
-                      </div>
-                      <div className="rfq-empty-card sd-form-card">
-                        <h3>RFQ statuses</h3><p>Mark terminal statuses as closed so dashboard open totals stay meaningful.</p>
-                        <div className="sd-config-add"><input placeholder="New status name" value={sdConfigDraft.statusName} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, statusName: e.target.value })}/><label className="sd-inline-check"><input type="checkbox" checked={sdConfigDraft.statusClosed} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, statusClosed: e.target.checked })}/> Closed status</label><button className="primary" disabled={busy || !sdConfigDraft.statusName.trim()} onClick={() => void sdConfigAction('/api/sales-desk/config/statuses', { name: sdConfigDraft.statusName, sort_order: Number(sdConfig.statuses.length), is_closed: sdConfigDraft.statusClosed })}>Add</button></div>
-                        {sdConfig.statuses.map((s: any) => <div className="sd-config-row" key={s.id}><div><b>{s.name}</b><small>Order {s.sort_order} · {s.is_closed ? 'Closed' : 'Open'} · {s.is_active ? 'Active' : 'Inactive'}</small></div><div className="sd-actions"><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { sort_order: Math.max(0, Number(s.sort_order) - 1) }, 'PATCH')}>↑</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { sort_order: Number(s.sort_order) + 1 }, 'PATCH')}>↓</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { is_active: !s.is_active }, 'PATCH')}>{s.is_active ? 'Deactivate' : 'Activate'}</button><button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { name }, 'PATCH') }}>Rename</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { is_closed: !s.is_closed }, 'PATCH')}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button></div></div>)}
-                      </div>
-                    </div>
-                  )
-                )}
-              </>
-            )}
-          </section>
-        )}
+        {isSalesDeskPage && <SalesDesk page={page} setNotice={setNotice} setError={setError} />}
 
         {key && page === 'Feed' && (
           <>

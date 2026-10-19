@@ -1,0 +1,29 @@
+/* Sales Desk: RFQ side panel, sortable configuration lists, attachments, type badges. */
+.editor-body input:disabled,
+.editor-body select:disabled,
+.editor-body textarea:disabled{background:#f0f3f5;color:#71808d;cursor:not-allowed}
+.sd-panel-note{margin:0 0 4px;padding:10px 12px;background:#edf3f7;border-radius:8px;color:#4d6477}
+
+.sd-attachments{list-style:none;margin:9px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.sd-attachments li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 11px;background:#fff;border:1px solid #dce4e9;border-radius:8px;font-size:12px}
+.sd-attachments li small{color:#82909a;font-size:10px;flex:1 1 180px}
+.sd-attachments .sd-file-name{font-weight:700;color:#2d3e4d;overflow-wrap:anywhere;flex:1 1 160px}
+.sd-attachments .secondary{padding:6px 9px}
+.sd-attachments li.sd-no-files{border-style:dashed;color:#93a0a9;justify-content:center}
+.editor-body .sd-history{margin-top:22px}
+.editor-body .sd-history p{font-size:12px;line-height:1.5;color:#526170;margin:0}
+
+.sd-type{display:inline-block;font-size:10px;font-weight:700;padding:4px 8px;border-radius:20px;background:#e9f2ff;color:#33659a}
+.sd-type.invoice{background:#e5f5ec;color:#267149}
+.sd-clip{display:inline-flex;margin-left:6px;color:#8a969f;vertical-align:middle}
+
+.sd-sortable{display:flex;align-items:center;gap:10px;width:100%;padding:12px 0;border-top:1px solid #edf0f3;background:#fff;border-bottom:2px solid transparent}
+.sd-sortable.over{border-bottom-color:#e7b94f}
+.sd-sortable.dragging{opacity:.4}
+.sd-grip{cursor:grab;color:#8a969f;display:grid;place-items:center;flex:none}
+.sd-sortable:active .sd-grip{cursor:grabbing}
+.sd-sortable-body{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sd-option-text{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sd-option-text small,.sd-config-row small{font-size:11px;color:#71808d}
+.sd-config-row .sd-inline-check select{width:auto;min-width:110px}
+@media(max-width:650px){.sd-sortable-body{align-items:flex-start;flex-direction:column}}

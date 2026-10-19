@@ -2,20 +2,26 @@
 
 Uses individual password-authenticated accounts and opaque server-side sessions.
 The legacy shared API key remains for existing Marketing endpoints only.
+
+Sales consultants receive their sales code automatically when their account is created:
+first letter of the first name + first letter of the surname + a unique two-digit number
+(01, 02, ...), for example "John Smith" -> JS01.
 """
 from __future__ import annotations
 
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import sqlite3
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/api/sales-desk/auth", tags=["Sales Desk authentication"])
 DB_PATH = Path(os.getenv("DATABASE_PATH", "./data/impala_hub.db")).resolve()
@@ -24,7 +30,7 @@ ROLES = {"administrator", "manager", "salesperson"}
 
 
 def _connect() -> sqlite3.Connection:
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(DB_PATH, timeout=15)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     return db
@@ -92,6 +98,34 @@ def _public_user(row: sqlite3.Row) -> dict:
     }
 
 
+# --------------------------------------------------------------------------- sales code generation
+def _first_letter(word: str) -> str:
+    folded = unicodedata.normalize("NFKD", word).encode("ascii", "ignore").decode()
+    for char in folded:
+        if char.isalpha():
+            return char.upper()
+    raise HTTPException(422, "The first name and surname must each contain at least one letter (A-Z)")
+
+
+def generate_sales_code(db: sqlite3.Connection, display_name: str) -> str:
+    """First letter of the name + first letter of the surname + the lowest unused 2-digit number (01-99).
+
+    Call inside a write transaction so two simultaneous sign-ups cannot receive the same code.
+    """
+    parts = display_name.split()
+    if len(parts) < 2:
+        raise HTTPException(422, "Enter the consultant's first name and surname so a sales code can be generated")
+    prefix = _first_letter(parts[0]) + _first_letter(parts[-1])
+    rows = db.execute("SELECT code FROM sd_sales_codes WHERE code LIKE ? COLLATE NOCASE", (prefix + "__",)).fetchall()
+    used = {int(m.group(1)) for r in rows if (m := re.fullmatch(re.escape(prefix) + r"(\d{2})", r["code"], re.I))}
+    number = 1
+    while number in used:
+        number += 1
+    if number > 99:
+        raise HTTPException(409, f"All sales codes {prefix}01 to {prefix}99 are in use")
+    return f"{prefix}{number:02d}"
+
+
 class LoginIn(BaseModel):
     username: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=1, max_length=1024)
@@ -102,12 +136,11 @@ class UserCreateIn(BaseModel):
     display_name: str = Field(min_length=1, max_length=160)
     password: str = Field(min_length=14, max_length=1024)
     role: str
-    sales_code: Optional[str] = Field(default=None, max_length=80)
 
     @field_validator("display_name")
     @classmethod
     def clean_display_name(cls, value: str) -> str:
-        value = value.strip()
+        value = " ".join(value.split())
         if not value:
             raise ValueError("Display name cannot be blank")
         return value
@@ -118,14 +151,6 @@ class UserCreateIn(BaseModel):
         if value not in ROLES:
             raise ValueError("Role must be administrator, manager or salesperson")
         return value
-
-    @model_validator(mode="after")
-    def validate_salesperson_code(self):
-        if self.role == "salesperson" and not (self.sales_code or "").strip():
-            raise ValueError("A salesperson must be linked to a sales code")
-        if self.role != "salesperson" and self.sales_code:
-            raise ValueError("Only salesperson accounts may be linked to a sales code")
-        return self
 
 
 def current_user(authorization: Optional[str] = Header(default=None)) -> dict:
@@ -203,18 +228,23 @@ def create_user(payload: UserCreateIn, _: dict = Depends(require_admin)) -> dict
     salt, password_hash = _hash_password(payload.password)
     now = _now()
     user_id = secrets.token_hex(16)
-    sales_code = payload.sales_code.strip() if payload.sales_code else None
     with _connect() as db:
+        # One write transaction covers code generation, the code row and the account, so a failure
+        # (for example a duplicate username) leaves no orphaned sales code behind.
+        db.execute("BEGIN IMMEDIATE")
+        sales_code = None
         if payload.role == "salesperson":
-            configured = db.execute("SELECT 1 FROM sd_sales_codes WHERE code=? COLLATE NOCASE AND is_active=1", (sales_code,)).fetchone()
-            if not configured:
-                raise HTTPException(422, "Choose an active configured sales code")
+            sales_code = generate_sales_code(db, payload.display_name)
+            db.execute(
+                "INSERT INTO sd_sales_codes(id,code,display_name,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)",
+                (secrets.token_hex(16), sales_code, payload.display_name, now, now),
+            )
         try:
             db.execute(
                 """INSERT INTO sd_users
                 (id,username,display_name,password_salt,password_hash,role,sales_code,is_active,created_at,updated_at)
                 VALUES(?,?,?,?,?,?,?,1,?,?)""",
-                (user_id, payload.username.strip(), payload.display_name.strip(), salt, password_hash,
+                (user_id, payload.username.strip(), payload.display_name, salt, password_hash,
                  payload.role, sales_code, now, now),
             )
         except sqlite3.IntegrityError as exc:
