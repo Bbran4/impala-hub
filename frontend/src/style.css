@@ -44,3 +44,33 @@
 .month-nav h3{margin:0;min-width:170px;text-align:center}
 .month-nav .hint{margin:0 0 0 auto}
 .month-nav .secondary.active{background:#1f2937;color:#fff}
+
+
+/* Apps Dashboard */
+.apps-dashboard{padding:12px 0 32px}
+.apps-intro{padding:32px 0 34px}
+.apps-intro .eyebrow{color:#a17a22}
+.apps-intro h2{font-family:Manrope,sans-serif;font-size:clamp(28px,3vw,38px);letter-spacing:-1px;color:#172f44;margin:12px 0 8px}
+.apps-intro p,.apps-section-heading p{color:#718091;margin:0;font-size:13px;line-height:1.7}
+.apps-section-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.apps-section-heading h2{font-family:Manrope,sans-serif;font-size:17px;color:#1c3042;margin:0 0 6px}
+.apps-section-heading>span{font-size:10px;font-weight:700;color:#657484;background:#e9eef3;border-radius:20px;padding:7px 11px}
+.app-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.app-card{min-height:205px;text-align:left;padding:20px;border:1px solid #e1e7ed;border-radius:13px;background:#fff;display:flex;flex-direction:column;color:#243342}
+button.app-card{width:100%;cursor:pointer;font:inherit}
+.app-card-available{border-color:#d9e2e9;box-shadow:0 4px 16px #1c30420a;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.app-card-available:hover{transform:translateY(-3px);border-color:#d9b85e;box-shadow:0 12px 28px #1c304214}
+.app-card-disabled{background:#f9fafb;color:#758392;border-style:dashed}
+.app-card-icon{width:46px;height:46px;border-radius:11px;background:#edf2f6;color:#1b4059;display:grid;place-items:center;margin-bottom:18px}
+.app-card-available .app-card-icon{background:#fff4d7;color:#88691f}
+.app-card-copy h3{font-family:Manrope,sans-serif;font-size:15px;margin:0 0 7px;color:#20364a}
+.app-card-disabled .app-card-copy h3{color:#627181}
+.app-card-copy p{font-size:11px;line-height:1.65;margin:0;color:#748292;max-width:290px}
+.app-card-footer{display:flex;align-items:center;gap:7px;border-top:1px solid #edf0f3;margin-top:auto;padding-top:14px;font-size:10px;color:#637382}
+.app-status-dot{width:7px;height:7px;border-radius:50%;background:#399b72;flex:none}
+.app-status-planned{background:#b8c1ca}
+.app-card-open{margin-left:auto;font-weight:700;color:#263e52}
+.app-card-lock{margin-left:auto;color:#929eaa}
+.app-home-link{margin-bottom:22px;background:#203a50!important;color:#fff!important}
+@media(max-width:900px){.app-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:580px){.apps-dashboard{padding-top:0}.apps-intro{padding:24px 0}.app-cards{grid-template-columns:1fr;gap:11px}.app-card{min-height:185px;padding:17px}}
