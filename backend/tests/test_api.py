@@ -220,3 +220,37 @@ def test_sales_desk_login_and_role_protection():
         assert created.json()["sales_code"] == "TEST01"
         assert client.post("/api/sales-desk/auth/logout", headers=auth).status_code == 200
         assert client.get("/api/sales-desk/auth/me", headers=auth).status_code == 401
+
+
+def test_sales_desk_rfq_numbering_and_audit():
+    import secrets
+    from app.sales_desk_auth import _hash_password, _now, _connect as auth_connect
+
+    sd_auth.init_auth_db()
+    username = "rfq-admin-" + secrets.token_hex(4)
+    user_id = secrets.token_hex(16)
+    salt, password_hash = _hash_password("secure-test-password-2026")
+    now = _now()
+    with auth_connect() as db:
+        db.execute(
+            """INSERT INTO sd_users
+            (id,username,display_name,password_salt,password_hash,role,sales_code,is_active,created_at,updated_at)
+            VALUES(?,?,?,?,?,'administrator',NULL,1,?,?)""",
+            (user_id, username, "RFQ Test Admin", salt, password_hash, now, now),
+        )
+    with TestClient(app) as client:
+        login = client.post("/api/sales-desk/auth/login", json={"username": username, "password": "secure-test-password-2026"})
+        assert login.status_code == 200, login.text
+        auth = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        media = client.post("/api/sales-desk/config/media-platforms", headers=auth, json={"name": "Test source " + secrets.token_hex(3)})
+        assert media.status_code == 201, media.text
+        payload = {"media_platform_id": media.json()["id"], "customer_name": "Test Customer", "query_information": "Need a quotation"}
+        first = client.post("/api/sales-desk/rfqs", headers=auth, json=payload)
+        second = client.post("/api/sales-desk/rfqs", headers=auth, json=payload)
+        assert first.status_code == 201, first.text
+        assert second.status_code == 201, second.text
+        assert first.json()["rfq_no"].startswith("IMP")
+        assert int(second.json()["rfq_no"][-2:]) == int(first.json()["rfq_no"][-2:]) + 1
+        detail = client.get("/api/sales-desk/rfqs/" + first.json()["id"], headers=auth)
+        assert detail.status_code == 200
+        assert any(item["action"] == "created" for item in detail.json()["audit_history"])
