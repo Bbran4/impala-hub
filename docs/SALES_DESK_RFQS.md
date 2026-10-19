@@ -97,11 +97,12 @@ Automatic ingestion from Facebook, WhatsApp, email or website forms; quotation g
 
 ## Delivery status
 
-- [x] Phase 1 foundation: Sales Desk user/session schema, password login/logout, current-user endpoint, administrator-only user provisioning and role validation added on the feature branch.
-- [x] Phase 1 code: Sales Desk sign-in is available in the frontend; salesperson accounts must reference an active configured sales-code record.
-- [x] Phase 2 implementation: RFQ schema, unique daily reference allocation using an immediate SQLite write transaction, Johannesburg business-date numbering, record endpoints, and audit history.
-- [ ] Verification: run the automated backend tests and frontend build, including concurrent RFQ creation tests. Code has been committed but is not yet verified by a CI run.
-- [ ] Phase 3: configurable media platforms, sales codes and statuses.
-- [ ] Phase 4: RFQ queue, filters, search, detail and editing.
-- [ ] Phase 5: self-claiming, administrator assignment and concurrent-claim protection.
-- [ ] Phase 6: live dashboard totals, permission tests, concurrency tests and regression verification.
+- [x] Milestone 1: RFQ schema, validation, immutable daily reference generation, UTC timestamps and audit history.
+- [x] Milestone 2 implementation: administrator configuration screens for media platforms, sales codes and statuses, including active/inactive state, status open/closed classification and ordering controls.
+- [x] Milestone 3 implementation: RFQ creation, unclaimed-first queue, filters, search, detail editing and audit history.
+- [x] Milestone 4 implementation: salesperson self-claim with transaction protection, claim timestamp, administrator assignment/reassignment and assignment audit events.
+- [x] Milestone 5 implementation: persisted dashboard totals with salesperson access scope and API-side role enforcement.
+- [x] CI workflow added for backend tests and frontend production build.
+- [ ] Milestone 6 verification: CI must pass, and the claim/concurrency, daily numbering, historical configuration and role tests must be reviewed. Run manual end-to-end regression against the local Windows setup before treating this as production-ready.
+
+Implementation endpoints use the existing namespace `/api/sales-desk` to keep RFQ functionality separate from Marketing's shared API-key endpoints. The follow-on workflow branch is based on the merged identity/RFQ foundation and should be merged only after CI and manual regression checks pass.
