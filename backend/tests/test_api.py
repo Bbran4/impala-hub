@@ -199,6 +199,12 @@ def test_sales_desk_login_and_role_protection():
         token = login.json()["access_token"]
         auth = {"Authorization": f"Bearer {token}"}
         assert client.get("/api/sales-desk/auth/me", headers=auth).json()["role"] == "administrator"
+        code_response = client.post(
+            "/api/sales-desk/config/sales-codes",
+            headers=auth,
+            json={"code": "TEST01", "display_name": "Test Sales Code"},
+        )
+        assert code_response.status_code == 201, code_response.text
         created = client.post(
             "/api/sales-desk/auth/users",
             headers=auth,
