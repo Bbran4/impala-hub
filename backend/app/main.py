@@ -291,6 +291,8 @@ class PostIn(BaseModel):
         if self.status == "scheduled":
             if not self.publish_at:
                 raise ValueError("A publication date and time is required for scheduled posts")
+            if self.publish_at <= datetime.now(timezone.utc):
+                raise ValueError("Choose a future date and time to schedule a post")
             if not self.channels:
                 raise ValueError("Choose at least one channel before scheduling")
             if "instagram" in self.channels and not self.media:

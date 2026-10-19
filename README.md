@@ -94,7 +94,7 @@ All routes except `GET /api/health` need `Authorization: Bearer <APP_API_KEY>`.
 - `GET /api/integrations`
 - `GET /api/audit?limit=100` (newest first)
 
-Rules enforced by the API: clients may only set `draft`, `awaiting_approval` or `scheduled`; scheduled posts need a date and at least one channel; Instagram posts need an image to be scheduled; media must come from `/api/media`; at most 3 Facebook groups; campaign end date must not precede its start date. `publish_at` is stored in UTC.
+Rules enforced by the API: clients may only set `draft`, `awaiting_approval` or `scheduled`; scheduled posts need a future date and at least one channel; Instagram posts need an image to be scheduled; media must come from `/api/media`; at most 3 Facebook groups; campaign end date must not precede its start date. `publish_at` is stored in UTC.
 
 ## Post lifecycle
 
@@ -105,6 +105,14 @@ Rules enforced by the API: clients may only set `draft`, `awaiting_approval` or 
 | published | no | yes | no |
 
 The API enforces this (a blocked edit returns 409), not just the screen. Clicking a post in any list opens its detail view: content, schedule and publication dates, performance figures ("—" when unavailable), campaign, and a history of changes.
+
+## Views
+
+The Posts page has three views. Search and the campaign filter apply to all of them.
+
+- **List**: the full register, with the status filter.
+- **Board**: one column per status. Drag a draft, awaiting-approval or failed post into Draft, Awaiting approval or Scheduled (or use the "Move to..." menu on the card). Moving to Scheduled needs a future date and at least one channel. Scheduled and published cards cannot be moved.
+- **Calendar**: a Monday-first month grid. Drag a draft or awaiting-approval post to a day to plan its date (its status does not change); posts without a date wait in the Unscheduled tray. The "+" on a day starts a new post for that date. Scheduled and published posts appear on their dates but are locked.
 
 ## Formatting
 

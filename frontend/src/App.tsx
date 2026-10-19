@@ -4,7 +4,9 @@ import {
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
-import { api, AuthError, EDITABLE, fmt, getKey, KEY_STORAGE, mediaSrc, metric, type Media, type Post, type Campaign } from './lib'
+import PostBoard from './PostBoard'
+import PostCalendar from './PostCalendar'
+import { api, AuthError, EDITABLE, fmt, getKey, isFuture, KEY_STORAGE, mediaSrc, metric, type Media, type Post, type Campaign } from './lib'
 
 const SAMPLE_FB_GROUPS = [
   'sample:Impala Spares Community',
@@ -12,7 +14,6 @@ const SAMPLE_FB_GROUPS = [
   'sample:South African Transport Industry',
 ]
 const groupLabel = (g: string) => (g.startsWith('sample:') ? `${g.slice(7)} (sample)` : g)
-const isFuture = (v?: string | null) => !!v && new Date(v) > new Date()
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
   if (!value) return ''
@@ -44,6 +45,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [view, setView] = useState<'list' | 'board' | 'calendar'>('list')
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -100,6 +102,20 @@ export default function App() {
       (campaignFilter === 'all' || p.campaign_id === campaignFilter) &&
       (!search || `${p.title} ${p.caption}`.toLowerCase().includes(search.toLowerCase())),
   )
+
+  const filteredPosts = posts.filter(
+    (p) =>
+      (campaignFilter === 'all' || p.campaign_id === campaignFilter) &&
+      (!search || `${p.title} ${p.caption}`.toLowerCase().includes(search.toLowerCase())),
+  )
+
+  async function patchPost(id: string, changes: Partial<Post>, message: string) {
+    try {
+      await api(`/api/posts/${id}`, { method: 'PATCH', body: JSON.stringify(changes) })
+      setNotice(message); setError('')
+      await load()
+    } catch (e) { handleError(e) }
+  }
 
   async function savePost(mode: 'draft' | 'approval' | 'schedule') {
     if (!editor) return
@@ -267,7 +283,7 @@ export default function App() {
               ].map((s) => (
                 <button
                   className="stat-card" key={s.label}
-                  onClick={() => { setPage('Posts'); setFilter(s.filter); setCampaignFilter('all'); setSearch('') }}
+                  onClick={() => { setPage('Posts'); setView('list'); setFilter(s.filter); setCampaignFilter('all'); setSearch('') }}
                 >
                   <div className="stat-top"><span>{s.label}</span><s.icon size={18} /></div>
                   <strong>{s.value}</strong>
@@ -290,7 +306,14 @@ export default function App() {
                 <Search size={17} />
                 <input aria-label="Search posts" placeholder="Search titles and captions" value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
-              <select aria-label="Filter by status" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              <div className="view-toggle" role="group" aria-label="View">
+                {(['list', 'board', 'calendar'] as const).map((v) => (
+                  <button key={v} className={`secondary ${view === v ? 'active' : ''}`} aria-pressed={view === v} onClick={() => setView(v)}>
+                    {v[0].toUpperCase() + v.slice(1)}
+                  </button>
+                ))}
+              </div>
+              {view === 'list' && (<select aria-label="Filter by status" value={filter} onChange={(e) => setFilter(e.target.value)}>
                 <option value="all">All posts</option>
                 <option value="draft">Drafts</option>
                 <option value="awaiting_approval">Awaiting approval</option>
@@ -298,14 +321,29 @@ export default function App() {
                 <option value="published">Published</option>
                 <option value="failed">Failed</option>
                 <option value="engagements">Published / engagements</option>
-              </select>
+              </select>)}
               <select aria-label="Filter by campaign" value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}>
                 <option value="all">All campaigns</option>
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>
             </div>
-            <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
+            {view === 'list' && (
+              <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
+            )}
+            {view === 'board' && (
+              <PostBoard
+                posts={filteredPosts} campaigns={campaigns} onOpen={openPost} onError={setError}
+                onMove={(id, status) => void patchPost(id, { status }, `Post moved to ${status.replace(/_/g, ' ')}.`)}
+              />
+            )}
+            {view === 'calendar' && (
+              <PostCalendar
+                posts={filteredPosts} onOpen={openPost} onError={setError}
+                onChangeDate={(id, iso, message) => void patchPost(id, { publish_at: iso }, message)}
+                onCreate={(local) => { setEditor({ ...emptyPost(), publish_at: local }); setError('') }}
+              />
+            )}
           </>
         )}
 

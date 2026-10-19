@@ -150,3 +150,19 @@ def test_draft_edit_records_changed_fields_in_history():
         assert [h["action"] for h in history] == ["updated", "created"]
         assert history[0]["details"]["changed"] == ["caption"]
         assert client.get("/api/posts/missing/history", headers=H).status_code == 404
+
+
+def test_scheduling_needs_a_future_date_and_drag_style_patches_work():
+    with TestClient(app) as client:
+        past = {"caption": "x", "channels": ["facebook"], "status": "scheduled", "publish_at": "2020-01-01T10:00:00Z"}
+        assert client.post("/api/posts", headers=H, json=past).status_code == 422
+        draft = client.post("/api/posts", headers=H, json={"caption": "x", "channels": ["facebook"]}).json()
+        url = f"/api/posts/{draft['id']}"
+        # calendar drag: set only the date, status stays draft
+        moved = client.patch(url, headers=H, json={"publish_at": "2031-05-05T07:00:00Z"}).json()
+        assert moved["status"] == "draft" and moved["publish_at"].startswith("2031-05-05")
+        # board drag: draft -> awaiting approval -> scheduled
+        assert client.patch(url, headers=H, json={"status": "awaiting_approval"}).json()["status"] == "awaiting_approval"
+        assert client.patch(url, headers=H, json={"status": "scheduled"}).json()["status"] == "scheduled"
+        # scheduled is now locked, so it cannot be dragged back
+        assert client.patch(url, headers=H, json={"status": "draft"}).status_code == 409
