@@ -72,7 +72,5 @@ export const mediaSrc = (m: Media) => (m.url.startsWith('http') ? m.url : `${API
 export const metric = (v?: number | null) => (v == null ? '—' : String(v))
 export const fmt = (v?: string | null, empty = 'Not scheduled') => (v ? new Date(v).toLocaleString() : empty)
 
-// Shared helpers used by the post editor, board and calendar views.
-export const isFuture = (value?: string | null) => !!value && new Date(value).getTime() > Date.now()
-export const headingOf = (post: Pick<Post, 'title' | 'caption'>) =>
-  post.title?.trim() || post.caption?.trim().slice(0, 110) || 'Untitled post'
+export const isFuture = (v?: string | null) => !!v && new Date(v) > new Date()
+export const headingOf = (p: Post) => p.title?.trim() || p.caption?.trim().slice(0, 110) || 'Untitled post'
