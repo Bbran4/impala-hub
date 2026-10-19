@@ -365,3 +365,33 @@ def test_a_permission_error_on_the_basic_fields_is_still_reported():
 
     with pytest.raises(FacebookError, match="pages_read_engagement"):
         graph(handler).list_published_posts()
+
+
+
+def test_post_exists_returns_true_for_existing_post():
+    def handler(request):
+        assert request.url.path == "/v26.0/PAGE1_99"
+        return httpx.Response(200, json={"id": "PAGE1_99"})
+
+    assert graph(handler).post_exists("PAGE1_99") is True
+
+
+def test_post_exists_returns_false_only_for_explicit_missing_post():
+    def handler(request):
+        return httpx.Response(400, json={"error": {
+            "message": "Unsupported get request. Object with ID 'PAGE1_99' cannot be loaded.",
+            "code": 100,
+        }})
+
+    assert graph(handler).post_exists("PAGE1_99") is False
+
+
+def test_post_exists_does_not_treat_permission_errors_as_deletion():
+    def handler(request):
+        return httpx.Response(400, json={"error": {
+            "message": "Permissions error",
+            "code": 10,
+        }})
+
+    with pytest.raises(FacebookError):
+        graph(handler).post_exists("PAGE1_99")
