@@ -641,24 +641,76 @@ def rfq_history(rfq_id: str, user: dict = Depends(current_user)) -> list[dict]:
     return get_rfq(rfq_id, user)["audit_history"]
 
 
-@router.post("/rfqs/{rfq_id}/convert-to-invoice")
+@router.post("/rfqs/{rfq_id}/convert-to-invoice", status_code=201)
 def convert_to_invoice(rfq_id: str, user: dict = Depends(current_user)) -> dict:
-    """Turn a closed quotation into an invoice. The RFQ number gets INV appended."""
+    """Create an invoice copy of a closed quotation, preserving the original quotation."""
+    import shutil
+
     with _connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(RFQ_SELECT + " WHERE r.id=?", (rfq_id,)).fetchone()
         if not row or not _owns(user, row):
             raise HTTPException(404, "RFQ not found")
         if row["rfq_type"] == "invoice":
-            raise HTTPException(409, "This RFQ has already been converted to an invoice")
+            raise HTTPException(409, "An invoice cannot be converted to another invoice")
         if not row["status_is_closed"]:
             raise HTTPException(409, "Only a closed RFQ can be converted to an invoice. Set a closed status first.")
-        new_no, now = row["rfq_no"] + "INV", _now()
+
+        source = db.execute("SELECT * FROM sd_rfqs WHERE id=?", (rfq_id,)).fetchone()
+        new_no, now, invoice_id = row["rfq_no"] + "INV", _now(), uuid.uuid4().hex
+        if db.execute("SELECT 1 FROM sd_rfqs WHERE rfq_no=?", (new_no,)).fetchone():
+            raise HTTPException(409, f"An RFQ or invoice already uses the number {new_no}")
+
+        # Each record must have a unique daily sequence even though the invoice reference
+        # is derived from the original quotation number.
+        next_daily = db.execute(
+            "SELECT COALESCE(MAX(daily_number),0)+1 FROM sd_rfqs WHERE business_date=?",
+            (source["business_date"],),
+        ).fetchone()[0]
         db.execute(
-            "UPDATE sd_rfqs SET rfq_type='invoice',original_rfq_no=?,rfq_no=?,converted_at=?,updated_by=?,updated_at=? WHERE id=?",
-            (row["rfq_no"], new_no, now, user["id"], now, rfq_id))
-        _audit(db, rfq_id, user["id"], "converted_to_invoice", {"from_rfq_no": row["rfq_no"], "to_rfq_no": new_no})
-        return _detail(db, rfq_id)
+            """INSERT INTO sd_rfqs
+            (id,rfq_no,business_date,daily_number,rfq_type,original_rfq_no,converted_at,
+             media_platform_id,customer_name,contact_number,email_address,query_information,
+             sales_code_id,claimed_at,received_at,remarks,status_id,document_number,
+             created_by,updated_by,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (invoice_id,new_no,source["business_date"],next_daily,"invoice",source["rfq_no"],now,
+             source["media_platform_id"],source["customer_name"],source["contact_number"],
+             source["email_address"],source["query_information"],source["sales_code_id"],
+             source["claimed_at"],source["received_at"],source["remarks"],source["status_id"],
+             source["document_number"],user["id"],user["id"],now,now),
+        )
+
+        # Duplicate the private attachment files as well, so the invoice has its own
+        # attachment records and can be retained independently of the quotation.
+        attachments = db.execute(
+            "SELECT * FROM sd_rfq_attachments WHERE rfq_id=? ORDER BY created_at,id", (rfq_id,)
+        ).fetchall()
+        copied_files: list[Path] = []
+        try:
+            for attachment in attachments:
+                old_path = _attachment_dir() / attachment["stored_name"]
+                if not old_path.is_file():
+                    raise HTTPException(409, f"Cannot copy missing attachment: {attachment['original_name']}")
+                new_stored = uuid.uuid4().hex + Path(attachment["stored_name"]).suffix
+                new_path = _attachment_dir() / new_stored
+                shutil.copy2(old_path, new_path)
+                copied_files.append(new_path)
+                db.execute(
+                    """INSERT INTO sd_rfq_attachments
+                    (id,rfq_id,original_name,stored_name,content_type,size,uploaded_by,created_at)
+                    VALUES(?,?,?,?,?,?,?,?)""",
+                    (uuid.uuid4().hex,invoice_id,attachment["original_name"],new_stored,
+                     attachment["content_type"],attachment["size"],user["id"],now),
+                )
+        except Exception:
+            for path in copied_files:
+                path.unlink(missing_ok=True)
+            raise
+
+        _audit(db, rfq_id, user["id"], "invoice_copy_created", {"to_rfq_no": new_no, "invoice_id": invoice_id})
+        _audit(db, invoice_id, user["id"], "created_from_quotation", {"from_rfq_no": row["rfq_no"], "to_rfq_no": new_no})
+        return _detail(db, invoice_id)
 
 
 # --------------------------------------------------------------------------- attachments
