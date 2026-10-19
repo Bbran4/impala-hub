@@ -574,6 +574,7 @@ The current implementation is being updated in `feature/marketing-workflow-metri
 - Facebook Group posting has been removed from the editor and API model. Existing databases migrate away from the deprecated group field.
 - The Feed engagement card now totals synced Facebook likes, comments and shares for the current month, using the publication date for published posts.
 - Failed posts have a **Reschedule** action that reopens their content with a suggested time 15 minutes ahead. Review the post and confirm the new schedule before it is queued, to reduce the risk of duplicate publishing.
+- Local deletion of a Facebook-published post is allowed only after the backend checks its Facebook post ID and confirms the post is missing. Existing posts are rejected with instructions to delete them on Facebook first. Permission, token, throttling and network errors fail closed and do not permit local deletion.
 - **Publish now** queues a Facebook-only post through the backend worker. The UI reports that a request was queued, not that Facebook has already confirmed publication.
 - The OAuth permission request now includes Meta's `read_insights` permission. Existing connections need to reconnect and grant it before insights data can be read.
 - Organic reach and impressions are now requested from the Page-post Insights endpoint during sync and displayed separately on post details and in the post list. Meta may not return these metrics for every post or token; unavailable values remain blank. This path still needs test-suite and live-Page verification.
