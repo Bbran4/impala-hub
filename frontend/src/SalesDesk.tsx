@@ -258,14 +258,14 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
       <section className="editor" role="dialog" aria-modal="true" aria-label={mode === 'create' ? 'New RFQ' : 'RFQ details'}>
         <header className="editor-head">
           <div>
-            <span className="eyebrow">{mode === 'create' ? 'NEW RFQ' : rfq?.rfq_type === 'invoice' ? 'INVOICE' : 'QUOTATION'}</span>
+            <span className="eyebrow">{mode === 'create' ? 'NEW RFQ' : rfq?.rfq_type === 'invoice' ? 'INVOICE' : 'QUOTE'}</span>
             <h2>{mode === 'create' ? 'New RFQ' : rfq?.rfq_no || 'RFQ details'}</h2>
           </div>
           <button className="icon-button" aria-label="Close" onClick={requestClose}><X size={20} /></button>
         </header>
         {loading ? <div className="editor-body"><p className="hint">Loading…</p></div> : (
           <div className="editor-body">
-            {mode === 'edit' && <p className="hint sd-panel-note">The RFQ number is generated automatically and cannot be changed.{rfq?.original_rfq_no ? ` Originally quotation ${rfq.original_rfq_no}.` : ''}</p>}
+            {mode === 'edit' && <p className="hint sd-panel-note">The RFQ number is generated automatically and cannot be changed.{rfq?.original_rfq_no ? ` Originally quote ${rfq.original_rfq_no}.` : ''}</p>}
             {readOnly && <p className="hint sd-panel-note">This RFQ is unclaimed. Claim it to edit it.</p>}
 
             <label htmlFor="rfq-media">Media platform</label>
@@ -438,8 +438,8 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
   }
 
   const convert = (r: any) => {
-    if (!window.confirm(`Create an invoice copy of ${r.rfq_no}? The original quotation will remain unchanged and the new invoice will be numbered ${r.rfq_no}INV.`)) return
-    void act(() => request(`/api/sales-desk/rfqs/${r.id}/convert-to-invoice`, { method: 'POST' }), `Invoice ${r.rfq_no}INV created. The original quotation was kept.`)
+    if (!window.confirm(`Create an invoice copy of ${r.rfq_no}? The original quote will remain unchanged and the new invoice will be numbered ${r.rfq_no}INV.`)) return
+    void act(() => request(`/api/sales-desk/rfqs/${r.id}/convert-to-invoice`, { method: 'POST' }), `Invoice ${r.rfq_no}INV created. The original quote was kept.`)
   }
   const claim = (r: any) => void act(() => request(`/api/sales-desk/rfqs/${r.id}/claim`, { method: 'POST' }), `Claimed ${r.rfq_no} for your sales code.`)
 
@@ -475,7 +475,7 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
     <section className="rfq-workspace">
       <div className="apps-intro">
         <span className="eyebrow">SALES DESK</span>
-        <h2>{page === 'RFQ Configuration' ? 'RFQ Configuration' : 'Request for Quotations'}</h2>
+        <h2>{page === 'RFQ Configuration' ? 'RFQ Configuration' : 'RFQs'}</h2>
         <p>{page === 'RFQ Configuration'
           ? 'Manage media platforms, statuses, sales codes and team accounts.'
           : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>
@@ -508,7 +508,7 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
               <div className="rfq-toolbar">
                 <label>Filter by status<select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="">All statuses</option>{config.statuses.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
                 <label>Filter by sales code<select value={codeFilter} onChange={(e) => setCodeFilter(e.target.value)} disabled={user?.role === 'salesperson'}><option value="">All salespeople</option>{config.sales_codes.map((s: any) => <option key={s.id} value={s.id}>{s.code} · {s.consultant_name || s.display_name}</option>)}</select></label>
-                <label>Type<select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Quotations and invoices</option><option value="quotation">Quotations</option><option value="invoice">Invoices</option></select></label>
+                <label>Type<select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Quotes and invoices</option><option value="quotation">Quotes</option><option value="invoice">Invoices</option></select></label>
                 <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
                 <label>Sort by<select value={sort} onChange={(e) => setSort(e.target.value)}><option value="received_asc">Oldest received</option><option value="received_desc">Newest received</option><option value="customer">Customer name</option><option value="rfq_no">RFQ number</option></select></label>
                 {isStaff && <button className="primary" onClick={() => setPanel({ mode: 'create' })}><Plus size={16} /> New RFQ</button>}
@@ -518,7 +518,7 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
                 <tbody>{rows.length ? rows.map((r: any) => (
                   <tr key={r.id} className="rfq-data-row">
                     <td>{r.rfq_no}{r.attachment_count > 0 && <span className="sd-clip" title={`${r.attachment_count} attachment(s)`}><Paperclip size={12} /></span>}</td>
-                    <td><span className={`sd-type ${r.rfq_type}`}>{r.rfq_type === 'invoice' ? 'Invoice' : 'Quotation'}</span></td>
+                    <td><span className={`sd-type ${r.rfq_type}`}>{r.rfq_type === 'invoice' ? 'Invoice' : 'Quote'}</span></td>
                     <td>{fmtDate(r.received_at)}</td><td>{r.customer_name}</td><td>{r.media_platform || '—'}</td>
                     <td>{r.sales_code || 'Unclaimed'}</td><td>{r.status}</td>
                     <td className="sd-actions-cell">
