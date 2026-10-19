@@ -14,9 +14,15 @@ This is an implementation specification and acceptance checklist. The RFQ featur
 - A salesperson must never be able to claim on behalf of another salesperson or change their own role/sales-code mapping through an RFQ request.
 - Enforce these rules in the API on every request, not only by hiding UI controls.
 
-### Authentication prerequisite
+### Authentication prerequisite and implementation status
 
-The existing application currently authenticates API requests using a shared API key. A shared key cannot identify an individual employee or reliably distinguish administrator, manager and salesperson roles. Before enabling production RFQ access, introduce or integrate individual user identity and role-aware authorization, and map each salesperson account to a configured sales code. Do not trust role, user ID or sales code supplied by the browser. Until that foundation exists, role-based RFQ access must be treated as blocked, not simulated.
+The existing application authenticates Marketing API requests using a shared API key. A shared key cannot identify an individual employee or reliably distinguish administrator, manager and salesperson roles.
+
+**Phase 1 work in progress:** a separate Sales Desk authentication surface now provides password-based sign-in, opaque server-side bearer sessions, session revocation, a current-user endpoint, administrator-only user listing/provisioning, and the three explicit roles. Passwords are stored as salted scrypt hashes; session tokens are stored as SHA-256 hashes and expire after 12 hours. Existing Marketing endpoints continue using the current shared-key mechanism.
+
+Configure `RFQ_BOOTSTRAP_ADMIN_USERNAME` and `RFQ_BOOTSTRAP_ADMIN_PASSWORD` in the backend environment before the first startup to create the initial administrator. The password must be at least 14 characters. Bootstrap only runs when the Sales Desk user table is empty and does not reset existing accounts. Keep these values secret and remove them from deployment configuration after initial setup.
+
+The identity foundation is not production-complete until tests run in CI and the user-to-configured-sales-code relationship is enforced against the Phase 3 configuration table. Do not trust role, user ID or sales code supplied by the browser.
 
 ## RFQ data
 
@@ -87,3 +93,14 @@ Do not expose Marketing navigation items while the user is in the Apps Dashboard
 ## Out of scope for this first release
 
 Automatic ingestion from Facebook, WhatsApp, email or website forms; quotation generation; direct Evolve DMS writes; and other Sales Desk modules. These can be integrated later through supported interfaces without changing RFQ ownership rules.
+
+
+## Delivery status
+
+- [x] Phase 1 foundation: Sales Desk user/session schema, password login/logout, current-user endpoint, administrator-only user provisioning and role validation added on the feature branch.
+- [ ] Phase 1 completion: execute automated tests, verify deployment bootstrap, and bind salesperson accounts to the configured sales-code table.
+- [ ] Phase 2: RFQ records, Johannesburg-date numbering, and RFQ audit history.
+- [ ] Phase 3: configurable media platforms, sales codes and statuses.
+- [ ] Phase 4: RFQ queue, filters, search, detail and editing.
+- [ ] Phase 5: self-claiming, administrator assignment and concurrent-claim protection.
+- [ ] Phase 6: live dashboard totals, permission tests, concurrency tests and regression verification.
