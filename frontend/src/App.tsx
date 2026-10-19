@@ -315,29 +315,31 @@ export default function App() {
   const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
+  const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration'
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">I</div>
-          <div><b>IMPALA HUB</b><small>Marketing workspace</small></div>
+          <div><b>IMPALA HUB</b><small>{isSalesDeskPage ? 'Sales Desk workspace' : 'Marketing workspace'}</small></div>
         </div>
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
         {page !== 'Apps' && (
           <>
             <div className="nav-label">WORKSPACE</div>
-            {([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Configuration', Settings]] as const).map(
-              ([label, Icon]) => (
-                <button
-                  key={label}
-                  className={`nav-item ${page === label || (label === 'Posts' && page === 'Post') ? 'active' : ''}`}
-                  onClick={() => { setPage(label); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}
-                >
-                  <Icon size={18} />{label}
-                </button>
-              ),
-            )}
+            {(isSalesDeskPage
+              ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings]] as const)
+              : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Configuration', Settings]] as const)
+            ).map(([label, Icon]) => (
+              <button
+                key={label}
+                className={`nav-item ${page === label || (label === 'Posts' && page === 'Post') ? 'active' : ''}`}
+                onClick={() => { setPage(label); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}
+              >
+                <Icon size={18} />{label}
+              </button>
+            ))}
             <div className="sidebar-bottom">
               <div className="connection-dot" /> <span>Local workspace</span>
               <small>{integrations.some((i) => i.status === 'connected') ? 'Facebook connected' : 'Publishing not connected'}</small>
@@ -349,8 +351,8 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : page}</h1></div>
-          {page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
+          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : page}</h1></div>
+          {!isSalesDeskPage && page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
         </header>
@@ -395,16 +397,20 @@ export default function App() {
               <h2>Welcome to Impala Hub</h2>
               <p>Choose an application to get started. More tools will appear here as they become available.</p>
             </div>
-            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>1 available</span></div>
+            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>2 available</span></div>
             <div className="app-cards">
               <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
                 <div className="app-card-icon"><Megaphone size={25} /></div>
                 <div className="app-card-copy"><h3>Marketing</h3><p>Plan campaigns, organise content, and manage social publishing.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>
+              <button className="app-card app-card-available" onClick={() => { setPage('RFQs'); setError(''); setNotice('') }}>
+                <div className="app-card-icon"><ClipboardList size={25} /></div>
+                <div className="app-card-copy"><h3>Sales Desk</h3><p>Customer enquiries, RFQs, and sales follow-ups.</p></div>
+                <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
+              </button>
               {[
                 { title: 'Smart Stock Control', description: 'Stock levels, replenishment, and branch transfers.' },
-                { title: 'Sales Desk', description: 'Customer enquiries, RFQs, and sales follow-ups.' },
                 { title: 'Returns & Claims', description: 'Track returns, damage claims, and supplier outcomes.' },
                 { title: 'Fleet Management', description: 'Fleet visibility and vehicle activity.' },
                 { title: 'E-commerce', description: 'Shopify orders, catalogue, and integration health.' },
@@ -416,6 +422,45 @@ export default function App() {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {isSalesDeskPage && (
+          <section className="rfq-workspace">
+            <div className="apps-intro">
+              <span className="eyebrow">SALES DESK</span>
+              <h2>{page === 'RFQ Configuration' ? 'RFQ Configuration' : 'Request for Quotations'}</h2>
+              <p>{page === 'RFQ Configuration'
+                ? 'Manage media platforms, salesperson sales codes, and RFQ statuses.'
+                : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>
+            </div>
+            {page === 'RFQs' ? (
+              <>
+                <div className="rfq-toolbar">
+                  <label>Filter by status<select disabled defaultValue="all"><option value="all">All statuses</option></select></label>
+                  <label>Filter by sales code<select disabled defaultValue="all"><option value="all">All salespeople</option></select></label>
+                  <label className="rfq-search">Search RFQs<input disabled placeholder="RFQ number, customer, document number" /></label>
+                </div>
+                <div className="rfq-table-wrap">
+                  <table className="rfq-table">
+                    <thead><tr><th>RFQ No.</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th></th></tr></thead>
+                    <tbody><tr><td colSpan={7}>
+                      <div className="rfq-empty">
+                        <ClipboardList size={28} />
+                        <h3>RFQ data service not connected yet</h3>
+                        <p>The Sales Desk now opens from the Apps Dashboard. The RFQ list, live filters, claiming and assignment need the backend RFQ endpoints and role-based access controls before records can be shown safely.</p>
+                      </div>
+                    </td></tr></tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="rfq-empty-card">
+                <Settings size={26} />
+                <h3>RFQ configuration</h3>
+                <p>Media platforms, sales codes, and status management will appear here when the RFQ backend is implemented.</p>
+              </div>
+            )}
           </section>
         )}
 
