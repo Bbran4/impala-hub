@@ -542,12 +542,33 @@ def facebook_integration() -> dict:
     base = {"provider": "facebook", "label": "Facebook Pages", "capabilities": ["page_posts", "page_media"]}
     client = facebook_client()
     if not client:
-        note = "Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN in backend/.env, then restart the API."
-        return {**base, "status": "not_connected", "note": note}
+        note = "No Page credentials configured. Add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env."
+        return {**base, "status": "not_connected", "note": note, "page_id": None}
     try:
-        return {**base, "status": "connected", "account_name": client.check().get("name", client.page_id)}
+        details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
+        status = "warning" if details.get("missing_permissions") else "connected"
+        return {**base, "status": status, "account_name": details["page_name"],
+                "page_id": details["page_id"], "token_type": details["token_type"],
+                "token_valid": details["token_valid"], "expires_at": details["expires_at"],
+                "data_access_expires_at": details["data_access_expires_at"],
+                "granted_permissions": details["granted_permissions"],
+                "missing_permissions": details["missing_permissions"],
+                "diagnostics_available": details["diagnostics_available"],
+                "diagnostic_note": details.get("diagnostic_note")}
     except FacebookError as exc:
-        return {**base, "status": "error", "note": f"Facebook rejected the connection: {exc}"}
+        return {**base, "status": "error", "page_id": settings.facebook_page_id or None,
+                "note": f"Facebook connection check failed: {exc}"}
+
+
+@app.post("/api/integrations/facebook/check", dependencies=[Depends(require_api_key)])
+def check_facebook_connection() -> dict:
+    client = facebook_client()
+    if not client:
+        raise HTTPException(409, "Facebook is not configured. Add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env.")
+    try:
+        return client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
+    except FacebookError as exc:
+        raise HTTPException(502, detail=f"Facebook connection check failed: {exc}")
 
 
 @app.post("/api/integrations/facebook/sync", dependencies=[Depends(require_api_key)])
