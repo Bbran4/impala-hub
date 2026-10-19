@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     facebook_page_id: str = ""
     facebook_page_token: str = ""
     facebook_api_version: str = "v26.0"  # use the version shown in your Meta app dashboard
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
     publisher_interval_seconds: int = 30
     facebook_sync_minutes: int = 10  # how often to import posts and figures from the Page; 0 turns it off
 
