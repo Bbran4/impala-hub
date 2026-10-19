@@ -197,6 +197,12 @@ ALTER TABLE posts DROP COLUMN facebook_groups_json;
 PRAGMA user_version = 3;
 """
 
+SCHEMA_V4 = """
+ALTER TABLE posts ADD COLUMN reach INTEGER;
+ALTER TABLE posts ADD COLUMN impressions INTEGER;
+PRAGMA user_version = 4;
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -208,6 +214,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V2)
         if version < 3:
             conn.executescript(SCHEMA_V3)
+        if version < 4:
+            conn.executescript(SCHEMA_V4)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
@@ -677,7 +685,7 @@ def facebook_integration() -> dict:
 
 
 # --------------------------------------------------------------------------- Facebook OAuth / Page selection
-FACEBOOK_OAUTH_SCOPES = "pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts"
+FACEBOOK_OAUTH_SCOPES = "pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,read_insights"
 
 
 def _meta_graph_get(path: str, params: dict) -> dict:
