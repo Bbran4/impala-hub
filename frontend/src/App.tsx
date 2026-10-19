@@ -212,11 +212,11 @@ export default function App() {
     } catch (e) { handleError(e) } finally { setBusy(false) }
   }
 
-  async function savePost(mode: 'draft' | 'approval' | 'schedule' | 'publish-now') {
+  async function savePost(mode: 'draft' | 'schedule' | 'publish-now') {
     if (!editor) return
     setBusy(true); setError('')
     try {
-      const status = mode === 'draft' ? 'draft' : mode === 'approval' ? 'awaiting_approval' : mode === 'schedule' ? 'scheduled' : 'draft'
+      const status = mode === 'draft' ? 'draft' : mode === 'schedule' ? 'scheduled' : 'draft'
       if (mode === 'schedule' && !isFuture(editor.publish_at)) {
         throw new Error('Choose a future date and time to schedule this post.')
       }
@@ -244,7 +244,6 @@ export default function App() {
         setNotice(
           status === 'scheduled'
             ? (facebookLive ? 'Post scheduled. It will be published to Facebook at the chosen time while the API is running.' : 'Post saved as scheduled. Connect Facebook in Configuration so it can be published.')
-          : status === 'awaiting_approval' ? 'Post sent for approval.'
           : 'Draft saved.',
         )
       }
@@ -699,7 +698,6 @@ export default function App() {
             <footer className="editor-foot">
               <button className="secondary" onClick={() => setEditor(null)}>Cancel</button>
               <button className="secondary" disabled={busy} onClick={() => void savePost('draft')}>Save as draft</button>
-              <button className="secondary" disabled={busy} onClick={() => void savePost('approval')}>Send for approval</button>
               <button className="secondary" disabled={busy || !integrations.some((i) => i.provider === 'facebook' && i.status === 'connected')} onClick={() => void savePost('publish-now')} title="Publish this post to the connected Facebook Page now">
                 <Send size={15} /> Publish now
               </button>
