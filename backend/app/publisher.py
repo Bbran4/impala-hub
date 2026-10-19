@@ -150,16 +150,12 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             if fb_id:
                 known[fb_id] = (row["id"], json.loads(row["provider_ids_json"]))
         for item in remote:
-            # Organic reach/impressions are separate from ad delivery metrics. Meta may
-            # deny insights for old posts or tokens without read_insights, so keep syncing
-            # engagement figures and leave unavailable insight values untouched.
+            # Keep sync bounded: the Page post listing supplies engagement in one paginated
+            # flow. Fetching Insights separately for every post can turn one sync into dozens
+            # of extra Graph API requests and cause the browser request to fail or time out.
+            # Preserve any previously stored organic reach/impressions until a bounded
+            # Insights refresh can run independently.
             insights = {"reach": None, "impressions": None}
-            try:
-                get_insights = getattr(client, "post_insights", None)
-                if get_insights:
-                    insights = get_insights(item["id"])
-            except FacebookError as exc:
-                log.info("Organic insights unavailable for Facebook post %s: %s", item["id"], exc)
             if item["id"] in known:
                 local_id, ids = known[item["id"]]
                 if item["permalink_url"]:
