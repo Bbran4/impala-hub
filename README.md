@@ -576,7 +576,7 @@ The current implementation is being updated in `feature/marketing-workflow-metri
 - Failed posts have a **Reschedule** action that reopens their content with a suggested time 15 minutes ahead. Review the post and confirm the new schedule before it is queued, to reduce the risk of duplicate publishing.
 - **Publish now** queues a Facebook-only post through the backend worker. The UI reports that a request was queued, not that Facebook has already confirmed publication.
 - The OAuth permission request now includes Meta's `read_insights` permission. Existing connections need to reconnect and grant it before insights data can be read.
-- Reach and impressions columns have been added to the database, but syncing and displaying those metrics still needs to be completed and verified against the connected Meta Page.
+- Organic reach and impressions are now requested from the Page-post Insights endpoint during sync and displayed separately on post details and in the post list. Meta may not return these metrics for every post or token; unavailable values remain blank. This path still needs test-suite and live-Page verification.
 - Paid-ad reporting is a separate follow-up: it requires access to the relevant ad account and the appropriate Marketing API permissions (typically including `ads_read`). Paid delivery metrics must not be added to organic post engagement totals.
 
-These changes have not been validated against a live Meta account. Run the backend test suite and frontend build before merging, then verify publishing and permissions with an authorised test Page.
+Organic insights syncing is implemented but not yet validated against a live Meta account. Paid-ad reporting is still not implemented. Run the backend test suite and frontend build before merging, then verify publishing and granted permissions with an authorised test Page.
