@@ -586,3 +586,17 @@ Organic insights syncing is implemented but not yet validated against a live Met
 #### Facebook sync reliability follow-up
 
 - Manual Facebook sync now avoids issuing a separate Insights request for every post. The published-post listing continues to sync post content and engagement, while existing organic reach/impressions values are preserved. This keeps sync bounded; Insights refresh should be handled separately with rate limits/timeouts.
+
+
+## Sales Desk implementation (new module)
+
+The first operational module is **Sales Desk → RFQs**. The detailed scope, role matrix, API contract, numbering rules, configuration requirements, milestones and acceptance criteria are maintained in [docs/SALES_DESK_RFQS.md](docs/SALES_DESK_RFQS.md).
+
+Key decisions:
+- The default RFQ view is the unclaimed queue; managers and administrators can view all RFQs, while salespeople see only their own assigned RFQs.
+- Salespeople can claim only for themselves. Administrators alone assign or reassign sales codes.
+- RFQ references use `IMPYYMMDDNN` based on the `Africa/Johannesburg` business date and must be generated uniquely under concurrency.
+- Media platforms, sales codes and statuses are administrator-configurable; referenced options are deactivated rather than deleted.
+- Important prerequisite: the existing shared API key does not identify individual employees. Role-aware RFQ access must not be released until individual identity, roles and salesperson-to-sales-code mapping are enforced server-side.
+
+Current status: **specification and implementation branch created; functional RFQ endpoints and UI are not yet implemented**. Follow the milestone checklist in the linked specification and keep the existing Marketing workspace intact.
