@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -244,10 +245,15 @@ def patch_media(option_id: str, payload: dict, _: dict = Depends(require_admin))
         if not row:
             raise HTTPException(404, "Media platform not found")
         name = str(payload.get("name", row["name"])).strip()
-        if not name:
-            raise HTTPException(422, "Name cannot be blank")
-        sort_order = int(payload.get("sort_order", row["sort_order"]))
-        active = int(payload.get("is_active", row["is_active"]))
+        if not name or len(name) > 100:
+            raise HTTPException(422, "Name must contain 1 to 100 characters")
+        sort_order = payload.get("sort_order", row["sort_order"])
+        active_value = payload.get("is_active", bool(row["is_active"]))
+        if isinstance(sort_order, bool) or not isinstance(sort_order, int) or not 0 <= sort_order <= 10000:
+            raise HTTPException(422, "Sort order must be an integer from 0 to 10000")
+        if not isinstance(active_value, (bool, int)) or active_value not in (False, True, 0, 1):
+            raise HTTPException(422, "is_active must be true or false")
+        active = int(active_value)
         db.execute("UPDATE sd_media_platforms SET name=?,sort_order=?,is_active=?,updated_at=? WHERE id=?",
                    (name, sort_order, active, _now(), option_id))
         return dict(db.execute("SELECT * FROM sd_media_platforms WHERE id=?", (option_id,)).fetchone())
@@ -276,9 +282,12 @@ def patch_sales_code(option_id: str, payload: dict, _: dict = Depends(require_ad
             raise HTTPException(404, "Sales code not found")
         code = str(payload.get("code", row["code"])).strip()
         display = str(payload.get("display_name", row["display_name"])).strip()
-        active = int(payload.get("is_active", row["is_active"]))
-        if not code or not display:
-            raise HTTPException(422, "Code and display name cannot be blank")
+        active_value = payload.get("is_active", bool(row["is_active"]))
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", code) or not display or len(display) > 160:
+            raise HTTPException(422, "Use a sales code of 1-80 letters, numbers, underscores or hyphens and a display name of 1-160 characters")
+        if not isinstance(active_value, (bool, int)) or active_value not in (False, True, 0, 1):
+            raise HTTPException(422, "is_active must be true or false")
+        active = int(active_value)
         if code != row["code"] and db.execute("SELECT 1 FROM sd_rfqs WHERE sales_code_id=?", (option_id,)).fetchone():
             raise HTTPException(409, "A sales code used by RFQs cannot be renamed; deactivate it instead")
         try:
