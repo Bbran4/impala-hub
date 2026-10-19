@@ -192,6 +192,26 @@ class FacebookClient:
                 return posts
             body = self._request("GET", next_url)
 
+    def post_exists(self, post_id: str) -> bool:
+        """Check a known post ID. Return False only for explicit Graph 'not found' responses.
+
+        Permission, token, throttling and transport errors must propagate so they cannot be
+        mistaken for deletion.
+        """
+        try:
+            self._request("GET", f"/{post_id}", params={"fields": "id", "access_token": self._token})
+            return True
+        except FacebookError as exc:
+            message = str(exc).lower()
+            if exc.code == 803:
+                return False
+            if exc.code == 100 and (
+                "unsupported get request" in message
+                or "object with id" in message and "cannot be loaded" in message
+            ):
+                return False
+            raise
+
     def post_insights(self, post_id: str) -> dict:
         """Return organic Page-post reach and impressions when Meta exposes them.
 
