@@ -74,3 +74,17 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .app-home-link{margin-bottom:22px;background:#203a50!important;color:#fff!important}
 @media(max-width:900px){.app-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:580px){.apps-dashboard{padding-top:0}.apps-intro{padding:24px 0}.app-cards{grid-template-columns:1fr;gap:11px}.app-card{min-height:185px;padding:17px}}
+/* Sales Desk workspace */
+.rfq-workspace{display:flex;flex-direction:column;gap:22px}
+.rfq-toolbar{display:grid;grid-template-columns:minmax(160px,1fr) minmax(160px,1fr) minmax(240px,1.5fr);gap:14px;padding:18px;background:#fff;border:1px solid #e1e7ec;border-radius:14px}
+.rfq-toolbar label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:700;color:#526170}
+.rfq-toolbar input,.rfq-toolbar select{width:100%;min-width:0;padding:11px 12px;border:1px solid #dce3e9;border-radius:8px;background:#f7f9fa;color:#71808d}
+.rfq-table-wrap{overflow-x:auto;background:#fff;border:1px solid #e1e7ec;border-radius:14px}
+.rfq-table{width:100%;border-collapse:collapse;text-align:left;min-width:760px}
+.rfq-table th{padding:14px 16px;background:#f7f9fa;border-bottom:1px solid #e1e7ec;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#647383}
+.rfq-table td{padding:0}
+.rfq-empty,.rfq-empty-card{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding:54px 28px;color:#71808d}
+.rfq-empty h3,.rfq-empty-card h3{margin:4px 0 0;color:#263746;font-family:Manrope,sans-serif}
+.rfq-empty p,.rfq-empty-card p{max-width:620px;margin:0;line-height:1.65;font-size:13px}
+.rfq-empty-card{align-items:flex-start;text-align:left;background:#fff;border:1px solid #e1e7ec;border-radius:14px}
+@media(max-width:760px){.rfq-toolbar{grid-template-columns:1fr}.rfq-search{grid-column:auto}}
