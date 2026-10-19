@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 router = APIRouter(prefix="/api/sales-desk/auth", tags=["Sales Desk authentication"])
 DB_PATH = Path(os.getenv("DATABASE_PATH", "./data/impala_hub.db")).resolve()
@@ -116,7 +116,7 @@ class UserCreateIn(BaseModel):
             raise ValueError("Role must be administrator, manager or salesperson")
         return value
 
-    @model_validator
+    @model_validator(mode="after")
     def validate_salesperson_code(self):
         if self.role == "salesperson" and not (self.sales_code or "").strip():
             raise ValueError("A salesperson must be linked to a sales code")
