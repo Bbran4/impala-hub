@@ -667,6 +667,12 @@ def convert_to_invoice(rfq_id: str, user: dict = Depends(current_user)) -> dict:
             "SELECT COALESCE(MAX(daily_number),0)+1 FROM sd_rfqs WHERE business_date=?",
             (source["business_date"],),
         ).fetchone()[0]
+        # Keep the normal RFQ sequence in sync with the extra invoice record.
+        db.execute(
+            """INSERT INTO sd_rfq_daily_sequences(business_date,last_number) VALUES(?,?)
+            ON CONFLICT(business_date) DO UPDATE SET last_number=MAX(last_number,excluded.last_number)""",
+            (source["business_date"], next_daily),
+        )
         db.execute(
             """INSERT INTO sd_rfqs
             (id,rfq_no,business_date,daily_number,rfq_type,original_rfq_no,converted_at,
