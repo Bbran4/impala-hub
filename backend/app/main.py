@@ -288,7 +288,7 @@ app.add_middleware(
         "http://localhost:4173", "http://127.0.0.1:4173",
     ],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 # Images are loaded by <img> tags, which cannot send an Authorization header, so /uploads is public.
