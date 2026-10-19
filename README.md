@@ -600,3 +600,17 @@ Key decisions:
 - Important prerequisite: the existing shared API key does not identify individual employees. Role-aware RFQ access must not be released until individual identity, roles and salesperson-to-sales-code mapping are enforced server-side.
 
 Current status: the Sales Desk app card and RFQ workspace navigation shell are implemented on `feature/sales-desk-rfqs`. The live RFQ data service, working filters, claiming/assignment and role-aware access controls are still pending. Do not treat the placeholder table as live RFQ data. Follow the milestone checklist in the linked specification and keep the existing Marketing workspace intact.
+
+
+## Sales Desk implementation progress
+
+The Sales Desk work is being delivered incrementally on `feature/sales-desk-rfqs` and reviewed through PR #5. The current branch includes the app navigation shell and an initial server-side identity foundation:
+
+- Individual Sales Desk username/password sign-in with salted scrypt password hashes.
+- Opaque, expiring server-side sessions; logout revokes the session.
+- Current-user endpoint and administrator-only user listing/provisioning.
+- Explicit administrator, manager and salesperson roles.
+- Initial administrator bootstrap through `RFQ_BOOTSTRAP_ADMIN_USERNAME` and `RFQ_BOOTSTRAP_ADMIN_PASSWORD`; the password must be at least 14 characters and bootstrap only occurs when no Sales Desk users exist.
+- The existing Marketing API continues using its current shared API key, so the new identity mechanism does not change its authentication behaviour.
+
+**Not complete yet:** salesperson mappings are not yet validated against the configurable sales-code table; the RFQ database, daily numbering, configuration screens, live RFQ queue, claim/assignment workflows and live dashboard totals are still pending. Automated tests have been added for the initial auth flow but have not yet been executed in this environment. Do not treat the Sales Desk as production-ready until the full permission and concurrency test suite passes.
