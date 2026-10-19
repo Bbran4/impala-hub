@@ -192,6 +192,33 @@ class FacebookClient:
                 return posts
             body = self._request("GET", next_url)
 
+    def post_insights(self, post_id: str) -> dict:
+        """Return organic Page-post reach and impressions when Meta exposes them.
+
+        Insight availability varies by post age, permission grants and API version. Callers
+        should treat FacebookError as unavailable metrics rather than a publishing failure.
+        """
+        body = self._request(
+            "GET", f"/{post_id}/insights",
+            params={
+                "metric": "post_impressions,post_impressions_unique",
+                "access_token": self._token,
+            },
+        )
+        values: dict[str, Optional[int]] = {"impressions": None, "reach": None}
+        for item in body.get("data", []):
+            name = item.get("name")
+            points = item.get("values") or []
+            if not points:
+                continue
+            value = points[-1].get("value")
+            if isinstance(value, (int, float)):
+                if name == "post_impressions":
+                    values["impressions"] = int(value)
+                elif name == "post_impressions_unique":
+                    values["reach"] = int(value)
+        return values
+
     def publish(self, caption: str, images: list[Path]) -> str:
         """Publish now to the Page. Returns the Facebook post id."""
         pid, token = self.page_id, self._token
