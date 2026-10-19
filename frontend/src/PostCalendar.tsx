@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { headingOf, type Post } from './lib'
 
 // Only drafts and posts awaiting approval can change date. Scheduled and published posts are locked.
@@ -11,14 +11,14 @@ const postDate = (p: Post) => p.published_at || p.publish_at || null
 
 type Props = {
   posts: Post[]
+  month: Date // first day of the month to show (controlled by the Posts page)
   onOpen: (id: string) => void
   onChangeDate: (id: string, isoDate: string, message: string) => void
   onCreate: (localDateTime: string) => void
   onError: (message: string) => void
 }
 
-export default function PostCalendar({ posts, onOpen, onChangeDate, onCreate, onError }: Props) {
-  const [month, setMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1) })
+export default function PostCalendar({ posts, month, onOpen, onChangeDate, onCreate, onError }: Props) {
   const [over, setOver] = useState<string | null>(null)
   const todayKey = dayKey(new Date())
 
@@ -51,17 +51,8 @@ export default function PostCalendar({ posts, onOpen, onChangeDate, onCreate, on
     onChangeDate(post.id, target.toISOString(), `Planned date set to ${target.toLocaleDateString()}.`)
   }
 
-  const shift = (n: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1))
-
   return (
     <div className="cal">
-      <div className="cal-head">
-        <button className="icon-button" aria-label="Previous month" onClick={() => shift(-1)}><ChevronLeft size={18} /></button>
-        <h3>{month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
-        <button className="icon-button" aria-label="Next month" onClick={() => shift(1)}><ChevronRight size={18} /></button>
-        <button className="secondary" onClick={() => { const n = new Date(); setMonth(new Date(n.getFullYear(), n.getMonth(), 1)) }}>Today</button>
-      </div>
-
       {unscheduled.length > 0 && (
         <div className="cal-tray">
           <b>Unscheduled</b>

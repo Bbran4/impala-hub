@@ -6,7 +6,8 @@ import {
 import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
 import PostCalendar from './PostCalendar'
-import { api, AuthError, EDITABLE, fmt, getKey, isFuture, KEY_STORAGE, mediaSrc, metric, type Media, type Post, type Campaign } from './lib'
+import MonthNav from './MonthNav'
+import { api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
 const SAMPLE_FB_GROUPS = [
   'sample:Impala Spares Community',
@@ -46,6 +47,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'board' | 'calendar'>('list')
+  const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -98,16 +100,20 @@ export default function App() {
 
   const visiblePosts = posts.filter(
     (p) =>
+      (!month || inMonth(p, month)) &&
       (filter === 'all' || p.status === filter || (filter === 'engagements' && p.status === 'published')) &&
       (campaignFilter === 'all' || p.campaign_id === campaignFilter) &&
       (!search || `${p.title} ${p.caption}`.toLowerCase().includes(search.toLowerCase())),
   )
 
+  // Search and campaign filters only. The calendar picks its own month; the board adds the month below.
   const filteredPosts = posts.filter(
     (p) =>
       (campaignFilter === 'all' || p.campaign_id === campaignFilter) &&
       (!search || `${p.title} ${p.caption}`.toLowerCase().includes(search.toLowerCase())),
   )
+
+  const monthPosts = month ? filteredPosts.filter((p) => inMonth(p, month)) : filteredPosts
 
   async function patchPost(id: string, changes: Partial<Post>, message: string) {
     try {
@@ -217,7 +223,7 @@ export default function App() {
             <button
               key={label}
               className={`nav-item ${page === label || (label === 'Posts' && page === 'Post') ? 'active' : ''}`}
-              onClick={() => { setPage(label); setFilter('all'); setCampaignFilter('all') }}
+              onClick={() => { setPage(label); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}
             >
               <Icon size={18} />{label}
             </button>
@@ -283,7 +289,7 @@ export default function App() {
               ].map((s) => (
                 <button
                   className="stat-card" key={s.label}
-                  onClick={() => { setPage('Posts'); setView('list'); setFilter(s.filter); setCampaignFilter('all'); setSearch('') }}
+                  onClick={() => { setPage('Posts'); setView('list'); setFilter(s.filter); setCampaignFilter('all'); setSearch(''); setMonth(startOfMonth()) }}
                 >
                   <div className="stat-top"><span>{s.label}</span><s.icon size={18} /></div>
                   <strong>{s.value}</strong>
@@ -293,7 +299,7 @@ export default function App() {
             </div>
             <div className="section-head">
               <div><h2>Recent posts</h2><p>Your latest drafts and scheduled content</p></div>
-              <button className="text-button" onClick={() => setPage('Posts')}>View all posts →</button>
+              <button className="text-button" onClick={() => { setMonth(null); setFilter('all'); setPage('Posts') }}>View all posts →</button>
             </div>
             <PostList posts={posts.slice(0, 5)} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
           </>
@@ -328,18 +334,28 @@ export default function App() {
               </select>
               <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>
             </div>
+            <MonthNav
+              month={view === 'calendar' ? month ?? startOfMonth() : month}
+              allowAll={view !== 'calendar'}
+              onChange={setMonth}
+              count={
+                view === 'list' ? visiblePosts.length
+                : view === 'board' ? monthPosts.length
+                : filteredPosts.filter((p) => (p.published_at || p.publish_at) && inMonth(p, month ?? startOfMonth())).length
+              }
+            />
             {view === 'list' && (
               <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
             )}
             {view === 'board' && (
               <PostBoard
-                posts={filteredPosts} campaigns={campaigns} onOpen={openPost} onError={setError}
+                posts={monthPosts} campaigns={campaigns} onOpen={openPost} onError={setError}
                 onMove={(id, status) => void patchPost(id, { status }, `Post moved to ${status.replace(/_/g, ' ')}.`)}
               />
             )}
             {view === 'calendar' && (
               <PostCalendar
-                posts={filteredPosts} onOpen={openPost} onError={setError}
+                posts={filteredPosts} month={month ?? startOfMonth()} onOpen={openPost} onError={setError}
                 onChangeDate={(id, iso, message) => void patchPost(id, { publish_at: iso }, message)}
                 onCreate={(local) => { setEditor({ ...emptyPost(), publish_at: local }); setError('') }}
               />
@@ -361,7 +377,7 @@ export default function App() {
                   <p>{c.objective || 'No objective added yet.'}</p>
                   <div className="campaign-footer">
                     <span>{posts.filter((p) => p.campaign_id === c.id).length} posts</span>
-                    <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id) }}>View posts →</button>
+                    <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
                   </div>
                 </div>
               ))}

@@ -40,4 +40,7 @@
 .board-card[data-status="awaiting_approval"],.cal-chip[data-status="awaiting_approval"]{border-left-color:#e7b94f}
 .board-card[data-status="scheduled"],.cal-chip[data-status="scheduled"]{border-left-color:#315f83}
 .board-card[data-status="published"],.cal-chip[data-status="published"]{border-left-color:#2f9e6b}
-.board-card[data-status="failed"],.cal-chip[data-status="failed"]{border-left-color:#d64545}
+.board-card[data-status="failed"],.cal-chip[data-status="failed"]{border-left-color:#d64545}.month-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.month-nav h3{margin:0;min-width:170px;text-align:center}
+.month-nav .hint{margin:0 0 0 auto}
+.month-nav .secondary.active{background:#1f2937;color:#fff}
