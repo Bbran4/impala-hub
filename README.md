@@ -620,3 +620,157 @@ Implemented on the workflow branch:
 The implementation is still subject to CI results and manual regression testing before it should be treated as release-ready. See [the RFQ implementation specification](docs/SALES_DESK_RFQS.md) for the complete scope and acceptance checklist.
 
 ### Sales Desk administrator access and recovery\n\nSales Desk has its own username/password login, separate from the Marketing API key. To create or recover a local administrator account:\n\n1. Stop the backend server.\n2. Open a terminal in `backend` and activate the project virtual environment.\n3. Run `python -m app.sales_desk_admin`.\n4. Enter the administrator username and a new password of at least 14 characters, then confirm the username when prompted.\n5. Restart the backend and sign in to Sales Desk with those credentials.\n\nThe command operates directly on the configured local SQLite database, creates the account if missing, or resets/promotes the matching account to administrator and revokes its old sessions. It is not exposed as an API route. Keep the database and password secure. For first-time setup, you can alternatively set `RFQ_BOOTSTRAP_ADMIN_USERNAME` and `RFQ_BOOTSTRAP_ADMIN_PASSWORD` in `backend/.env` before starting the API; bootstrap does not reset existing accounts.\n
+
+## Product roadmap update: Beta workspaces, sign-in, notifications and Sales Desk analytics
+
+This section records the next agreed product direction. It extends the existing module plans and does not mean the features below are already implemented.
+
+### Current product status
+
+- **Impala Hub App Dashboard:** the intended landing page after a successful sign-in. It is the central entry point for the available workspaces.
+- **Sales Desk / RFQ workspace:** Beta. The current RFQ workflow is considered sufficient for initial use while further reporting and shared-platform capabilities are planned.
+- **Marketing workspace:** Beta. Facebook is the first supported platform feature. Other channels and integrations remain planned or gated until their capabilities and permissions are confirmed.
+- Beta status means the current feature set can be trialled, but it should not be described as a fully production-hardened or complete enterprise system.
+
+### Milestone: application sign-in and session handling
+
+Replace the current app-start experience that repeatedly asks for or re-enters an API key with a proper sign-in screen.
+
+- On first launch, show the sign-in screen before the App Dashboard or any workspace.
+- Authenticate an individual employee account on the server. Do not treat a shared API key as the user's identity.
+- After successful sign-in, route the user to the **App Dashboard**.
+- Keep the authenticated session across ordinary page refreshes and app reruns so the user does not need to sign in again each time.
+- Use secure, expiring sessions with server-side validation and a clear logout action. Persist session state using an appropriate secure mechanism for the deployment; do not store passwords or long-lived secrets in browser storage.
+- On logout, session expiry, revoked access or invalid credentials, return the user to sign-in and show a clear message where appropriate.
+- Keep the API responsible for authentication and authorization checks. Hiding a UI element is not a security boundary.
+- Preserve separate development and production configuration. Do not expose the development API or credentials to the public internet.
+
+**Acceptance criteria**
+- An unauthenticated user sees only the sign-in screen and cannot access protected workspace APIs.
+- A valid user signs in and lands on the App Dashboard.
+- Refreshing or rerunning the app preserves a valid session without prompting for credentials again.
+- Logout and session expiry invalidate access and return the user to sign-in.
+- Failed sign-in produces a useful, non-sensitive error message.
+
+### App Dashboard and global notifications
+
+The App Dashboard is the first screen after sign-in and the neutral home page for the available Impala Hub apps.
+
+- Keep workspace navigation out of the dashboard's sidebar until a user opens a workspace. The dashboard should show the available app tiles and their current Beta/availability state.
+- Add a notifications bell/icon in the top-right application header.
+- Display a numeric badge showing the number of unread notifications. The count should update when notifications are created, read or dismissed, and should not count the same notification more than once.
+- Clicking the bell opens a dropdown/panel containing notifications, with a sensible empty state and links to the relevant record or workspace.
+- Initial notification examples:
+  - **RFQ `IMP...` outstanding**: a request needs attention or has passed its follow-up target.
+  - **Facebook post left in draft**: a post remains in draft and may need review or scheduling.
+- Each notification should include a short message, source/module, creation time, read/unread state and a destination when one is available.
+- Provide a way to mark a notification as read; consider mark-all-as-read and a full notifications view as follow-up improvements.
+- Avoid generating repeated copies of the same reminder on every refresh or background run. Use stable event/deduplication rules and record delivery/read state.
+- Notifications must respect the signed-in user's permissions and data scope. Do not expose RFQ or customer details to unauthorised users.
+- Build the notification model so future modules can add notification types without bespoke header implementations.
+
+**Acceptance criteria**
+- The header badge equals the user's unread notification count.
+- The dropdown opens and closes predictably, displays notifications and navigates to the relevant item where possible.
+- Reading a notification updates the badge and persists across refreshes.
+- Notifications are user-scoped, permission-checked and deduplicated.
+
+### User profile, sales-code assignment and future permissions
+
+Each employee account must be connected to a sales code where applicable.
+
+- Store the user's identity separately from their display name and login credentials.
+- Link a salesperson account to one active Sales Desk sales code. Define how accounts without a sales code, managers and administrators behave.
+- Validate sales-code assignment on the server; do not rely on a frontend selection alone.
+- If a sales code becomes inactive or is changed, preserve historical RFQ ownership and sales reporting correctly.
+- Design the account model for future roles and permissions, but introduce the detailed permission matrix in a later milestone. Until that matrix is agreed and enforced, do not imply that all role-specific access rules are complete.
+- Future permission scopes should be enforceable by the backend and should cover workspace access, record visibility, assignment, configuration, reporting and administrative actions.
+- Maintain audit history for account provisioning, sales-code changes and permission changes.
+
+### RFQ workspace: additional views and monthly/status analytics
+
+Keep the existing RFQ list/queue as the default view. Add a view switcher so users can change between the current operational view and an analytics view without losing the existing workflow.
+
+**Operational view**
+- Preserve the existing RFQ workflow, filters, search, assignment and editing behaviour.
+- Keep operational actions easy to reach; analytics should not replace the day-to-day queue.
+
+**Analytics view**
+- Add a graph showing RFQ volume over time, with status breakdowns for:
+  - Claimed
+  - Scrapped
+  - Dropped
+  - Completed
+  - Invoiced
+- Add period controls for **year, month and week**. The selected period determines the displayed time range and the appropriate aggregation (for example, months across a year, days/weeks within a month, or days within a week).
+- Show totals for the selected period as well as the graph. Make status categories and date boundaries clear.
+- Use actual RFQ records and status/history data. Do not manufacture historical status counts from the current status if the required history was never captured.
+- Agree and document the precise business meaning of each status, including how a record transitions to Invoiced and whether an invoice copy is counted separately from the original Quote.
+- Ensure status changes, conversions, date/time boundaries and filters are reflected consistently in the graph.
+- Apply the same record-visibility rules as the operational view. A salesperson should not see another salesperson's restricted records unless a later permission policy allows it.
+- Include loading, no-data and error states; keep the list view available if analytics data fails to load.
+
+**Acceptance criteria**
+- Users can switch between the existing RFQ view and analytics view.
+- Year, month and week selections return the correct date range and totals.
+- Status totals reconcile to the underlying RFQ records for the same date range and agreed counting rules.
+- The chart does not silently misrepresent historical status changes or count invoice copies as quotations without a documented rule.
+
+### Future integration: Evolve DMS through approved ODBC access
+
+The longer-term plan is to connect Sales Desk reporting to sales data from **Evolve DMS**, using the Automate-provided ODBC connector or another vendor-approved interface.
+
+- First confirm with Automate the permitted connection method, database/driver details, licensing, supported views, security requirements and whether the connector can be used by Impala Hub outside the existing Qlik workflow.
+- Start with approved, read-only access. Do not write directly to Evolve's production database.
+- Keep Evolve as the authoritative source for sales transactions and gross-profit figures.
+- Document the definitions of sales, GP, returns, discounts, tax, salesperson attribution, customer identity and reporting date before implementing totals.
+- Map Evolve salesperson identifiers to Impala Hub users/sales codes using an explicit, maintainable mapping. Do not assume names alone are unique.
+- Build a controlled sync/query layer with timeouts, error handling, refresh timestamps, data-age indicators, access controls and reconciliation checks.
+- Continue running Qlik reports in parallel until Impala Hub figures have been reconciled and accepted by the business.
+- Treat ODBC access as a dependency, not a feature that can be assumed available.
+
+### Future Sales Consultant dashboard
+
+Once the Evolve integration and identity mapping are validated, provide each sales consultant with a personal dashboard based on their authorised sales-code mapping.
+
+- Sales value and gross profit (GP).
+- Customer count and customer list, limited to the user's permitted scope.
+- Period filters for **year, month, week and day**.
+- Clearly labelled date range, data freshness and definitions for every metric.
+- Trend comparisons where reliable source data and business rules support them.
+- Drill-down from summary figures to the underlying sales transactions or customers where permitted.
+- Handle returns, credit notes, negative values, duplicate transactions and missing salesperson mappings according to agreed Evolve/Qlik reporting rules.
+- Do not display invented or stale values as current. Show unavailable data and the last successful refresh explicitly.
+
+### Future Sales Desk management dashboard
+
+In addition to a consultant's personal dashboard, build a **Sales Desk dashboard** for authorised managers. It should provide a team-level view rather than merely showing one salesperson's figures.
+
+Planned content:
+- Team sales and GP totals for the selected period.
+- Sales and GP by consultant, with comparisons and trends.
+- Customer counts and customer activity where the source data supports it.
+- RFQ workload and outcomes, including outstanding, claimed, scrapped, dropped, completed and invoiced counts.
+- RFQ follow-up backlog, ageing and overdue items where due dates and lifecycle rules are defined.
+- Conversion measures from RFQ to completed sale/invoice only when the relationship between RFQs and Evolve transactions can be reliably matched.
+- Period filters aligned with the consultant dashboard: year, month, week and day where meaningful.
+- Drill-down into permitted consultant, RFQ, customer and transaction details.
+- Clear distinction between operational RFQ data from Impala Hub and financial sales/GP data sourced from Evolve.
+- Manager-only team comparisons and cross-consultant views once permissions are agreed and enforced.
+- Data freshness, reconciliation status and unavailable-metric messaging.
+
+### Updated delivery sequence
+
+1. **Keep both existing workspaces in Beta:** RFQ workflow remains available for initial use; Marketing remains Beta with Facebook as the first supported platform.
+2. **Sign-in and session foundation:** make individual sign-in the first-run experience, preserve valid sessions, and route users to the App Dashboard.
+3. **Global notification framework:** header bell, unread count, dropdown, read state, deduplication and permission-aware navigation.
+4. **User-to-sales-code mapping:** enforce the link server-side and prepare the account model for the later permission matrix.
+5. **RFQ analytics view:** add year/month/week graphing and reconcile status definitions and counts.
+6. **Evolve/Automate discovery and read-only data access:** confirm ODBC permission, data dictionary, mappings and reconciliation rules before building financial reports.
+7. **Sales Consultant dashboard:** add personal sales, GP and customer reporting from validated Evolve data.
+8. **Sales Desk management dashboard:** add team-level operational and financial reporting with role-appropriate drill-down.
+9. **Production hardening and acceptance:** complete the permission matrix, automated tests, audit review, monitoring, backup/restore tests and user acceptance checks before calling the wider platform production-ready.
+
+### Roadmap tracking
+
+For every feature in this section, maintain an explicit state: **Planned**, **In progress**, **Implemented**, or **Verified**. A feature is not Verified until its acceptance criteria have been tested. Existing Beta workspaces should remain labelled Beta until their agreed release checks are complete.
