@@ -204,6 +204,8 @@ Channel = Literal["facebook", "instagram", "whatsapp"]
 PostStatus = Literal["draft", "awaiting_approval", "scheduled", "published", "failed"]
 # Clients may only choose these. "published" and "failed" are set by the publishing worker (not built yet).
 InputStatus = Literal["draft", "awaiting_approval", "scheduled"]
+# Scheduled and published posts are frozen: only their campaign may be changed.
+LOCKED_STATUSES = {"scheduled", "published"}
 
 
 def validate(model: type[BaseModel], values: dict) -> BaseModel:
@@ -427,14 +429,27 @@ def create_post(payload: PostIn) -> dict:
 
 @app.patch("/api/posts/{post_id}", dependencies=[Depends(require_api_key)])
 def update_post(post_id: str, patch: PostPatch) -> dict:  # type: ignore[valid-type]
+    changes = patch.model_dump(exclude_unset=True)
     with db_session() as db:
         current = fetch_post(db, post_id)
-        if current["status"] == "published":
-            raise HTTPException(409, "Published posts cannot be edited")
+        if current["status"] in LOCKED_STATUSES:
+            blocked = sorted(set(changes) - {"campaign_id"})
+            if blocked:
+                raise HTTPException(
+                    409, f"A {current['status']} post can only have its campaign changed (not: {', '.join(blocked)})"
+                )
+            new_campaign = changes.get("campaign_id")
+            if "campaign_id" in changes and new_campaign != current["campaign_id"]:
+                if new_campaign and not db.execute("SELECT 1 FROM campaigns WHERE id=?", (new_campaign,)).fetchone():
+                    raise HTTPException(422, "Selected campaign does not exist")
+                db.execute("UPDATE posts SET campaign_id=?,updated_at=? WHERE id=?", (new_campaign, now_iso(), post_id))
+                audit(db, "updated", "post", post_id, {"status": current["status"], "changed": ["campaign_id"]})
+            return fetch_post(db, post_id)
         base = {k: current[k] for k in PostIn.model_fields}
         if base["status"] not in get_args(InputStatus):  # e.g. a failed post being reworked
             base["status"] = "draft"
-        data = validate(PostIn, base | patch.model_dump(exclude_unset=True))
+        before = validate(PostIn, base)
+        data = validate(PostIn, base | changes)
         check_references(db, data)
         db.execute(
             """UPDATE posts SET title=?,caption=?,campaign_id=?,channels_json=?,facebook_groups_json=?,
@@ -442,15 +457,27 @@ def update_post(post_id: str, patch: PostPatch) -> dict:  # type: ignore[valid-t
                media_json=?,updated_at=? WHERE id=?""",
             (*post_values(data), now_iso(), post_id),
         )
-        audit(db, "updated", "post", post_id, {"status": data.status, "channels": data.channels})
+        changed = [k for k in PostIn.model_fields if getattr(before, k) != getattr(data, k)]
+        audit(db, "updated", "post", post_id, {"status": data.status, "channels": data.channels, "changed": changed})
         return fetch_post(db, post_id)
+
+
+@app.get("/api/posts/{post_id}/history", dependencies=[Depends(require_api_key)])
+def post_history(post_id: str) -> list[dict]:
+    with db_session() as db:
+        fetch_post(db, post_id)  # 404 if missing
+        rows = db.execute(
+            "SELECT * FROM audit_log WHERE entity_type='post' AND entity_id=? ORDER BY id DESC", (post_id,)
+        ).fetchall()
+    return [audit_item(r) for r in rows]
 
 
 @app.delete("/api/posts/{post_id}", dependencies=[Depends(require_api_key)], status_code=204)
 def delete_post(post_id: str) -> None:
     with db_session() as db:
-        if not db.execute("DELETE FROM posts WHERE id=?", (post_id,)).rowcount:
-            raise HTTPException(404, "Post not found")
+        if fetch_post(db, post_id)["status"] == "published":
+            raise HTTPException(409, "Published posts are kept as a record and cannot be deleted")
+        db.execute("DELETE FROM posts WHERE id=?", (post_id,))
         audit(db, "deleted", "post", post_id, {})
 
 
@@ -493,13 +520,14 @@ def integrations() -> list[dict]:
     ]
 
 
+def audit_item(row: sqlite3.Row) -> dict:
+    item = dict(row)
+    item["details"] = json.loads(item.pop("details_json"))
+    return item
+
+
 @app.get("/api/audit", dependencies=[Depends(require_api_key)])
 def audit_log(limit: int = Query(100, ge=1, le=500)) -> list[dict]:
     with db_session() as db:
         rows = db.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-    out = []
-    for r in rows:
-        item = dict(r)
-        item["details"] = json.loads(item.pop("details_json"))
-        out.append(item)
-    return out
+    return [audit_item(r) for r in rows]

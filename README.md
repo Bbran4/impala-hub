@@ -86,14 +86,25 @@ All routes except `GET /api/health` need `Authorization: Bearer <APP_API_KEY>`.
 - `GET /api/health`
 - `GET /api/posts?status=draft&campaign_id=...` (status: draft, awaiting_approval, scheduled, published, failed)
 - `POST /api/posts`
-- `PATCH /api/posts/{id}` (partial update; published posts return 409)
-- `DELETE /api/posts/{id}`
+- `GET /api/posts/{id}/history` (audit entries for one post, newest first)
+- `PATCH /api/posts/{id}` (partial update; see post lifecycle below)
+- `DELETE /api/posts/{id}` (published posts return 409)
 - `GET /api/campaigns`, `POST /api/campaigns`, `PATCH /api/campaigns/{id}` (partial update)
 - `POST /api/media` (JPG, PNG, WEBP, GIF; limit set by `MAX_UPLOAD_MB`)
 - `GET /api/integrations`
 - `GET /api/audit?limit=100` (newest first)
 
 Rules enforced by the API: clients may only set `draft`, `awaiting_approval` or `scheduled`; scheduled posts need a date and at least one channel; Instagram posts need an image to be scheduled; media must come from `/api/media`; at most 3 Facebook groups; campaign end date must not precede its start date. `publish_at` is stored in UTC.
+
+## Post lifecycle
+
+| Status | Edit content | Change campaign | Delete |
+| --- | --- | --- | --- |
+| draft, awaiting approval, failed | yes | yes | yes |
+| scheduled | no | yes | yes |
+| published | no | yes | no |
+
+The API enforces this (a blocked edit returns 409), not just the screen. Clicking a post in any list opens its detail view: content, schedule and publication dates, performance figures ("—" when unavailable), campaign, and a history of changes.
 
 ## Formatting
 

@@ -3,67 +3,8 @@ import {
   BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus,
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X,
 } from 'lucide-react'
-
-type Media = { id: string; name: string; url: string; content_type?: string; size?: number }
-type Campaign = { id: string; name: string; objective: string; start_date?: string | null; end_date?: string | null }
-type Post = {
-  id: string
-  title: string
-  caption: string
-  campaign_id: string | null
-  channels: string[]
-  facebook_groups: string[]
-  whatsapp_recipient_type?: string | null
-  whatsapp_recipient_id?: string | null
-  whatsapp_recipient_name?: string | null
-  status: string
-  publish_at?: string | null
-  published_at?: string | null
-  media: Media[]
-  last_error?: string | null
-  clicks?: number | null
-  likes?: number | null
-  comments?: number | null
-  shares?: number | null
-  metrics_refreshed_at?: string | null
-  created_at?: string
-  updated_at?: string
-}
-
-const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-const KEY_STORAGE = 'impala_api_key'
-const getKey = () => sessionStorage.getItem(KEY_STORAGE) || ''
-
-class AuthError extends Error {}
-
-function describeError(detail: unknown, status: number): string {
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) {
-    return detail
-      .map((d) => {
-        const field = Array.isArray(d.loc) ? d.loc.filter((p: unknown) => p !== 'body').join('.') : ''
-        return field ? `${field}: ${d.msg}` : d.msg
-      })
-      .join('; ')
-  }
-  return `Request failed (${status})`
-}
-
-async function api(path: string, options: RequestInit = {}) {
-  const headers = new Headers(options.headers || {})
-  headers.set('Authorization', `Bearer ${getKey()}`)
-  if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  const res = await fetch(`${API}${path}`, { ...options, headers })
-  if (res.status === 401) {
-    sessionStorage.removeItem(KEY_STORAGE)
-    throw new AuthError('The API key was not accepted. Enter it again.')
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(describeError(body.detail, res.status))
-  }
-  return res.status === 204 ? null : res.json()
-}
+import PostDetail from './PostDetail'
+import { api, AuthError, EDITABLE, fmt, getKey, KEY_STORAGE, mediaSrc, metric, type Media, type Post, type Campaign } from './lib'
 
 const SAMPLE_FB_GROUPS = [
   'sample:Impala Spares Community',
@@ -71,10 +12,7 @@ const SAMPLE_FB_GROUPS = [
   'sample:South African Transport Industry',
 ]
 const groupLabel = (g: string) => (g.startsWith('sample:') ? `${g.slice(7)} (sample)` : g)
-const mediaSrc = (m: Media) => (m.url.startsWith('http') ? m.url : `${API}${m.url}`)
-const metric = (v?: number | null) => (v == null ? '—' : String(v))
 const isFuture = (v?: string | null) => !!v && new Date(v) > new Date()
-const fmt = (v?: string | null) => (v ? new Date(v).toLocaleString() : 'Not scheduled')
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
   if (!value) return ''
@@ -105,6 +43,7 @@ export default function App() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -223,10 +162,29 @@ export default function App() {
 
   async function removePost(id: string) {
     if (!confirm('Delete this post?')) return
-    try { await api(`/api/posts/${id}`, { method: 'DELETE' }); await load(); setNotice('Post deleted.') }
-    catch (e) { handleError(e) }
+    try {
+      await api(`/api/posts/${id}`, { method: 'DELETE' })
+      if (detailId === id) { setDetailId(null); setPage('Posts') }
+      await load(); setNotice('Post deleted.')
+    } catch (e) { handleError(e) }
   }
 
+  function openPost(id: string) { setDetailId(id); setPage('Post'); setError('') }
+
+  // Scheduled and published posts cannot be edited, so they open the detail view instead.
+  function openEditor(p: Post) {
+    if (EDITABLE.includes(p.status)) { setEditor(p); setError('') } else openPost(p.id)
+  }
+
+  async function saveCampaign(postId: string, campaignId: string | null) {
+    try {
+      await api(`/api/posts/${postId}`, { method: 'PATCH', body: JSON.stringify({ campaign_id: campaignId }) })
+      setNotice('Campaign updated.'); setError('')
+      await load()
+    } catch (e) { handleError(e) }
+  }
+
+  const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
 
@@ -242,7 +200,7 @@ export default function App() {
           ([label, Icon]) => (
             <button
               key={label}
-              className={`nav-item ${page === label ? 'active' : ''}`}
+              className={`nav-item ${page === label || (label === 'Posts' && page === 'Post') ? 'active' : ''}`}
               onClick={() => { setPage(label); setFilter('all'); setCampaignFilter('all') }}
             >
               <Icon size={18} />{label}
@@ -258,7 +216,7 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / MARKETING</div><h1>{page}</h1></div>
+          <div><div className="eyebrow">IMPALA SPARES / MARKETING</div><h1>{page === 'Post' ? 'Post details' : page}</h1></div>
           <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>
@@ -321,7 +279,7 @@ export default function App() {
               <div><h2>Recent posts</h2><p>Your latest drafts and scheduled content</p></div>
               <button className="text-button" onClick={() => setPage('Posts')}>View all posts →</button>
             </div>
-            <PostList posts={posts.slice(0, 5)} campaigns={campaigns} onEdit={setEditor} onDelete={removePost} />
+            <PostList posts={posts.slice(0, 5)} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
           </>
         )}
 
@@ -347,7 +305,7 @@ export default function App() {
               </select>
               <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>
             </div>
-            <PostList posts={visiblePosts} campaigns={campaigns} onEdit={setEditor} onDelete={removePost} />
+            <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
           </>
         )}
 
@@ -378,6 +336,20 @@ export default function App() {
               )}
             </div>
           </>
+        )}
+
+        {key && page === 'Post' && (
+          selected ? (
+            <PostDetail
+              post={selected} campaigns={campaigns} onBack={() => setPage('Posts')} onEdit={openEditor}
+              onDelete={removePost} onSaveCampaign={saveCampaign} onError={handleError}
+            />
+          ) : (
+            <div className="empty">
+              <ClipboardList size={28} /><h3>Post not found</h3>
+              <button className="secondary" onClick={() => setPage('Posts')}>Back to posts</button>
+            </div>
+          )
         )}
 
         {key && page === 'Configuration' && (
@@ -543,10 +515,11 @@ export default function App() {
   )
 }
 
-function PostList({ posts, campaigns, onEdit, onDelete }: {
+function PostList({ posts, campaigns, onEdit, onOpen, onDelete }: {
   posts: Post[]
   campaigns: Campaign[]
   onEdit: (p: Post) => void
+  onOpen: (id: string) => void
   onDelete: (id: string) => void
 }) {
   if (!posts.length) {
@@ -563,10 +536,13 @@ function PostList({ posts, campaigns, onEdit, onDelete }: {
         const heading = p.title?.trim() || p.caption?.trim().slice(0, 110) || 'Untitled post'
         return (
           <article className="post-row" key={p.id}>
-            <div className="post-preview">
+            <div className="post-preview" style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
               {p.media?.[0] ? <img src={mediaSrc(p.media[0])} alt="" /> : <ImagePlus size={22} />}
             </div>
-            <div className="post-copy">
+            <div
+              className="post-copy" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
+              onClick={() => onOpen(p.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id) }}
+            >
               <div className="post-meta">
                 <span className={`status ${p.status}`}>{p.status.replace(/_/g, ' ')}</span>
                 <span>{p.channels.join(' · ') || 'No channel'}</span>
@@ -584,8 +560,11 @@ function PostList({ posts, campaigns, onEdit, onDelete }: {
               )}
             </div>
             <div className="row-actions">
-              {p.status !== 'published' && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}
-              <button className="icon-button" title="Delete post" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button>
+              <button className="secondary" onClick={() => onOpen(p.id)}>View</button>
+              {EDITABLE.includes(p.status) && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}
+              {p.status !== 'published' && (
+                <button className="icon-button" title="Delete post" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button>
+              )}
             </div>
           </article>
         )

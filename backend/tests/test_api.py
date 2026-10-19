@@ -12,7 +12,7 @@ os.environ["UPLOAD_DIR"] = str(_tmp / "uploads")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.main import app  # noqa: E402
+from app.main import app, db_session, now_iso  # noqa: E402
 
 H = {"Authorization": f"Bearer {KEY}"}
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
@@ -99,3 +99,54 @@ def test_audit_log_is_readable():
         client.post("/api/campaigns", headers=H, json={"name": "Audited"})
         entries = client.get("/api/audit", headers=H).json()
         assert entries and entries[0]["entity_type"] in {"campaign", "post"}
+
+
+def insert_published_post(campaign_id=None) -> str:
+    """Only the future publishing worker can create published posts, so tests insert one directly."""
+    pid = "published-" + os.urandom(4).hex()
+    with db_session() as db:
+        db.execute(
+            "INSERT INTO posts(id,title,caption,campaign_id,status,published_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+            (pid, "Live", "Already out", campaign_id, "published", now_iso(), now_iso(), now_iso()),
+        )
+    return pid
+
+
+def test_published_post_only_allows_campaign_change():
+    with TestClient(app) as client:
+        cid = client.post("/api/campaigns", headers=H, json={"name": "For published"}).json()["id"]
+        pid = insert_published_post()
+        for body in ({"caption": "edit"}, {"status": "draft"}, {"title": "x"}, {"caption": "x", "campaign_id": cid}):
+            assert client.patch(f"/api/posts/{pid}", headers=H, json=body).status_code == 409
+        ok = client.patch(f"/api/posts/{pid}", headers=H, json={"campaign_id": cid})
+        assert ok.status_code == 200 and ok.json()["campaign_id"] == cid
+        assert ok.json()["caption"] == "Already out" and ok.json()["status"] == "published"
+        assert client.patch(f"/api/posts/{pid}", headers=H, json={"campaign_id": "nope"}).status_code == 422
+        assert client.delete(f"/api/posts/{pid}", headers=H).status_code == 409
+        history = client.get(f"/api/posts/{pid}/history", headers=H).json()
+        assert history[0]["details"]["changed"] == ["campaign_id"]
+
+
+def test_scheduled_post_only_allows_campaign_change():
+    with TestClient(app) as client:
+        cid = client.post("/api/campaigns", headers=H, json={"name": "For scheduled"}).json()["id"]
+        post = client.post(
+            "/api/posts", headers=H,
+            json={"caption": "soon", "channels": ["facebook"], "status": "scheduled", "publish_at": "2030-01-01T10:00:00Z"},
+        ).json()
+        url = f"/api/posts/{post['id']}"
+        assert client.patch(url, headers=H, json={"caption": "changed"}).status_code == 409
+        assert client.patch(url, headers=H, json={"status": "draft"}).status_code == 409
+        ok = client.patch(url, headers=H, json={"campaign_id": cid})
+        assert ok.status_code == 200 and ok.json()["campaign_id"] == cid and ok.json()["status"] == "scheduled"
+        assert client.delete(url, headers=H).status_code == 204  # scheduled posts may still be deleted
+
+
+def test_draft_edit_records_changed_fields_in_history():
+    with TestClient(app) as client:
+        post = client.post("/api/posts", headers=H, json={"caption": "a", "channels": ["facebook"]}).json()
+        client.patch(f"/api/posts/{post['id']}", headers=H, json={"caption": "b"})
+        history = client.get(f"/api/posts/{post['id']}/history", headers=H).json()
+        assert [h["action"] for h in history] == ["updated", "created"]
+        assert history[0]["details"]["changed"] == ["caption"]
+        assert client.get("/api/posts/missing/history", headers=H).status_code == 404
