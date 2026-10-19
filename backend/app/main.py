@@ -559,6 +559,29 @@ def update_post(post_id: str, patch: PostPatch) -> dict:  # type: ignore[valid-t
         return fetch_post(db, post_id)
 
 
+@app.post("/api/posts/{post_id}/publish-now", dependencies=[Depends(require_api_key)])
+def publish_post_now(post_id: str) -> dict:
+    """Queue a supported Facebook post for the next publishing-worker cycle."""
+    client = facebook_client()
+    if not client:
+        raise HTTPException(409, "Facebook is not connected. Connect a Page before publishing.")
+    with db_session() as db:
+        current = fetch_post(db, post_id)
+        if current["status"] in LOCKED_STATUSES:
+            raise HTTPException(409, f"A {current['status']} post cannot be published again.")
+        if current["channels"] != ["facebook"]:
+            raise HTTPException(422, "Publish now currently supports Facebook Page posts only. Select Facebook as the only channel.")
+        if current["provider_ids"].get("facebook"):
+            raise HTTPException(409, "This post already has a Facebook post ID. Check the Page before attempting another publication.")
+        stamp = now_iso()
+        db.execute(
+            "UPDATE posts SET status='scheduled',publish_at=?,last_error=NULL,updated_at=? WHERE id=?",
+            (stamp, stamp, post_id),
+        )
+        audit(db, "publish_requested", "post", post_id, {"status": "scheduled", "channels": ["facebook"], "requested_at": stamp})
+        return fetch_post(db, post_id)
+
+
 @app.get("/api/posts/{post_id}/history", dependencies=[Depends(require_api_key)])
 def post_history(post_id: str) -> list[dict]:
     with db_session() as db:
