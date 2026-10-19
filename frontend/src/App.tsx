@@ -179,7 +179,7 @@ export default function App() {
     setBusy(true); setError('')
     try {
       const result = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}/assign`, { method: 'POST', body: JSON.stringify({ sales_code_id: sales_code_id || null }) })
-      setSdSelectedRfq(result); setSdDetailDraft((draft: any) => draft ? { ...draft, sales_code_id: result.sales_code_id, sales_code: result.sales_code, salesperson_name: result.salesperson_name, claimed_at: result.claimed_at } : result); setNotice('RFQ assignment updated.')
+      setSdSelectedRfq((current: any) => current ? { ...current, sales_code_id: result.sales_code_id, sales_code: result.sales_code, salesperson_name: result.salesperson_name, claimed_at: result.claimed_at, updated_at: result.updated_at, audit_history: result.audit_history || current.audit_history } : result); setSdDetailDraft((draft: any) => draft ? { ...draft, sales_code_id: result.sales_code_id, sales_code: result.sales_code, salesperson_name: result.salesperson_name, claimed_at: result.claimed_at, updated_at: result.updated_at } : result); setNotice('RFQ assignment updated.')
       await sdRefresh()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
