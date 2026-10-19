@@ -47,6 +47,7 @@ export default function App() {
   const [sdSearch, setSdSearch] = useState('')
   const [sdStatusFilter, setSdStatusFilter] = useState('')
   const [sdSalesCodeFilter, setSdSalesCodeFilter] = useState('')
+  const [sdUnclaimedOnly, setSdUnclaimedOnly] = useState(true)
   const [sdSelectedRfq, setSdSelectedRfq] = useState<any>(null)
   const [sdDashboard, setSdDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
   const [sdCreateOpen, setSdCreateOpen] = useState(false)
@@ -115,7 +116,7 @@ export default function App() {
       const [me, cfg, result, dashboard] = await Promise.all([
         sdApi('/api/sales-desk/auth/me'),
         sdApi('/api/sales-desk/config'),
-        sdApi('/api/sales-desk/rfqs?limit=500'),
+        sdApi(`/api/sales-desk/rfqs?limit=500&unclaimed_only=${sdUnclaimedOnly}`),
         sdApi('/api/sales-desk/dashboard'),
       ])
       setSdUser(me); setSdConfig(cfg); setSdRfqs(result.items || []); setSdDashboard(dashboard)
@@ -231,7 +232,7 @@ export default function App() {
 
   // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
   useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
-  useEffect(() => { if (isSalesDeskPage && sdToken) void loadSalesDesk() }, [page, sdToken])
+  useEffect(() => { if (isSalesDeskPage && sdToken) void loadSalesDesk() }, [page, sdToken, sdUnclaimedOnly])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -596,6 +597,7 @@ export default function App() {
                       ))}
                     </div>
                     <div className="rfq-toolbar">
+                      <label className="sd-inline-check sd-unclaimed-toggle"><input type="checkbox" checked={sdUnclaimedOnly} onChange={(e) => setSdUnclaimedOnly(e.target.checked)}/> Unclaimed only</label>
                       <label>Filter by status<select value={sdStatusFilter} onChange={(e) => setSdStatusFilter(e.target.value)}><option value="">All statuses</option>{sdConfig.statuses.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
                       <label>Filter by sales code<select value={sdSalesCodeFilter} onChange={(e) => setSdSalesCodeFilter(e.target.value)} disabled={sdUser?.role === 'salesperson'}><option value="">All salespeople</option>{sdConfig.sales_codes.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.code} · {s.display_name}</option>)}</select></label>
                       <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={sdSearch} onChange={(e) => setSdSearch(e.target.value)} /></label>
