@@ -15,6 +15,7 @@ export type Post = {
   published_at?: string | null
   media: Media[]
   last_error?: string | null
+  provider_ids?: Record<string, string>
   clicks?: number | null
   likes?: number | null
   comments?: number | null

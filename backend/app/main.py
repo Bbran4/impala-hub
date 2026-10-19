@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     facebook_page_token: str = ""
     facebook_api_version: str = "v26.0"  # use the version shown in your Meta app dashboard
     publisher_interval_seconds: int = 30
+    facebook_sync_minutes: int = 10  # how often to import posts and figures from the Page; 0 turns it off
 
 
 settings = Settings()
@@ -171,7 +172,7 @@ async def lifespan(_: FastAPI):
     if client:
         from .publisher import run_forever  # imported here because publisher imports this module
 
-        worker = asyncio.create_task(run_forever(client, settings.publisher_interval_seconds))
+        worker = asyncio.create_task(run_forever(client, settings.publisher_interval_seconds, settings.facebook_sync_minutes))
     try:
         yield
     finally:
@@ -545,6 +546,19 @@ def facebook_integration() -> dict:
         return {**base, "status": "connected", "account_name": client.check().get("name", client.page_id)}
     except FacebookError as exc:
         return {**base, "status": "error", "note": f"Facebook rejected the connection: {exc}"}
+
+
+@app.post("/api/integrations/facebook/sync", dependencies=[Depends(require_api_key)])
+def sync_facebook() -> dict:
+    client = facebook_client()
+    if not client:
+        raise HTTPException(409, "Facebook is not connected. Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN in backend/.env.")
+    from .publisher import sync_posts  # imported here because publisher imports this module
+
+    try:
+        return sync_posts(client)
+    except FacebookError as exc:
+        raise HTTPException(502, f"Facebook: {exc}")
 
 
 @app.get("/api/integrations", dependencies=[Depends(require_api_key)])

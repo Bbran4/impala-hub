@@ -21,6 +21,44 @@ class FacebookError(Exception):
         self.transient = transient
 
 
+POST_FIELDS = (
+    "id,message,created_time,permalink_url,full_picture,"
+    "attachments{media,subattachments},"
+    "likes.limit(0).summary(true),comments.limit(0).summary(true),shares"
+)
+
+
+def _images(raw: dict) -> list[str]:
+    urls = []
+    for attachment in (raw.get("attachments") or {}).get("data") or []:
+        subs = (attachment.get("subattachments") or {}).get("data") or [attachment]
+        for item in subs:
+            src = ((item.get("media") or {}).get("image") or {}).get("src")
+            if src:
+                urls.append(src)
+    if not urls and raw.get("full_picture"):
+        urls = [raw["full_picture"]]
+    return list(dict.fromkeys(urls))[:10]
+
+
+def _count(raw: dict, field: str) -> Optional[int]:
+    return ((raw.get(field) or {}).get("summary") or {}).get("total_count")
+
+
+def parse_post(raw: dict) -> dict:
+    return {
+        "id": raw["id"],
+        "message": raw.get("message") or "",
+        "created_time": raw.get("created_time"),
+        "permalink_url": raw.get("permalink_url"),
+        "images": _images(raw),
+        "likes": _count(raw, "likes"),
+        "comments": _count(raw, "comments"),
+        # Facebook leaves "shares" out entirely when a post has none, so a missing value means 0.
+        "shares": (raw.get("shares") or {}).get("count", 0),
+    }
+
+
 class FacebookClient:
     def __init__(self, page_id: str, token: str, version: str = "v26.0", transport: Optional[httpx.BaseTransport] = None):
         self.page_id = page_id
@@ -59,6 +97,21 @@ class FacebookClient:
     def check(self) -> dict:
         """Confirm the Page ID and token work. Returns {"id", "name"}."""
         return self._request("GET", f"/{self.page_id}", params={"fields": "name", "access_token": self._token})
+
+    def list_published_posts(self, limit: int = 100) -> list[dict]:
+        """Newest-first posts published by the Page itself (not visitor posts), with engagement counts."""
+        params = {"fields": POST_FIELDS, "limit": 25, "access_token": self._token}
+        body = self._request("GET", f"/{self.page_id}/published_posts", params=params)
+        posts: list[dict] = []
+        while True:
+            for raw in body.get("data", []):
+                posts.append(parse_post(raw))
+                if len(posts) >= limit:
+                    return posts
+            next_url = (body.get("paging") or {}).get("next")
+            if not next_url:
+                return posts
+            body = self._request("GET", next_url)
 
     def publish(self, caption: str, images: list[Path]) -> str:
         """Publish now to the Page. Returns the Facebook post id."""

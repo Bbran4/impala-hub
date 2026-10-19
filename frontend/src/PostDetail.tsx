@@ -95,6 +95,9 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onDelete, 
           <div><dt>Last updated</dt><dd>{fmt(post.updated_at, '—')}</dd></div>
         </dl>
         {post.last_error && <p className="hint">Last error: {post.last_error}</p>}
+        {post.provider_ids?.permalink && (
+          <p className="hint"><a href={post.provider_ids.permalink} target="_blank" rel="noreferrer">View on Facebook</a></p>
+        )}
       </div>
 
       <div className="detail-card">

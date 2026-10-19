@@ -234,3 +234,90 @@ def test_check_returns_the_page_name():
         return httpx.Response(200, json={"id": "PAGE1", "name": "Impala Spares"})
 
     assert graph(handler).check()["name"] == "Impala Spares"
+
+
+# --------------------------------------------------------------------------- importing posts from Facebook
+from app.facebook import parse_post  # noqa: E402
+from app.publisher import sync_posts  # noqa: E402
+
+
+def fb_item(fid, message="Hello from Facebook", created="2026-10-01T08:00:00+0000", **kw):
+    return {"id": fid, "message": message, "created_time": created, "permalink_url": f"https://facebook.com/{fid}",
+            "images": kw.get("images", []), "likes": kw.get("likes", 5), "comments": kw.get("comments", 2), "shares": kw.get("shares", 1)}
+
+
+class ListClient:
+    def __init__(self, items):
+        self.items = items
+
+    def list_published_posts(self, limit=100):
+        return self.items[:limit]
+
+
+def test_new_facebook_posts_are_imported_once_and_figures_refresh():
+    fid = "PAGE1_" + uuid.uuid4().hex[:8]
+    client = ListClient([fb_item(fid, images=["https://cdn.example/a.jpg"])])
+    assert sync_posts(client)["imported"] == 1
+    local = "fb-" + fid.replace("_", "-")
+    row = get(local)
+    assert row["status"] == "published" and row["caption"] == "Hello from Facebook"
+    assert row["published_at"] == "2026-10-01T08:00:00+00:00"
+    assert (row["likes"], row["comments"], row["shares"]) == (5, 2, 1) and row["clicks"] is None
+    assert json.loads(row["media_json"])[0]["url"] == "https://cdn.example/a.jpg"
+    assert json.loads(row["provider_ids_json"])["permalink"].endswith(fid)
+    client.items = [fb_item(fid, likes=9)]
+    stats = sync_posts(client)
+    assert stats == {"imported": 0, "updated": 1} and get(local)["likes"] == 9
+
+
+def test_a_post_published_from_the_app_is_not_imported_twice():
+    pid = make_post(status="published", ids={"facebook": "PAGE1_mine"})
+    stats = sync_posts(ListClient([fb_item("PAGE1_mine", likes=12)]))
+    assert stats == {"imported": 0, "updated": 1}
+    assert get(pid)["likes"] == 12 and json.loads(get(pid)["provider_ids_json"])["facebook"] == "PAGE1_mine"
+
+
+def test_parse_post_reads_images_counts_and_missing_shares():
+    raw = {
+        "id": "P_1", "created_time": "2026-10-01T08:00:00+0000",
+        "attachments": {"data": [{"subattachments": {"data": [
+            {"media": {"image": {"src": "https://cdn.example/1.jpg"}}},
+            {"media": {"image": {"src": "https://cdn.example/2.jpg"}}}]}}]},
+        "likes": {"summary": {"total_count": 7}}, "comments": {"summary": {"total_count": 3}},
+    }
+    post = parse_post(raw)
+    assert post["images"] == ["https://cdn.example/1.jpg", "https://cdn.example/2.jpg"]
+    assert (post["likes"], post["comments"], post["shares"], post["message"]) == (7, 3, 0, "")
+
+
+def test_list_published_posts_follows_paging_and_respects_the_limit():
+    page2_url = "https://graph.facebook.com/v26.0/PAGE1/published_posts?after=abc&access_token=SECRET-TOKEN"
+
+    def handler(request):
+        if "after=abc" in str(request.url):
+            return httpx.Response(200, json={"data": [{"id": "P_3"}]})
+        return httpx.Response(200, json={"data": [{"id": "P_1"}, {"id": "P_2"}], "paging": {"next": page2_url}})
+
+    assert [p["id"] for p in graph(handler).list_published_posts(10)] == ["P_1", "P_2", "P_3"]
+    assert [p["id"] for p in graph(handler).list_published_posts(2)] == ["P_1", "P_2"]
+
+
+def test_sync_endpoint(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main
+
+    headers = {"Authorization": f"Bearer {os.environ['APP_API_KEY']}"}
+    client = TestClient(main.app)  # no `with`: the background worker is not started
+    monkeypatch.setattr(main, "facebook_client", lambda: None)
+    assert client.post("/api/integrations/facebook/sync", headers=headers).status_code == 409
+    fid = "PAGE1_" + uuid.uuid4().hex[:8]
+    monkeypatch.setattr(main, "facebook_client", lambda: ListClient([fb_item(fid)]))
+    res = client.post("/api/integrations/facebook/sync", headers=headers)
+    assert res.status_code == 200 and res.json() == {"imported": 1, "updated": 0}
+
+    class Broken:
+        def list_published_posts(self, limit=100):
+            raise FacebookError("Invalid OAuth access token.")
+
+    monkeypatch.setattr(main, "facebook_client", lambda: Broken())
+    assert client.post("/api/integrations/facebook/sync", headers=headers).status_code == 502

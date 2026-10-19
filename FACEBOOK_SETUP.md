@@ -42,6 +42,15 @@ Set `FACEBOOK_API_VERSION` to the Graph API version shown in your Meta app dashb
 - Images are uploaded to Facebook as files. One image becomes a photo post; several become one post with all images attached.
 - The "Additional Facebook groups" choices are still samples and are ignored when publishing. Meta restricts group publishing for apps, so these are unlikely to become real.
 
-## 5. Before the app is used by anyone else
+## 5. Posts imported from Facebook
+
+- When the API starts, and then every `FACEBOOK_SYNC_MINUTES` (default 10), the app imports the Page's published posts (up to the latest 100) and refreshes likes, comments and shares on posts it already has. **Sync from Facebook** on the Posts page does this immediately.
+- Imported posts appear as **published** and are locked like any other published post. Their date is the time they went out on Facebook, so they show in the right month in the list, board and calendar. Open one for a "View on Facebook" link.
+- Images on imported posts are loaded from Facebook's own servers. These links can stop working after a while.
+- Clicks stay "—": Facebook does not give them per post through this connection.
+- Posts you scheduled natively inside Facebook are not imported, because the app would then publish them a second time.
+- Reading posts needs `pages_read_engagement`, which you already requested.
+
+## 6. Before the app is used by anyone else
 
 Page tokens in `.env` are fine for your own computer. For a shared or hosted deployment you need the items in the README's "Before a hosted, multi-user deployment" list, plus Meta's App Review / Business Verification if people outside the app's roles will connect their Pages.

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -126,8 +127,60 @@ def process_due(client: FacebookClient, now: Optional[datetime] = None) -> dict:
     return stats
 
 
-async def run_forever(client: FacebookClient, interval: int) -> None:
-    log.info("Facebook publisher started (checks every %s seconds)", interval)
+def _fb_time(value: str) -> str:
+    """Facebook sends 2026-10-01T08:00:00+0000. Normalise to ISO UTC like the rest of the database."""
+    value = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", value)
+    return datetime.fromisoformat(value).astimezone(timezone.utc).isoformat()
+
+
+def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
+    """Import the Page's published posts and refresh their likes, comments and shares.
+
+    Posts already known to the app (published from here, or imported before) only get their figures
+    updated. New ones are added as published posts. Facebook's natively scheduled posts are NOT
+    imported, because the worker would then publish them a second time.
+    """
+    remote = client.list_published_posts(limit)
+    stats = {"imported": 0, "updated": 0}
+    stamp = now_iso()
+    with db_session() as db:
+        known = {}
+        for row in db.execute("SELECT id, provider_ids_json FROM posts"):
+            fb_id = json.loads(row["provider_ids_json"]).get("facebook")
+            if fb_id:
+                known[fb_id] = (row["id"], json.loads(row["provider_ids_json"]))
+        for item in remote:
+            if item["id"] in known:
+                local_id, ids = known[item["id"]]
+                if item["permalink_url"]:
+                    ids["permalink"] = item["permalink_url"]
+                db.execute(
+                    "UPDATE posts SET likes=?,comments=?,shares=?,metrics_refreshed_at=?,provider_ids_json=? WHERE id=?",
+                    (item["likes"], item["comments"], item["shares"], stamp, json.dumps(ids), local_id),
+                )
+                stats["updated"] += 1
+                continue
+            local_id = "fb-" + item["id"].replace("_", "-")
+            ids = {"facebook": item["id"], **({"permalink": item["permalink_url"]} if item["permalink_url"] else {})}
+            media = [
+                {"id": f"{local_id}-{n}", "name": "Facebook image", "url": src} for n, src in enumerate(item["images"], 1)
+            ]
+            published_at = _fb_time(item["created_time"]) if item["created_time"] else stamp
+            db.execute(
+                """INSERT INTO posts(id,title,caption,channels_json,status,published_at,media_json,provider_ids_json,
+                   likes,comments,shares,metrics_refreshed_at,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (local_id, "", item["message"], json.dumps(["facebook"]), "published", published_at, json.dumps(media),
+                 json.dumps(ids), item["likes"], item["comments"], item["shares"], stamp, stamp, stamp),
+            )
+            audit(db, "imported", "post", local_id, {"status": "published", "channels": ["facebook"], "facebook_post_id": item["id"]})
+            stats["imported"] += 1
+    return stats
+
+
+async def run_forever(client: FacebookClient, interval: int, sync_minutes: int = 10) -> None:
+    log.info("Facebook publisher started (publishes every %s s, syncs every %s min)", interval, sync_minutes)
+    last_sync: Optional[datetime] = None
     while True:
         try:
             stats = await asyncio.to_thread(process_due, client)
@@ -137,4 +190,13 @@ async def run_forever(client: FacebookClient, interval: int) -> None:
             raise
         except Exception:
             log.exception("Publisher cycle failed")
+        if sync_minutes > 0 and (last_sync is None or datetime.now(timezone.utc) - last_sync >= timedelta(minutes=sync_minutes)):
+            last_sync = datetime.now(timezone.utc)  # set first so a failing sync is not retried every cycle
+            try:
+                stats = await asyncio.to_thread(sync_posts, client)
+                log.info("Facebook sync: %s", stats)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("Facebook sync failed")
         await asyncio.sleep(max(5, interval))

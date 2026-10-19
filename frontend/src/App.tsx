@@ -123,6 +123,15 @@ export default function App() {
     } catch (e) { handleError(e) }
   }
 
+  async function syncFacebook() {
+    setBusy(true); setError('')
+    try {
+      const r = await api('/api/integrations/facebook/sync', { method: 'POST' })
+      setNotice(`Facebook synced: ${r.imported} new ${r.imported === 1 ? 'post' : 'posts'}, ${r.updated} updated.`)
+      await load()
+    } catch (e) { handleError(e) } finally { setBusy(false) }
+  }
+
   async function savePost(mode: 'draft' | 'approval' | 'schedule') {
     if (!editor) return
     setBusy(true); setError('')
@@ -332,6 +341,9 @@ export default function App() {
                 <option value="all">All campaigns</option>
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {integrations.some((i) => i.provider === 'facebook' && i.status === 'connected') && (
+                <button className="secondary" disabled={busy} onClick={() => void syncFacebook()}>Sync from Facebook</button>
+              )}
               <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>
             </div>
             <MonthNav
