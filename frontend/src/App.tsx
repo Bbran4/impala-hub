@@ -225,7 +225,7 @@ export default function App() {
         )}
         <div className="sidebar-bottom">
           <div className="connection-dot" /> <span>Local workspace</span>
-          <small>Publishing not connected</small>
+          <small>{integrations.some((i) => i.status === 'connected') ? 'Facebook connected' : 'Publishing not connected'}</small>
           {key && <button className="text-button" onClick={disconnectKey}>Change API key</button>}
         </div>
       </aside>
@@ -401,10 +401,12 @@ export default function App() {
                   <div className={`provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : i.provider === 'instagram' ? '◎' : '◉'}</div>
                   <div className="integration-info">
                     <b>{i.label}</b>
-                    <p>{i.note || 'Publishing and insights permissions will be requested through the official connection flow.'}</p>
+                    <p>{i.note || (i.status === 'connected' ? 'Scheduled posts are published to this Page automatically.' : 'Publishing and insights permissions will be requested through the official connection flow.')}</p>
                   </div>
-                  <span className="status-badge">Not connected</span>
-                  <button className="secondary" disabled>Connect later</button>
+                  <span className="status-badge">
+                    {i.status === 'connected' ? `Connected${i.account_name ? `: ${i.account_name}` : ''}` : i.status === 'error' ? 'Connection error' : 'Not connected'}
+                  </span>
+                  <button className="secondary" disabled>{i.status === 'connected' ? 'Connected' : 'Connect later'}</button>
                 </div>
               ))}
             </div>

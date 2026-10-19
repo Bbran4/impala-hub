@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import secrets
 import sqlite3
@@ -15,6 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError, create_model, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .facebook import FacebookError, client_from_settings
+
 
 # --------------------------------------------------------------------------- settings
 class Settings(BaseSettings):
@@ -25,6 +28,11 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     max_upload_mb: int = 15
     allow_insecure_local_dev: bool = False  # set ALLOW_INSECURE_LOCAL_DEV=true in .env to allow a weak key
+    # Facebook Page publishing. Leave the page id or token empty to keep publishing switched off.
+    facebook_page_id: str = ""
+    facebook_page_token: str = ""
+    facebook_api_version: str = "v26.0"  # use the version shown in your Meta app dashboard
+    publisher_interval_seconds: int = 30
 
 
 settings = Settings()
@@ -158,7 +166,22 @@ def init_db() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    yield
+    worker = None
+    client = facebook_client()
+    if client:
+        from .publisher import run_forever  # imported here because publisher imports this module
+
+        worker = asyncio.create_task(run_forever(client, settings.publisher_interval_seconds))
+    try:
+        yield
+    finally:
+        if worker:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+
+
+def facebook_client():
+    return client_from_settings(settings.facebook_page_id, settings.facebook_page_token, settings.facebook_api_version)
 
 
 app = FastAPI(title="Impala Hub Marketing API", version="0.2.0", lifespan=lifespan)
@@ -512,11 +535,23 @@ def upload_media(file: UploadFile = File(...)) -> dict:
     }
 
 
+def facebook_integration() -> dict:
+    base = {"provider": "facebook", "label": "Facebook Pages", "capabilities": ["page_posts", "page_media"]}
+    client = facebook_client()
+    if not client:
+        note = "Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN in backend/.env, then restart the API."
+        return {**base, "status": "not_connected", "note": note}
+    try:
+        return {**base, "status": "connected", "account_name": client.check().get("name", client.page_id)}
+    except FacebookError as exc:
+        return {**base, "status": "error", "note": f"Facebook rejected the connection: {exc}"}
+
+
 @app.get("/api/integrations", dependencies=[Depends(require_api_key)])
 def integrations() -> list[dict]:
-    # Deliberately no fake connected accounts. Provider OAuth is added after Meta app setup.
+    # Deliberately no fake connected accounts: "connected" only after a live check against Facebook.
     return [
-        {"provider": "facebook", "label": "Facebook Pages", "status": "not_connected", "capabilities": ["page_posts", "page_media"]},
+        facebook_integration(),
         {"provider": "instagram", "label": "Instagram Professional", "status": "not_connected", "capabilities": ["image_posts", "carousel_posts"]},
         {"provider": "whatsapp", "label": "WhatsApp Business Platform", "status": "not_connected", "capabilities": ["business_messaging"], "note": "Group messaging availability depends on account eligibility and supported Meta APIs."},
     ]
