@@ -565,3 +565,18 @@ The Posts page has three views. Search and the campaign filter apply to all of t
 ## Security notes
 
 Never commit `.env`, provider tokens, secrets, customer lists or production media. Do not open the development server to the internet.
+
+
+## Marketing workflow update (October 2026)
+
+The current implementation is being updated in `feature/marketing-workflow-metrics`.
+
+- Facebook Group posting has been removed from the editor and API model. Existing databases migrate away from the deprecated group field.
+- The Feed engagement card now totals synced Facebook likes, comments and shares for the current month, using the publication date for published posts.
+- Failed posts have a **Reschedule** action that reopens their content with a suggested time 15 minutes ahead. Review the post and confirm the new schedule before it is queued, to reduce the risk of duplicate publishing.
+- **Publish now** queues a Facebook-only post through the backend worker. The UI reports that a request was queued, not that Facebook has already confirmed publication.
+- The OAuth permission request now includes Meta's `read_insights` permission. Existing connections need to reconnect and grant it before insights data can be read.
+- Reach and impressions columns have been added to the database, but syncing and displaying those metrics still needs to be completed and verified against the connected Meta Page.
+- Paid-ad reporting is a separate follow-up: it requires access to the relevant ad account and the appropriate Marketing API permissions (typically including `ads_read`). Paid delivery metrics must not be added to organic post engagement totals.
+
+These changes have not been validated against a live Meta account. Run the backend test suite and frontend build before merging, then verify publishing and permissions with an authorised test Page.
