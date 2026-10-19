@@ -343,3 +343,24 @@ def test_sales_desk_status_closed_flag_and_deactivation():
         patched = client.patch(f"/api/sales-desk/config/statuses/{status.json()['id']}", headers=admin, json={"is_closed": False})
         assert patched.status_code == 200, patched.text
         assert patched.json()["is_closed"] == 0
+
+
+def test_concurrent_rfq_creation_allocates_unique_daily_numbers():
+    import secrets
+    from concurrent.futures import ThreadPoolExecutor
+    from app import sales_desk_auth as auth
+
+    auth.init_auth_db()
+    admin_user, admin_password = _sd_create_user("concurrent-admin-" + secrets.token_hex(3), "administrator")
+    with TestClient(app) as client:
+        admin = _sd_login(client, admin_user, admin_password)
+        media = client.post("/api/sales-desk/config/media-platforms", headers=admin, json={"name": "Concurrent-" + secrets.token_hex(3)})
+        assert media.status_code == 201, media.text
+        payload = {"media_platform_id": media.json()["id"], "customer_name": "Parallel RFQ"}
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            responses = list(pool.map(lambda _: client.post("/api/sales-desk/rfqs", headers=admin, json=payload), range(8)))
+        assert all(response.status_code == 201 for response in responses), [response.text for response in responses]
+        references = [response.json()["rfq_no"] for response in responses]
+        assert len(set(references)) == len(references)
+        daily_numbers = sorted(int(reference[-2:]) for reference in references)
+        assert daily_numbers == list(range(daily_numbers[0], daily_numbers[0] + 8))
