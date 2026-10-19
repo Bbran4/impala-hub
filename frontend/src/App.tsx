@@ -778,9 +778,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete }: {
             <div className="row-actions">
               <button className="secondary" onClick={() => onOpen(p.id)}>View</button>
               {EDITABLE.includes(p.status) && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}
-              {p.status !== 'published' && (
-                <button className="icon-button" title="Delete post" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button>
-              )}
+              <button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button>
             </div>
           </article>
         )
