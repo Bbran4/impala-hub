@@ -368,20 +368,17 @@ def test_a_permission_error_on_the_basic_fields_is_still_reported():
 
 
 
-def test_post_exists_returns_true_for_existing_post():
+def test_post_exists_returns_true_when_post_is_in_page_listing():
     def handler(request):
-        assert request.url.path == "/v26.0/PAGE1_99"
-        return httpx.Response(200, json={"id": "PAGE1_99"})
+        assert request.url.path == "/v26.0/PAGE1/published_posts"
+        return httpx.Response(200, json={"data": [{"id": "PAGE1_99"}]})
 
     assert graph(handler).post_exists("PAGE1_99") is True
 
 
-def test_post_exists_returns_false_only_for_explicit_missing_post():
+def test_post_exists_returns_false_only_after_successful_complete_page_listing():
     def handler(request):
-        return httpx.Response(400, json={"error": {
-            "message": "Unsupported get request. Object with ID 'PAGE1_99' cannot be loaded.",
-            "code": 100,
-        }})
+        return httpx.Response(200, json={"data": [{"id": "PAGE1_88"}]})
 
     assert graph(handler).post_exists("PAGE1_99") is False
 
