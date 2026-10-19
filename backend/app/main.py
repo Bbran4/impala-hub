@@ -192,6 +192,12 @@ COMMIT;
 """
 
 
+SCHEMA_V3 = """
+ALTER TABLE posts DROP COLUMN facebook_groups_json;
+PRAGMA user_version = 3;
+"""
+
+
 def init_db() -> None:
     conn = connect()
     try:
@@ -200,6 +206,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V1)
         if version < 2:
             conn.executescript(SCHEMA_V2)
+        if version < 3:
+            conn.executescript(SCHEMA_V3)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
@@ -346,7 +354,6 @@ class PostIn(BaseModel):
     caption: str = Field(default="", max_length=10000)
     campaign_id: Optional[str] = None
     channels: list[Channel] = Field(default_factory=list)
-    facebook_groups: list[str] = Field(default_factory=list, max_length=3)
     whatsapp_recipient_type: Optional[str] = None  # WhatsApp rules are deliberately unchanged for now
     whatsapp_recipient_id: Optional[str] = None
     whatsapp_recipient_name: Optional[str] = None
@@ -359,9 +366,9 @@ class PostIn(BaseModel):
     def strip_title(cls, v: str) -> str:
         return v.strip()
 
-    @field_validator("channels", "facebook_groups")
+    @field_validator("channels")
     @classmethod
-    def dedupe(cls, v: list) -> list:
+    def dedupe_channels(cls, v: list[str]) -> list[str]:
         return list(dict.fromkeys(v))
 
     @field_validator("publish_at")
@@ -373,8 +380,6 @@ class PostIn(BaseModel):
 
     @model_validator(mode="after")
     def business_rules(self) -> "PostIn":
-        if "facebook" not in self.channels:
-            self.facebook_groups = []
         if "whatsapp" not in self.channels:
             self.whatsapp_recipient_type = self.whatsapp_recipient_id = self.whatsapp_recipient_name = None
         elif self.whatsapp_recipient_type not in {"contact", "group"}:
@@ -406,7 +411,6 @@ def campaign_row(row: sqlite3.Row) -> dict:
 def post_row(row: sqlite3.Row) -> dict:
     item = dict(row)
     item["channels"] = json.loads(item.pop("channels_json"))
-    item["facebook_groups"] = json.loads(item.pop("facebook_groups_json"))
     item["media"] = json.loads(item.pop("media_json"))
     item["provider_ids"] = json.loads(item.pop("provider_ids_json"))
     return item
@@ -436,7 +440,7 @@ def check_references(db: sqlite3.Connection, data: PostIn) -> None:
 
 def post_values(data: PostIn) -> tuple:
     return (
-        data.title, data.caption, data.campaign_id, json.dumps(data.channels), json.dumps(data.facebook_groups),
+        data.title, data.caption, data.campaign_id, json.dumps(data.channels),
         data.whatsapp_recipient_type, data.whatsapp_recipient_id, data.whatsapp_recipient_name, data.status,
         data.publish_at.isoformat() if data.publish_at else None,
         json.dumps([m.model_dump() for m in data.media]),
@@ -511,9 +515,9 @@ def create_post(payload: PostIn) -> dict:
     with db_session() as db:
         check_references(db, payload)
         db.execute(
-            """INSERT INTO posts(id,title,caption,campaign_id,channels_json,facebook_groups_json,whatsapp_recipient_type,
+            """INSERT INTO posts(id,title,caption,campaign_id,channels_json,whatsapp_recipient_type,
                whatsapp_recipient_id,whatsapp_recipient_name,status,publish_at,media_json,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (post_id, *post_values(payload), stamp, stamp),
         )
         audit(db, "created", "post", post_id, {"status": payload.status, "channels": payload.channels})
@@ -545,7 +549,7 @@ def update_post(post_id: str, patch: PostPatch) -> dict:  # type: ignore[valid-t
         data = validate(PostIn, base | changes)
         check_references(db, data)
         db.execute(
-            """UPDATE posts SET title=?,caption=?,campaign_id=?,channels_json=?,facebook_groups_json=?,
+            """UPDATE posts SET title=?,caption=?,campaign_id=?,channels_json=?,
                whatsapp_recipient_type=?,whatsapp_recipient_id=?,whatsapp_recipient_name=?,status=?,publish_at=?,
                media_json=?,updated_at=? WHERE id=?""",
             (*post_values(data), now_iso(), post_id),
