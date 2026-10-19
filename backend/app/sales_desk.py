@@ -62,6 +62,7 @@ def init_sales_desk_db(database_path: Optional[Path] = None) -> None:
         CREATE TABLE IF NOT EXISTS sd_rfqs (
             id TEXT PRIMARY KEY,
             rfq_no TEXT NOT NULL UNIQUE,
+            rfq_type TEXT NOT NULL DEFAULT 'Quote' CHECK(rfq_type IN ('Quote','Invoice')),
             business_date TEXT NOT NULL,
             daily_number INTEGER NOT NULL,
             media_platform_id TEXT REFERENCES sd_media_platforms(id) ON DELETE RESTRICT,
@@ -94,10 +95,13 @@ def init_sales_desk_db(database_path: Optional[Path] = None) -> None:
             created_at TEXT NOT NULL
         );
         """)
-        # Additive migration for databases created before status classification existed.
+        # Additive migrations keep existing Sales Desk databases compatible.
         status_columns = {row["name"] for row in db.execute("PRAGMA table_info(sd_statuses)").fetchall()}
         if "is_closed" not in status_columns:
             db.execute("ALTER TABLE sd_statuses ADD COLUMN is_closed INTEGER NOT NULL DEFAULT 0")
+        rfq_columns = {row["name"] for row in db.execute("PRAGMA table_info(sd_rfqs)").fetchall()}
+        if "rfq_type" not in rfq_columns:
+            db.execute("ALTER TABLE sd_rfqs ADD COLUMN rfq_type TEXT NOT NULL DEFAULT 'Quote'")
         now = _now()
         for name, order, closed in (
             ("Unclaimed", 0, 0), ("New", 1, 0), ("In Progress", 2, 0),
@@ -471,6 +475,64 @@ def patch_rfq(rfq_id: str, payload: RFQPatchIn, user: dict = Depends(current_use
         _audit(db, rfq_id, user["id"], "updated", {k: {"from": before[k], "to": normalized[k]} for k in normalized})
         updated = db.execute(RFQ_SELECT + " WHERE r.id=?", (rfq_id,)).fetchone()
     return _rfq(updated)
+
+
+@router.post("/rfqs/{rfq_id}/convert-to-invoice", status_code=201)
+def convert_rfq_to_invoice(rfq_id: str, user: dict = Depends(current_user)) -> dict:
+    """Create an Invoice copy of a Quote while keeping the original Quote unchanged."""
+    if not _admin_or_manager(user):
+        raise HTTPException(403, "Only administrators and managers can convert a Quote to an Invoice")
+
+    now = datetime.now(timezone.utc)
+    business_date = now.astimezone(BUSINESS_TZ).strftime("%y%m%d")
+    invoice_id = uuid.uuid4().hex
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        source = db.execute("SELECT * FROM sd_rfqs WHERE id=?", (rfq_id,)).fetchone()
+        if not source:
+            raise HTTPException(404, "RFQ not found")
+        if source["rfq_type"] == "Invoice":
+            raise HTTPException(409, "This record is already an Invoice")
+        invoice_no = f'{source["rfq_no"]}INV'
+        if db.execute("SELECT 1 FROM sd_rfqs WHERE rfq_no=?", (invoice_no,)).fetchone():
+            raise HTTPException(409, "An Invoice has already been created from this Quote")
+
+        # Keep daily_number unique even though the Invoice number is based on the source Quote.
+        sequence = db.execute(
+            "SELECT last_number FROM sd_rfq_daily_sequences WHERE business_date=?", (business_date,)
+        ).fetchone()
+        daily_number = sequence["last_number"] + 1 if sequence else 1
+        if sequence:
+            db.execute(
+                "UPDATE sd_rfq_daily_sequences SET last_number=? WHERE business_date=?",
+                (daily_number, business_date),
+            )
+        else:
+            db.execute(
+                "INSERT INTO sd_rfq_daily_sequences(business_date,last_number) VALUES(?,?)",
+                (business_date, daily_number),
+            )
+
+        db.execute(
+            """INSERT INTO sd_rfqs
+            (id,rfq_no,rfq_type,business_date,daily_number,media_platform_id,customer_name,contact_number,
+             email_address,query_information,sales_code_id,claimed_at,received_at,remarks,status_id,
+             document_number,created_by,updated_by,created_at,updated_at)
+            VALUES(?,?, 'Invoice', ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (invoice_id, invoice_no, business_date, daily_number, source["media_platform_id"],
+             source["customer_name"], source["contact_number"], source["email_address"],
+             source["query_information"], source["sales_code_id"], source["claimed_at"],
+             source["received_at"], source["remarks"], source["status_id"], source["document_number"],
+             user["id"], user["id"], now.isoformat(), now.isoformat()),
+        )
+        _audit(db, rfq_id, user["id"], "converted_to_invoice", {
+            "invoice_id": invoice_id, "invoice_no": invoice_no,
+        })
+        _audit(db, invoice_id, user["id"], "created_from_quote", {
+            "quote_id": rfq_id, "quote_no": source["rfq_no"],
+        })
+        created = db.execute(RFQ_SELECT + " WHERE r.id=?", (invoice_id,)).fetchone()
+    return _rfq(created)
 
 
 @router.get("/rfqs/{rfq_id}/history")
