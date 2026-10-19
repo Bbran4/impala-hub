@@ -1,13 +1,15 @@
 # Impala Hub Marketing MVP (foundation)
 
-This is the first server-backed version of the Impala Hub Marketing workspace. It replaces browser-only demo data with a FastAPI API, SQLite persistence for local development, and server-side image uploads. It includes post and campaign CRUD, post-to-campaign relationships, draft/scheduled states, Facebook group selection fields, WhatsApp contact/group destination fields, an integration status screen, and an audit log.
+A server-backed first version of the Impala Hub Marketing workspace: a FastAPI API, SQLite persistence for local development, and server-side image uploads. It includes post and campaign CRUD, posts grouped under campaigns, draft / awaiting approval / scheduled states, Facebook group selection, an integration status screen and an audit log.
 
 ## Important limits
 
-- **This is a development foundation, not ready to expose to the public internet.** It currently uses a single API key, not individual employee accounts, roles, or a full production authentication system. Run it on your own computer or a trusted development network only.
-- Facebook, Instagram and WhatsApp are **not connected**. The UI intentionally refuses to publish immediately. Scheduling stores the intended date/time, but a background worker is not included yet, so it will not automatically publish at that time.
-- WhatsApp recipients/groups are sample placeholders. WhatsApp Cloud API messaging is not the same as publishing a social feed post. Support for existing WhatsApp groups depends on Meta's API availability and account eligibility; do not assume the group feature is available until verified.
-- The local database is SQLite for easy development. For a hosted, multi-user company deployment, move to PostgreSQL, add employee login/roles, encrypted token storage, CSRF/state protections around OAuth, rate limiting, backups, audit review, and monitoring.
+- **Development foundation only. Do not expose it to the internet.** It uses a single shared API key, not employee accounts or roles. Run it on your own computer or a trusted development network.
+- Facebook, Instagram and WhatsApp are **not connected**. The UI cannot publish immediately. Scheduling only stores the intended date and time; no background worker exists yet, so nothing is published automatically. The `published` and `failed` statuses are reserved for that future worker and the API rejects them from clients.
+- Engagement figures (clicks, likes, comments, shares) and `published_at` exist in the database but stay `NULL` ("not available") until a platform is connected. They are never shown as 0.
+- Facebook groups and WhatsApp contacts/groups in the editor are **samples** and are labelled as such. WhatsApp support will be built after Facebook and Instagram work.
+- **Unauthenticated URLs:** `GET /uploads/*` (images must load in `<img>` tags) and the API docs at `/docs` do not need the key. Don't upload anything confidential.
+- Before a hosted, multi-user deployment: PostgreSQL, employee login and roles, encrypted token storage, OAuth state/CSRF protection, rate limiting, HTTPS, backups and monitoring.
 
 ## Requirements
 
@@ -18,6 +20,8 @@ This is the first server-backed version of the Impala Hub Marketing workspace. I
 
 ### 1. Start the API
 
+All backend commands must be run **from inside the `backend` folder** (`.env` and the data/upload paths are resolved relative to it).
+
 ```bash
 cd backend
 python -m venv .venv
@@ -26,16 +30,30 @@ python -m venv .venv
 # macOS/Linux:
 # source .venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env  # Windows; on macOS/Linux use: cp .env.example .env
+copy .env.example .env    # Windows; on macOS/Linux: cp .env.example .env
 ```
 
-Edit `backend/.env` and set `APP_API_KEY` to a long random secret. Then start the API:
+If PowerShell refuses to run `Activate.ps1`, run this once in that window and retry:
+
+```powershell
+Set-ExecutionPolicy -Scope Process RemoteSigned
+```
+
+Generate a secret and paste it into `backend/.env` as `APP_API_KEY`:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+The API answers `503` until `APP_API_KEY` is set to something other than the placeholder and is at least 24 characters. Then start it:
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The API docs are at `http://127.0.0.1:8000/docs`. The health endpoint is `http://127.0.0.1:8000/api/health`.
+API docs: `http://127.0.0.1:8000/docs`. Health check: `http://127.0.0.1:8000/api/health`.
+
+The SQLite database is created and migrated automatically on startup (schema version is tracked with `PRAGMA user_version`). An older database is upgraded in place; legacy `needs_attention` posts become drafts.
 
 ### 2. Start the frontend
 
@@ -47,32 +65,49 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173` and enter the same API key configured in `backend/.env`. The key is held in session storage for that browser tab/session and is not a substitute for proper employee authentication.
+Open `http://127.0.0.1:5173` and enter the same API key. The key is kept in session storage for that tab only. If the key is rejected you are returned to the key screen; use **Change API key** in the sidebar to switch keys.
+
+If the API is not at `http://127.0.0.1:8000`, create `frontend/.env.local` containing `VITE_API_URL=http://your-host:port` (and add that origin to the CORS list in `backend/app/main.py`).
+
+### 3. Run the tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Tests use a temporary database and upload folder, so they work on Windows, macOS and Linux and never touch your real data.
 
 ## API endpoints
 
-- `GET /api/health`
-- `GET /api/posts?status=draft&campaign_id=...`
-- `POST /api/posts`
-- `PATCH /api/posts/{id}`
-- `DELETE /api/posts/{id}`
-- `GET /api/campaigns`
-- `POST /api/campaigns`
-- `PATCH /api/campaigns/{id}`
-- `POST /api/media` (JPG, PNG, WEBP, GIF; max size set by `MAX_UPLOAD_MB`)
-- `GET /api/integrations`
+All routes except `GET /api/health` need `Authorization: Bearer <APP_API_KEY>`.
 
-All API routes except health require `Authorization: Bearer <APP_API_KEY>`.
+- `GET /api/health`
+- `GET /api/posts?status=draft&campaign_id=...` (status: draft, awaiting_approval, scheduled, published, failed)
+- `POST /api/posts`
+- `PATCH /api/posts/{id}` (partial update; published posts return 409)
+- `DELETE /api/posts/{id}`
+- `GET /api/campaigns`, `POST /api/campaigns`, `PATCH /api/campaigns/{id}` (partial update)
+- `POST /api/media` (JPG, PNG, WEBP, GIF; limit set by `MAX_UPLOAD_MB`)
+- `GET /api/integrations`
+- `GET /api/audit?limit=100` (newest first)
+
+Rules enforced by the API: clients may only set `draft`, `awaiting_approval` or `scheduled`; scheduled posts need a date and at least one channel; Instagram posts need an image to be scheduled; media must come from `/api/media`; at most 3 Facebook groups; campaign end date must not precede its start date. `publish_at` is stored in UTC.
+
+## Formatting
+
+`npm run format` runs Prettier over `frontend/src`. Run it once on `style.css` too (`npx prettier --write src/style.css`) to expand the minified rules.
 
 ## Recommended implementation sequence
 
-1. Confirm the official Impala Facebook Page, Instagram Professional account, and WhatsApp Business Platform setup.
-2. Create/configure the Meta developer app and verify the needed permissions and review requirements.
-3. Implement server-side OAuth, token encryption/rotation, account discovery, and real Facebook/Instagram publishing.
-4. Add a reliable job queue/worker for scheduled posts, retries, idempotency, provider errors and status updates.
-5. Assess WhatsApp contact messaging and group API eligibility separately.
-6. Add employee login, role-based permissions, PostgreSQL, cloud object storage, HTTPS, monitoring and backups before company-wide deployment.
+1. Confirm the Impala Facebook Page and Instagram Professional account, then create and configure the Meta developer app.
+2. Server-side OAuth, token encryption and rotation, account discovery, and real Facebook/Instagram publishing.
+3. A job queue/worker for scheduled posts with retries, idempotency and status updates (this is what sets `published`, `failed`, `published_at` and the metrics).
+4. Post detail view, calendar/board views, Channels and Streams.
+5. WhatsApp contact messaging and group eligibility.
+6. Employee login, roles, PostgreSQL, cloud object storage, HTTPS, monitoring and backups.
 
 ## Security notes
 
-Never commit `.env`, provider tokens, secrets, customer lists, or production media to source control. Do not open the development server to the internet. Production deployment needs HTTPS, real user authentication, secure OAuth state handling, encrypted credentials, and reviewed access controls.
+Never commit `.env`, provider tokens, secrets, customer lists or production media. Do not open the development server to the internet.
