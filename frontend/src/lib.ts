@@ -62,7 +62,7 @@ export async function api(path: string, options: RequestInit = {}) {
   try {
     res = await fetch(`${API}${path}`, { ...options, headers })
   } catch {
-    throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and confirm that http://127.0.0.1:8000/api/health opens. If the frontend is on another port or host, check backend CORS settings and VITE_API_URL.`)
+    throw new Error(`The browser could not complete a request to the Impala Hub API at ${API}. A healthy /api/health response confirms the backend is running, but does not rule out a browser CORS block or a frontend VITE_API_URL/host mismatch. Check the failed request in the browser Network console and confirm the frontend origin is allowed by backend CORS settings.`)
   }
   if (res.status === 401) {
     sessionStorage.removeItem(KEY_STORAGE)
