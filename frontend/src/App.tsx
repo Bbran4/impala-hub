@@ -7,7 +7,7 @@ import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
 import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
-import { api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
+import { api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign, API } from './lib'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
@@ -38,6 +38,16 @@ const OAUTH_REASONS: Record<string, string> = {
 export default function App() {
   const [key, setKey] = useState(getKey())
   const [keyEntry, setKeyEntry] = useState('')
+  const [sdToken, setSdToken] = useState(() => sessionStorage.getItem('impala_sales_desk_token') || '')
+  const [sdUser, setSdUser] = useState<any>(null)
+  const [sdUsername, setSdUsername] = useState('')
+  const [sdPassword, setSdPassword] = useState('')
+  const [sdRfqs, setSdRfqs] = useState<any[]>([])
+  const [sdConfig, setSdConfig] = useState<any>({ media_platforms: [], sales_codes: [], statuses: [] })
+  const [sdSearch, setSdSearch] = useState('')
+  const [sdStatusFilter, setSdStatusFilter] = useState('')
+  const [sdSalesCodeFilter, setSdSalesCodeFilter] = useState('')
+  const [sdSelectedRfq, setSdSelectedRfq] = useState<any>(null)
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -57,6 +67,50 @@ export default function App() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'board' | 'calendar'>('list')
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
+
+  async function sdApi(path: string, init: RequestInit = {}) {
+    const response = await fetch(`${API}${path}`, {
+      ...init, headers: { 'Content-Type': 'application/json', ...(sdToken ? { Authorization: `Bearer ${sdToken}` } : {}), ...(init.headers || {}) },
+    })
+    const body = response.status === 204 ? null : await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : `Sales Desk request failed (${response.status})`)
+    return body
+  }
+
+  async function sdLogin() {
+    setBusy(true); setError('')
+    try {
+      const response = await fetch(`${API}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: sdUsername, password: sdPassword }) })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body?.detail || 'Sign-in failed')
+      sessionStorage.setItem('impala_sales_desk_token', body.access_token)
+      setSdToken(body.access_token); setSdUser(body.user); setSdPassword('')
+      setNotice(`Signed in to Sales Desk as ${body.user.display_name}.`)
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function sdLogout() {
+    try { await sdApi('/api/sales-desk/auth/logout', { method: 'POST' }) } catch {}
+    sessionStorage.removeItem('impala_sales_desk_token'); setSdToken(''); setSdUser(null); setSdRfqs([]); setSdSelectedRfq(null)
+  }
+
+  async function loadSalesDesk() {
+    if (!sdToken) return
+    try {
+      const [me, cfg, result] = await Promise.all([
+        sdApi('/api/sales-desk/auth/me'),
+        sdApi('/api/sales-desk/config'),
+        sdApi('/api/sales-desk/rfqs?limit=200'),
+      ])
+      setSdUser(me); setSdConfig(cfg); setSdRfqs(result.items || [])
+    } catch (e) {
+      const message = (e as Error).message
+      if (message.toLowerCase().includes('session') || message.toLowerCase().includes('sign in')) {
+        sessionStorage.removeItem('impala_sales_desk_token'); setSdToken(''); setSdUser(null)
+      }
+      setError(message)
+    }
+  }
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -96,6 +150,7 @@ export default function App() {
 
   // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
   useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
+  useEffect(() => { if (isSalesDeskPage && sdToken) void loadSalesDesk() }, [page, sdToken])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -316,6 +371,11 @@ export default function App() {
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
   const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration'
+  const filteredRfqs = sdRfqs.filter((r) =>
+    (!sdStatusFilter || r.status_id === sdStatusFilter) &&
+    (!sdSalesCodeFilter || r.sales_code_id === sdSalesCodeFilter) &&
+    (!sdSearch || `${r.rfq_no} ${r.customer_name} ${r.document_number}`.toLowerCase().includes(sdSearch.toLowerCase())),
+  )
 
   return (
     <div className="shell">
@@ -434,27 +494,37 @@ export default function App() {
                 ? 'Manage media platforms, salesperson sales codes, and RFQ statuses.'
                 : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>
             </div>
-            {page === 'RFQs' ? (
-              <>
-                <div className="rfq-toolbar">
-                  <label>Filter by status<select disabled defaultValue="all"><option value="all">All statuses</option></select></label>
-                  <label>Filter by sales code<select disabled defaultValue="all"><option value="all">All salespeople</option></select></label>
-                  <label className="rfq-search">Search RFQs<input disabled placeholder="RFQ number, customer, document number" /></label>
+            {!sdToken ? (
+              <div className="rfq-empty-card">
+                <h3>Sign in to Sales Desk</h3>
+                <p>Use your individual Sales Desk account. Marketing API credentials are not used for Sales Desk access.</p>
+                <div className="sd-login-form">
+                  <label>Username<input autoComplete="username" value={sdUsername} onChange={(e) => setSdUsername(e.target.value)} /></label>
+                  <label>Password<input type="password" autoComplete="current-password" value={sdPassword} onChange={(e) => setSdPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void sdLogin() }} /></label>
+                  <button className="primary" disabled={busy || !sdUsername.trim() || !sdPassword} onClick={() => void sdLogin()}>{busy ? 'Signing in…' : 'Sign in'}</button>
                 </div>
-                <div className="rfq-table-wrap">
-                  <table className="rfq-table">
-                    <thead><tr><th>RFQ No.</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th></th></tr></thead>
-                    <tbody><tr><td colSpan={7}>
-                      <div className="rfq-empty">
-                        <ClipboardList size={28} />
-                        <h3>RFQ data service not connected yet</h3>
-                        <p>The Sales Desk now opens from the Apps Dashboard. The RFQ list, live filters, claiming and assignment need the backend RFQ endpoints and role-based access controls before records can be shown safely.</p>
-                      </div>
-                    </td></tr></tbody>
-                  </table>
-                </div>
-              </>
+              </div>
             ) : (
+              <>
+                <div className="sd-session-bar"><span>Signed in as <b>{sdUser?.display_name || sdUsername}</b>{sdUser?.role ? ` · ${sdUser.role}` : ''}</span><button className="secondary" onClick={() => void sdLogout()}>Sign out</button></div>
+                {page === 'RFQs' ? (
+                  <>
+                    <div className="rfq-toolbar">
+                      <label>Filter by status<select value={sdStatusFilter} onChange={(e) => setSdStatusFilter(e.target.value)}><option value="">All statuses</option>{sdConfig.statuses.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+                      <label>Filter by sales code<select value={sdSalesCodeFilter} onChange={(e) => setSdSalesCodeFilter(e.target.value)} disabled={sdUser?.role === 'salesperson'}><option value="">All salespeople</option>{sdConfig.sales_codes.map((s: any) => <option key={s.id} value={s.id}>{s.code} · {s.display_name}</option>)}</select></label>
+                      <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={sdSearch} onChange={(e) => setSdSearch(e.target.value)} /></label>
+                    </div>
+                    <div className="rfq-table-wrap"><table className="rfq-table">
+                      <thead><tr><th>RFQ No.</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th></th></tr></thead>
+                      <tbody>{filteredRfqs.length ? filteredRfqs.map((r: any) => <tr key={r.id} className="rfq-data-row"><td>{r.rfq_no}</td><td>{r.received_at ? new Date(r.received_at).toLocaleString() : '—'}</td><td>{r.customer_name}</td><td>{r.media_platform || '—'}</td><td>{r.sales_code || 'Unclaimed'}</td><td>{r.status}</td><td><button className="secondary" onClick={() => void sdApi(`/api/sales-desk/rfqs/${r.id}`).then(setSdSelectedRfq).catch((e) => setError(e.message))}>View</button></td></tr>) : <tr><td colSpan={7}><div className="rfq-empty"><ClipboardList size={28}/><h3>{sdRfqs.length ? 'No matching RFQs' : 'No RFQs yet'}</h3><p>The list is connected to the Sales Desk API. New records will appear here once created.</p></div></td></tr>}</tbody>
+                    </table></div>
+                    {sdSelectedRfq && <div className="rfq-empty-card"><button className="secondary" onClick={() => setSdSelectedRfq(null)}>Close details</button><h3>{sdSelectedRfq.rfq_no} · {sdSelectedRfq.customer_name}</h3><p><b>Contact:</b> {sdSelectedRfq.contact_number || '—'} · {sdSelectedRfq.email_address || '—'}</p><p><b>Query:</b> {sdSelectedRfq.query_information || '—'}</p><p><b>Remarks:</b> {sdSelectedRfq.remarks || '—'}</p><p><b>Document number:</b> {sdSelectedRfq.document_number || '—'}</p><p><b>Created:</b> {sdSelectedRfq.created_at}</p></div>}
+                  </>
+                ) : (
+                  <div className="rfq-empty-card"><Settings size={26}/><h3>RFQ configuration</h3><p>Configured media platforms, sales codes and statuses will be listed here. Configuration management controls are the next UI step.</p><p>Media platforms: {sdConfig.media_platforms.length} · Sales codes: {sdConfig.sales_codes.length} · Statuses: {sdConfig.statuses.length}</p></div>
+                )}
+              </>
+            )}
               <div className="rfq-empty-card">
                 <Settings size={26} />
                 <h3>RFQ configuration</h3>
