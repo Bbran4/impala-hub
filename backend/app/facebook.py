@@ -95,8 +95,20 @@ class FacebookClient:
 
     # ------------------------------------------------------------------ public API
     def check(self) -> dict:
-        """Confirm the Page ID and token work. Returns {"id", "name"}."""
-        return self._request("GET", f"/{self.page_id}", params={"fields": "name", "access_token": self._token})
+        """Confirm the token is a Page token for FACEBOOK_PAGE_ID. Returns {"id", "name"}."""
+        body = self._request("GET", "/me", params={"fields": "id,name", "metadata": 1, "access_token": self._token})
+        kind = (body.get("metadata") or {}).get("type")
+        if kind == "user" or (kind is None and str(body.get("id")) != self.page_id):
+            raise FacebookError(
+                f"FACEBOOK_PAGE_TOKEN is a user token (for {body.get('name', 'a person')}), not a Page token. "
+                "Get the Page token with GET {PAGE_ID}?fields=access_token using a user token that has a role on the Page."
+            )
+        if str(body.get("id")) != self.page_id:
+            raise FacebookError(
+                f"FACEBOOK_PAGE_TOKEN belongs to \"{body.get('name')}\" (id {body.get('id')}), "
+                f"which is not FACEBOOK_PAGE_ID ({self.page_id})."
+            )
+        return body
 
     def list_published_posts(self, limit: int = 100) -> list[dict]:
         """Newest-first posts published by the Page itself (not visitor posts), with engagement counts."""

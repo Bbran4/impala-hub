@@ -228,12 +228,16 @@ def test_dropped_connection_is_not_retried_but_connect_failure_is():
     assert e2.value.transient
 
 
-def test_check_returns_the_page_name():
-    def handler(request):
-        assert request.url.params["fields"] == "name"
-        return httpx.Response(200, json={"id": "PAGE1", "name": "Impala Spares"})
+def test_check_accepts_a_page_token_and_rejects_user_or_mismatched_tokens():
+    def make(body):
+        return graph(lambda request: httpx.Response(200, json=body))
 
-    assert graph(handler).check()["name"] == "Impala Spares"
+    ok = make({"id": "PAGE1", "name": "Impala Spares", "metadata": {"type": "page"}})
+    assert ok.check()["name"] == "Impala Spares"
+    with pytest.raises(FacebookError, match="user token"):
+        make({"id": "999", "name": "Brenden", "metadata": {"type": "user"}}).check()
+    with pytest.raises(FacebookError, match="not FACEBOOK_PAGE_ID"):
+        make({"id": "OTHER", "name": "Other Page", "metadata": {"type": "page"}}).check()
 
 
 # --------------------------------------------------------------------------- importing posts from Facebook
