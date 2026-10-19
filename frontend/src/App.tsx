@@ -152,6 +152,32 @@ export default function App() {
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
 
+  async function sdConvertToInvoice(rfq: any) {
+    if (rfq.rfq_type === 'Invoice') return
+    if (!window.confirm(`Create an Invoice copy of ${rfq.rfq_no}? The original Quote will remain unchanged.`)) return
+    setBusy(true); setError('')
+    try {
+      const result = await sdApi(`/api/sales-desk/rfqs/${rfq.id}/convert-to-invoice`, { method: 'POST' })
+      setSdSelectedRfq(result); setSdDetailDraft(result)
+      setNotice(`Invoice ${result.rfq_no} created. The original Quote was kept.`)
+      await sdRefresh()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function sdMoveConfigOption(kind: 'media-platforms' | 'statuses', options: any[], index: number, direction: -1 | 1) {
+    const targetIndex = index + direction
+    if (targetIndex < 0 || targetIndex >= options.length) return
+    const current = options[index]
+    const target = options[targetIndex]
+    setBusy(true); setError('')
+    try {
+      await sdApi(`/api/sales-desk/config/${kind}/${current.id}`, { method: 'PATCH', body: JSON.stringify({ sort_order: target.sort_order }) })
+      await sdApi(`/api/sales-desk/config/${kind}/${target.id}`, { method: 'PATCH', body: JSON.stringify({ sort_order: current.sort_order }) })
+      setNotice('Configuration order saved.')
+      await sdRefresh()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
   async function sdSaveRfq() {
     if (!sdSelectedRfq || !sdDetailDraft) return
     setBusy(true); setError('')
@@ -625,12 +651,12 @@ export default function App() {
                       </div>
                     )}
                     <div className="rfq-table-wrap"><table className="rfq-table">
-                      <thead><tr><th>RFQ No.</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th>Actions</th></tr></thead>
-                      <tbody>{filteredRfqs.length ? filteredRfqs.map((r: any) => <tr key={r.id} className="rfq-data-row"><td>{r.rfq_no}</td><td>{r.received_at ? new Date(r.received_at).toLocaleString() : '—'}</td><td>{r.customer_name}</td><td>{r.media_platform || '—'}</td><td>{r.sales_code || 'Unclaimed'}</td><td>{r.status}</td><td className="sd-actions-cell"><button className="secondary" onClick={() => void sdApi(`/api/sales-desk/rfqs/${r.id}`).then((detail) => { setSdSelectedRfq(detail); setSdDetailDraft(detail) }).catch((e) => setError(e.message))}>View</button>{sdUser?.role === 'salesperson' && !r.sales_code && <button className="primary" disabled={busy} onClick={() => void sdClaimRfq(r)}>Claim</button>}</td></tr>) : <tr><td colSpan={7}><div className="rfq-empty"><ClipboardList size={28}/><h3>{sdRfqs.length ? 'No matching RFQs' : 'No RFQs yet'}</h3><p>Incoming enquiries and manually captured RFQs will appear here.</p></div></td></tr>}</tbody>
+                      <thead><tr><th>RFQ No.</th><th>Type</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th>Actions</th></tr></thead>
+                      <tbody>{filteredRfqs.length ? filteredRfqs.map((r: any) => <tr key={r.id} className="rfq-data-row"><td>{r.rfq_no}</td><td>{r.rfq_type || 'Quote'}</td><td>{r.received_at ? new Date(r.received_at).toLocaleString() : '—'}</td><td>{r.customer_name}</td><td>{r.media_platform || '—'}</td><td>{r.sales_code || 'Unclaimed'}</td><td>{r.status}</td><td className="sd-actions-cell"><button className="secondary" onClick={() => void sdApi(`/api/sales-desk/rfqs/${r.id}`).then((detail) => { setSdSelectedRfq(detail); setSdDetailDraft(detail) }).catch((e) => setError(e.message))}>View</button>{sdUser?.role === 'salesperson' && !r.sales_code && <button className="primary" disabled={busy} onClick={() => void sdClaimRfq(r)}>Claim</button>}</td></tr>) : <tr><td colSpan={7}><div className="rfq-empty"><ClipboardList size={28}/><h3>{sdRfqs.length ? 'No matching RFQs' : 'No RFQs yet'}</h3><p>Incoming enquiries and manually captured RFQs will appear here.</p></div></td></tr>}</tbody>
                     </table></div>
                     {sdSelectedRfq && sdDetailDraft && (
                       <div className="rfq-empty-card sd-form-card">
-                        <div className="sd-detail-heading"><div><span className="eyebrow">RFQ DETAIL</span><h3>{sdSelectedRfq.rfq_no} · {sdSelectedRfq.customer_name}</h3></div><button className="secondary" onClick={() => { setSdSelectedRfq(null); setSdDetailDraft(null) }}>Close details</button></div>
+                        <div className="sd-detail-heading"><div><span className="eyebrow">RFQ DETAIL · {sdSelectedRfq.rfq_type || 'Quote'}</span><h3>{sdSelectedRfq.rfq_no} · {sdSelectedRfq.customer_name}</h3></div><div className="sd-actions">{sdSelectedRfq.rfq_type !== 'Invoice' && ['administrator', 'manager'].includes(sdUser?.role) && <button className="primary" disabled={busy} onClick={() => void sdConvertToInvoice(sdSelectedRfq)}>Convert to Invoice</button>}<button className="secondary" onClick={() => { setSdSelectedRfq(null); setSdDetailDraft(null) }}>Close details</button></div></div>
                         <div className="sd-form-grid">
                           <label>Customer name<input disabled={sdUser?.role === 'salesperson'} value={sdDetailDraft.customer_name || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, customer_name: e.target.value })}/></label>
                           <label>Media platform<select disabled={sdUser?.role === 'salesperson'} value={sdDetailDraft.media_platform_id || ''} onChange={(e) => setSdDetailDraft({ ...sdDetailDraft, media_platform_id: e.target.value })}>{sdConfig.media_platforms.filter((m: any) => m.is_active || m.id === sdDetailDraft.media_platform_id).map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
@@ -654,7 +680,7 @@ export default function App() {
                       <div className="rfq-empty-card sd-form-card">
                         <h3>Media platforms</h3><p>Add enquiry sources and deactivate old options without removing historical RFQs.</p>
                         <div className="sd-config-add"><input placeholder="New platform name" value={sdConfigDraft.mediaName} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, mediaName: e.target.value })}/><button className="primary" disabled={busy || !sdConfigDraft.mediaName.trim()} onClick={() => void sdConfigAction('/api/sales-desk/config/media-platforms', { name: sdConfigDraft.mediaName, sort_order: Number(sdConfigDraft.mediaSort || 0) })}>Add</button></div>
-                        {sdConfig.media_platforms.map((m: any) => <div className="sd-config-row" key={m.id}><div><b>{m.name}</b><small>Order {m.sort_order} · {m.is_active ? 'Active' : 'Inactive'}</small></div><div className="sd-actions"><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { sort_order: Math.max(0, Number(m.sort_order) - 1) }, 'PATCH')}>↑</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { sort_order: Number(m.sort_order) + 1 }, 'PATCH')}>↓</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { is_active: !m.is_active }, 'PATCH')}>{m.is_active ? 'Deactivate' : 'Activate'}</button><button className="secondary" onClick={() => { const name = window.prompt('Rename media platform', m.name); if (name?.trim()) void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { name }, 'PATCH') }}>Rename</button></div></div>)}
+                        {sdConfig.media_platforms.map((m: any, index: number) => <div className="sd-config-row" key={m.id}><div><b>{m.name}</b><small>Order {m.sort_order} · {m.is_active ? 'Active' : 'Inactive'}</small></div><div className="sd-actions"><button className="secondary" disabled={busy || index === 0} onClick={() => void sdMoveConfigOption('media-platforms', sdConfig.media_platforms, index, -1)}>↑</button><button className="secondary" disabled={busy || index === sdConfig.media_platforms.length - 1} onClick={() => void sdMoveConfigOption('media-platforms', sdConfig.media_platforms, index, 1)}>↓</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { is_active: !m.is_active }, 'PATCH')}>{m.is_active ? 'Deactivate' : 'Activate'}</button><button className="secondary" onClick={() => { const name = window.prompt('Rename media platform', m.name); if (name?.trim()) void sdConfigAction(`/api/sales-desk/config/media-platforms/${m.id}`, { name }, 'PATCH') }}>Rename</button></div></div>)}
                       </div>
                       <div className="rfq-empty-card sd-form-card">
                         <h3>Sales codes</h3><p>Salesperson accounts are linked to these configured codes.</p>
@@ -664,7 +690,7 @@ export default function App() {
                       <div className="rfq-empty-card sd-form-card">
                         <h3>RFQ statuses</h3><p>Mark terminal statuses as closed so dashboard open totals stay meaningful.</p>
                         <div className="sd-config-add"><input placeholder="New status name" value={sdConfigDraft.statusName} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, statusName: e.target.value })}/><label className="sd-inline-check"><input type="checkbox" checked={sdConfigDraft.statusClosed} onChange={(e) => setSdConfigDraft({ ...sdConfigDraft, statusClosed: e.target.checked })}/> Closed status</label><button className="primary" disabled={busy || !sdConfigDraft.statusName.trim()} onClick={() => void sdConfigAction('/api/sales-desk/config/statuses', { name: sdConfigDraft.statusName, sort_order: Number(sdConfig.statuses.length), is_closed: sdConfigDraft.statusClosed })}>Add</button></div>
-                        {sdConfig.statuses.map((s: any) => <div className="sd-config-row" key={s.id}><div><b>{s.name}</b><small>Order {s.sort_order} · {s.is_closed ? 'Closed' : 'Open'} · {s.is_active ? 'Active' : 'Inactive'}</small></div><div className="sd-actions"><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { sort_order: Math.max(0, Number(s.sort_order) - 1) }, 'PATCH')}>↑</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { sort_order: Number(s.sort_order) + 1 }, 'PATCH')}>↓</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { is_active: !s.is_active }, 'PATCH')}>{s.is_active ? 'Deactivate' : 'Activate'}</button><button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { name }, 'PATCH') }}>Rename</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { is_closed: !s.is_closed }, 'PATCH')}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button></div></div>)}
+                        {sdConfig.statuses.map((s: any, index: number) => <div className="sd-config-row" key={s.id}><div><b>{s.name}</b><small>Order {s.sort_order} · {s.is_closed ? 'Closed' : 'Open'} · {s.is_active ? 'Active' : 'Inactive'}</small></div><div className="sd-actions"><button className="secondary" disabled={busy || index === 0} onClick={() => void sdMoveConfigOption('statuses', sdConfig.statuses, index, -1)}>↑</button><button className="secondary" disabled={busy || index === sdConfig.statuses.length - 1} onClick={() => void sdMoveConfigOption('statuses', sdConfig.statuses, index, 1)}>↓</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { is_active: !s.is_active }, 'PATCH')}>{s.is_active ? 'Deactivate' : 'Activate'}</button><button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { name }, 'PATCH') }}>Rename</button><button className="secondary" onClick={() => void sdConfigAction(`/api/sales-desk/config/statuses/${s.id}`, { is_closed: !s.is_closed }, 'PATCH')}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button></div></div>)}
                       </div>
                     </div>
                   )
