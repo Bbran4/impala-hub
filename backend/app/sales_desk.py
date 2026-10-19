@@ -141,7 +141,7 @@ RFQ_SELECT = """SELECT r.*, m.name AS media_platform_name, sc.code AS sales_code
     FROM sd_rfqs r
     LEFT JOIN sd_media_platforms m ON m.id=r.media_platform_id
     LEFT JOIN sd_sales_codes sc ON sc.id=r.sales_code_id
-    JOIN sd_statuses st ON st.id=r.status_id""
+    JOIN sd_statuses st ON st.id=r.status_id"""
 
 
 class ConfigOptionIn(BaseModel):
