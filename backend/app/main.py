@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     facebook_page_id: str = ""
     facebook_page_token: str = ""
     facebook_api_version: str = "v26.0"  # use the version shown in your Meta app dashboard
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
     publisher_interval_seconds: int = 30
     facebook_sync_minutes: int = 10  # how often to import posts and figures from the Page; 0 turns it off
 
@@ -536,16 +538,50 @@ def upload_media(file: UploadFile = File(...)) -> dict:
     }
 
 
+FACEBOOK_LAST_CHECKED_AT: Optional[str] = None
+FACEBOOK_LAST_SUCCESS_AT: Optional[str] = None
+
+
 def facebook_integration() -> dict:
+    global FACEBOOK_LAST_CHECKED_AT, FACEBOOK_LAST_SUCCESS_AT
     base = {"provider": "facebook", "label": "Facebook Pages", "capabilities": ["page_posts", "page_media"]}
     client = facebook_client()
     if not client:
-        note = "Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN in backend/.env, then restart the API."
-        return {**base, "status": "not_connected", "note": note}
+        note = "No Page credentials configured. Add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env."
+        return {**base, "status": "not_connected", "note": note, "page_id": None}
     try:
-        return {**base, "status": "connected", "account_name": client.check().get("name", client.page_id)}
+        details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
+        status = "warning" if details.get("missing_permissions") else "connected"
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
+        FACEBOOK_LAST_SUCCESS_AT = FACEBOOK_LAST_CHECKED_AT
+        return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": status, "account_name": details["page_name"],
+                "page_id": details["page_id"], "token_type": details["token_type"],
+                "token_valid": details["token_valid"], "expires_at": details["expires_at"],
+                "data_access_expires_at": details["data_access_expires_at"],
+                "granted_permissions": details["granted_permissions"],
+                "missing_permissions": details["missing_permissions"],
+                "diagnostics_available": details["diagnostics_available"],
+                "diagnostic_note": details.get("diagnostic_note")}
     except FacebookError as exc:
-        return {**base, "status": "error", "note": f"Facebook rejected the connection: {exc}"}
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
+        return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": "error", "page_id": settings.facebook_page_id or None,
+                "note": f"Facebook connection check failed: {exc}"}
+
+
+@app.post("/api/integrations/facebook/check", dependencies=[Depends(require_api_key)])
+def check_facebook_connection() -> dict:
+    global FACEBOOK_LAST_CHECKED_AT, FACEBOOK_LAST_SUCCESS_AT
+    client = facebook_client()
+    if not client:
+        raise HTTPException(409, "Facebook is not configured. Add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env.")
+    try:
+        details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
+        FACEBOOK_LAST_SUCCESS_AT = FACEBOOK_LAST_CHECKED_AT
+        return {**details, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT}
+    except FacebookError as exc:
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
+        raise HTTPException(502, detail=f"Facebook connection check failed: {exc}")
 
 
 @app.post("/api/integrations/facebook/sync", dependencies=[Depends(require_api_key)])

@@ -132,6 +132,15 @@ export default function App() {
     } catch (e) { handleError(e) } finally { setBusy(false) }
   }
 
+  async function checkFacebookConnection() {
+    setBusy(true); setError('')
+    try {
+      const r = await api('/api/integrations/facebook/check', { method: 'POST' })
+      setNotice(`Facebook connection verified for ${r.page_name || r.page_id}.`)
+      await load()
+    } catch (e) { handleError(e) } finally { setBusy(false) }
+  }
+
   async function savePost(mode: 'draft' | 'approval' | 'schedule') {
     if (!editor) return
     setBusy(true); setError('')
@@ -457,7 +466,7 @@ export default function App() {
         {key && page === 'Configuration' && (
           <>
             <div className="section-head">
-              <div><h2>Connected channels</h2><p>Account connections will be enabled after the Meta developer app is configured.</p></div>
+              <div><h2>Connected channels</h2><p>Facebook Page connection health and account identity.</p></div>
             </div>
             <div className="integration-list">
               {integrations.map((i) => (
@@ -465,20 +474,31 @@ export default function App() {
                   <div className={`provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : i.provider === 'instagram' ? '◎' : '◉'}</div>
                   <div className="integration-info">
                     <b>{i.label}</b>
-                    <p>{i.note || (i.status === 'connected' ? 'Scheduled posts are published to this Page automatically.' : 'Publishing and insights permissions will be requested through the official connection flow.')}</p>
+                    <p>{i.note || (i.status === 'connected' ? 'Live Page identity check passed.' : 'Official account connection is not configured.')}</p>
+                    {i.provider === 'facebook' && i.page_id && <p><strong>Page ID:</strong> {i.page_id}</p>}
+                    {i.provider === 'facebook' && i.last_checked_at && <p><strong>Last checked:</strong> {new Date(i.last_checked_at).toLocaleString()}</p>}
+                    {i.provider === 'facebook' && i.last_success_at && <p><strong>Last successful check:</strong> {new Date(i.last_success_at).toLocaleString()}</p>}
+                    {i.provider === 'facebook' && i.token_type && <p><strong>Token type:</strong> {i.token_type}</p>}
+                    {i.provider === 'facebook' && i.expires_at && <p><strong>Token expires:</strong> {new Date(i.expires_at * 1000).toLocaleString()}</p>}
+                    {i.provider === 'facebook' && i.data_access_expires_at && <p><strong>Data access expires:</strong> {new Date(i.data_access_expires_at * 1000).toLocaleString()}</p>}
+                    {i.provider === 'facebook' && i.granted_permissions?.length > 0 && <p><strong>Granted permissions:</strong> {i.granted_permissions.join(', ')}</p>}
+                    {i.provider === 'facebook' && i.missing_permissions?.length > 0 && <p><strong>Missing permissions:</strong> {i.missing_permissions.join(', ')}</p>}
+                    {i.provider === 'facebook' && i.diagnostic_note && <p>{i.diagnostic_note}</p>}
                   </div>
                   <span className="status-badge">
-                    {i.status === 'connected' ? `Connected${i.account_name ? `: ${i.account_name}` : ''}` : i.status === 'error' ? 'Connection error' : 'Not connected'}
+                    {i.status === 'connected' ? `Connected${i.account_name ? `: ${i.account_name}` : ''}` : i.status === 'warning' ? 'Permission warning' : i.status === 'error' ? 'Connection error' : 'Not connected'}
                   </span>
-                  <button className="secondary" disabled>{i.status === 'connected' ? 'Connected' : 'Connect later'}</button>
+                  {i.provider === 'facebook'
+                    ? <button className="secondary" disabled={busy || i.status === 'not_connected'} onClick={() => void checkFacebookConnection()}>{busy ? 'Checking...' : 'Check connection'}</button>
+                    : <button className="secondary" disabled>{'Connect later'}</button>}
                 </div>
               ))}
             </div>
             <div className="security-note">
               <Settings size={20} />
               <div>
-                <b>Connection setup required</b>
-                <p>We will use Meta's OAuth flow. Access tokens will stay on the server, never in browser storage. Live publishing stays disabled until the integration is configured and verified.</p>
+                <b>Connection management</b>
+                <p>The current connection uses server-side Page credentials in backend/.env. To disconnect, remove FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN and restart the API. To reconnect, configure a valid Page token and restart. A full Meta OAuth connect/disconnect flow still requires the Meta app ID, app secret, and configured redirect URL.</p>
               </div>
             </div>
           </>

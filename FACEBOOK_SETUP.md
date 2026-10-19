@@ -1,6 +1,6 @@
 # Connecting Impala Hub to your Facebook Page
 
-This connects the app to **one Facebook Page that you administer**, using a Page access token kept in `backend/.env`. It is intended for internal use. A full "Connect with Facebook" login flow can be added later.
+This connects the app to **one Facebook Page that you administer**, using a Page access token kept server-side in `backend/.env`. Configuration now checks the Page identity and can inspect token expiry and permissions when Meta app credentials are configured. This is still the interim single-Page setup, not OAuth.
 
 ## 1. Create the Meta app (about 10 minutes)
 
@@ -25,10 +25,12 @@ Add to `backend/.env` (never commit this file):
 ```
 FACEBOOK_PAGE_ID=your_page_id
 FACEBOOK_PAGE_TOKEN=your_page_token
+META_APP_ID=your_meta_app_id
+META_APP_SECRET=your_meta_app_secret
 FACEBOOK_API_VERSION=v26.0
 ```
 
-Set `FACEBOOK_API_VERSION` to the Graph API version shown in your Meta app dashboard. Restart the API. Open **Configuration**: Facebook should show **Connected: <your Page name>**. If it shows a connection error, the message from Facebook is displayed there.
+Set `FACEBOOK_API_VERSION` to the Graph API version shown in your Meta app dashboard. Restart the API. Open **Configuration** and select **Check connection**. The response verifies the configured Page identity, displays its name and ID, checks whether the token is valid and belongs to the configured Meta app, and reports granted/missing permissions plus token and data-access expiry when `META_APP_ID` and `META_APP_SECRET` are configured. Without those app credentials, only Page identity can be verified; expiry and permission diagnostics are explicitly marked unavailable. The API does not return the token or app secret to the browser.
 
 ## 4. How publishing behaves
 
@@ -54,3 +56,12 @@ Set `FACEBOOK_API_VERSION` to the Graph API version shown in your Meta app dashb
 ## 6. Before the app is used by anyone else
 
 Page tokens in `.env` are fine for your own computer. For a shared or hosted deployment you need the items in the README's "Before a hosted, multi-user deployment" list, plus Meta's App Review / Business Verification if people outside the app's roles will connect their Pages.
+
+
+## Connection health and disconnect/reconnect
+
+- **Check connection** calls the backend's live Graph API diagnostic endpoint; a stored Page ID alone is never treated as proof of connection.
+- A successful identity check verifies the configured Page ID matches the Page returned by Meta.
+- When Meta app credentials are set, the backend uses the Graph API token debugger to check validity, app ownership, token type, expiry, data-access expiry, and available scopes. The currently required scopes for the Page workflow are `pages_manage_posts` and `pages_read_engagement`. Actual API access remains subject to Meta's app mode, review, Page roles, and current platform rules.
+- To **disconnect** the interim integration, remove `FACEBOOK_PAGE_ID` and `FACEBOOK_PAGE_TOKEN` from `backend/.env` and restart the API. To reconnect, configure a valid Page ID and Page token and restart, then use **Check connection**. This is intentionally explicit but is not yet a one-click OAuth disconnect.
+- **OAuth remains the next step** before multi-user/multi-Page rollout. It requires a Meta app with a configured redirect URL and server-side app credentials. The present environment-based token flow is for validating the first live Page workflow, not the permanent employee connection experience.
