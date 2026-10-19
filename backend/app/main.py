@@ -25,6 +25,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .facebook import FacebookError, client_from_settings
 from .sales_desk_auth import init_auth_db, router as sales_desk_auth_router
+from .sales_desk import init_sales_desk_db, router as sales_desk_router
 
 
 # --------------------------------------------------------------------------- settings
@@ -224,6 +225,7 @@ def init_db() -> None:
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
         conn.commit()
         init_auth_db(settings.rfq_bootstrap_admin_username, settings.rfq_bootstrap_admin_password, DB_PATH)
+        init_sales_desk_db(DB_PATH)
     finally:
         conn.close()
 
@@ -274,6 +276,7 @@ def facebook_client():
 
 app = FastAPI(title="Impala Hub Marketing API", version="0.2.0", lifespan=lifespan)
 app.include_router(sales_desk_auth_router)
+app.include_router(sales_desk_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
