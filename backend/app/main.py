@@ -42,8 +42,11 @@ class Settings(BaseSettings):
     meta_app_id: str = ""
     meta_app_secret: str = ""
     facebook_oauth_redirect_uri: str = "http://localhost:8000/api/integrations/facebook/callback"
-    facebook_frontend_url: str = "http://localhost:5173"
+    # Must be the same origin you open the app on (sessionStorage, which holds the API key, is per origin).
+    facebook_frontend_url: str = "http://127.0.0.1:5173"
     facebook_token_encryption_key: str = ""
+    # Set true only if your Page lives in a Meta Business Portfolio and "me/accounts" comes back empty.
+    facebook_request_business_management: bool = False
     publisher_interval_seconds: int = 30
     facebook_sync_minutes: int = 10  # how often to import posts and figures from the Page; 0 turns it off
 
@@ -200,6 +203,7 @@ def init_db() -> None:
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
+        conn.commit()
     finally:
         conn.close()
 
@@ -207,18 +211,16 @@ def init_db() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    worker = None
-    client = facebook_client()
-    if client:
-        from .publisher import run_forever  # imported here because publisher imports this module
+    from .publisher import run_forever  # imported here because publisher imports this module
 
-        worker = asyncio.create_task(run_forever(client, settings.publisher_interval_seconds, settings.facebook_sync_minutes))
+    # Pass the factory, not a client: the worker re-reads the connection every cycle, so connecting,
+    # reconnecting or disconnecting Facebook in the UI takes effect without restarting the API.
+    worker = asyncio.create_task(run_forever(facebook_client, settings.publisher_interval_seconds, settings.facebook_sync_minutes))
     try:
         yield
     finally:
-        if worker:
-            worker.cancel()
-            await asyncio.gather(worker, return_exceptions=True)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
 
 
 def _fernet() -> Fernet:
@@ -238,7 +240,7 @@ def _stored_facebook_connection() -> Optional[dict]:
         return None
     try:
         token = _fernet().decrypt(row["encrypted_token"].encode()).decode()
-    except (InvalidToken, UnicodeDecodeError):
+    except (InvalidToken, UnicodeDecodeError, HTTPException):
         return None
     return {**dict(row), "token": token}
 
@@ -291,7 +293,7 @@ def audit(db: sqlite3.Connection, action: str, entity_type: str, entity_id: str,
 # --------------------------------------------------------------------------- models
 Channel = Literal["facebook", "instagram", "whatsapp"]
 PostStatus = Literal["draft", "awaiting_approval", "scheduled", "published", "failed"]
-# Clients may only choose these. "published" and "failed" are set by the publishing worker (not built yet).
+# Clients may only choose these. "published" and "failed" are set by the publishing worker.
 InputStatus = Literal["draft", "awaiting_approval", "scheduled"]
 # Scheduled and published posts are frozen: only their campaign may be changed.
 LOCKED_STATUSES = {"scheduled", "published"}
@@ -623,16 +625,17 @@ def facebook_integration() -> dict:
     base = {"provider": "facebook", "label": "Facebook Pages", "capabilities": ["page_posts", "page_media"]}
     client = facebook_client()
     stored = _stored_facebook_connection()
+    oauth_ready = bool(settings.meta_app_id and settings.meta_app_secret and settings.facebook_token_encryption_key)
     if not client:
         note = "No Facebook Page connected. Select Connect Facebook to authorize Meta and choose a Page."
-        return {**base, "status": "not_connected", "note": note, "page_id": None, "oauth_configured": bool(settings.meta_app_id and settings.meta_app_secret and settings.facebook_token_encryption_key)}
+        return {**base, "status": "not_connected", "note": note, "page_id": None, "oauth_configured": oauth_ready}
     try:
         details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
         status = "warning" if details.get("missing_permissions") else "connected"
         FACEBOOK_LAST_CHECKED_AT = now_iso()
         FACEBOOK_LAST_SUCCESS_AT = FACEBOOK_LAST_CHECKED_AT
         return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": status, "account_name": details["page_name"],
-                "page_id": details["page_id"], "token_type": details["token_type"], "connection_source": "oauth" if stored else "environment", "oauth_configured": bool(settings.meta_app_id and settings.meta_app_secret and settings.facebook_token_encryption_key),
+                "page_id": details["page_id"], "token_type": details["token_type"], "connection_source": "oauth" if stored else "environment", "oauth_configured": oauth_ready,
                 "token_valid": details["token_valid"], "expires_at": details["expires_at"],
                 "data_access_expires_at": details["data_access_expires_at"], "token_warning": _token_expiry_warning(details.get("expires_at"), details.get("data_access_expires_at")),
                 "granted_permissions": details["granted_permissions"],
@@ -642,9 +645,8 @@ def facebook_integration() -> dict:
     except FacebookError as exc:
         FACEBOOK_LAST_CHECKED_AT = now_iso()
         return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": "error", "page_id": settings.facebook_page_id or None,
+                "oauth_configured": oauth_ready, "connection_source": "oauth" if stored else "environment",
                 "note": f"Facebook connection check failed: {exc}"}
-
-
 
 
 # --------------------------------------------------------------------------- Facebook OAuth / Page selection
@@ -683,14 +685,31 @@ def facebook_oauth_url() -> dict:
     with db_session() as db:
         db.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         db.execute("INSERT INTO facebook_oauth_states(state,created_at) VALUES(?,?)", (state, time.time()))
+    scopes = FACEBOOK_OAUTH_SCOPES + (",business_management" if settings.facebook_request_business_management else "")
     params = {
         "client_id": settings.meta_app_id.strip(),
         "redirect_uri": settings.facebook_oauth_redirect_uri.strip(),
         "state": state,
         "response_type": "code",
-        "scope": FACEBOOK_OAUTH_SCOPES,
+        "scope": scopes,
+        "auth_type": "rerequest",  # shows the permission and Page-selection dialog again instead of reusing an old grant
     }
     return {"url": "https://www.facebook.com/" + settings.facebook_api_version + "/dialog/oauth?" + urlencode(params)}
+
+
+def _granted_page_ids(user_token: str) -> tuple[list[str], bool]:
+    """Page IDs the user ticked in Meta's dialog, read from the token's granular scopes.
+    Returns (ids, granular_scopes_present)."""
+    debug = _meta_graph_get("debug_token", {
+        "input_token": user_token,
+        "access_token": f"{settings.meta_app_id.strip()}|{settings.meta_app_secret.strip()}",
+    }).get("data", {})
+    granular = debug.get("granular_scopes") or []
+    ids: list[str] = []
+    for item in granular:
+        if item.get("scope") in ("pages_show_list", "pages_manage_posts"):
+            ids += [str(i) for i in item.get("target_ids") or []]
+    return list(dict.fromkeys(ids)), bool(granular)
 
 
 @app.get("/api/integrations/facebook/callback")
@@ -739,6 +758,24 @@ def facebook_oauth_callback(code: Optional[str] = None, state: Optional[str] = N
                 "access_token": user_token,
             })
             raw_pages = pages_response.get("data", [])
+
+        granted_ids: list[str] = []
+        had_granular = False
+        if not [p for p in raw_pages if p.get("id") and p.get("access_token")]:
+            # me/accounts can be empty for Business-Portfolio Pages even when access was granted.
+            # Fall back to the Page IDs the user ticked in Meta's dialog and fetch each one directly.
+            try:
+                granted_ids, had_granular = _granted_page_ids(long_token)
+            except HTTPException:
+                pass
+            for page_id in granted_ids:
+                try:
+                    page = _meta_graph_get(page_id, {"fields": "id,name,access_token", "access_token": long_token})
+                except HTTPException:
+                    continue
+                if page.get("access_token"):
+                    raw_pages.append(page)
+
         pages = [p for p in raw_pages if p.get("id") and p.get("access_token")]
         if not pages:
             # Give the frontend a useful, non-sensitive diagnosis rather than a generic
@@ -756,8 +793,10 @@ def facebook_oauth_callback(code: Optional[str] = None, state: Optional[str] = N
             required = {"pages_show_list", "pages_manage_posts", "pages_read_engagement"}
             if not required.issubset(granted):
                 reason = "missing_permissions"
-            elif raw_pages:
+            elif granted_ids:
                 reason = "page_token_unavailable"
+            elif had_granular:
+                reason = "no_pages_selected"  # permissions granted, but no Page was ticked in the dialog
             else:
                 reason = "no_pages"
             return RedirectResponse(frontend + f"/?facebook_oauth=error&reason={reason}")
@@ -843,13 +882,12 @@ def disconnect_facebook() -> dict:
     return {"disconnected": True, "using_environment_fallback": bool(settings.facebook_page_id and settings.facebook_page_token)}
 
 
-
 @app.post("/api/integrations/facebook/check", dependencies=[Depends(require_api_key)])
 def check_facebook_connection() -> dict:
     global FACEBOOK_LAST_CHECKED_AT, FACEBOOK_LAST_SUCCESS_AT
     client = facebook_client()
     if not client:
-        raise HTTPException(409, "Facebook is not configured. Add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env.")
+        raise HTTPException(409, "Facebook is not connected. Click Connect Facebook, or add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env.")
     try:
         details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
         FACEBOOK_LAST_CHECKED_AT = now_iso()
@@ -864,7 +902,7 @@ def check_facebook_connection() -> dict:
 def sync_facebook() -> dict:
     client = facebook_client()
     if not client:
-        raise HTTPException(409, "Facebook is not connected. Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN in backend/.env.")
+        raise HTTPException(409, "Facebook is not connected. Click Connect Facebook in Configuration first.")
     from .publisher import sync_posts  # imported here because publisher imports this module
 
     try:

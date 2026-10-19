@@ -1,0 +1,8 @@
+/* Styles for the Facebook connection UI and the token expiry warning banner. */
+.warning{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:8px;margin:0 0 15px;font-size:12px;background:#fff7e0;border:1px solid #e7b94f;color:#7a5a12}
+.warning button{margin-left:auto}
+.token-warning{color:#a35b13}
+.integration-actions{display:flex;flex-direction:column;gap:8px;min-width:180px}
+.facebook-page-picker{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid #edf0f3}
+.facebook-page-picker label{font-size:11px;font-weight:700}
+.facebook-page-picker select{border:1px solid #d8e1e7;border-radius:7px;padding:8px;font-size:12px}

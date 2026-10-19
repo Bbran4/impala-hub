@@ -14,7 +14,7 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Callable, Optional
 
 from .facebook import FacebookClient, FacebookError
 from .main import UPLOAD_PATH, audit, db_session, now_iso
@@ -179,25 +179,40 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
     return stats
 
 
-async def run_forever(client: FacebookClient, interval: int, sync_minutes: int = 10) -> None:
+async def run_forever(get_client: Callable[[], Optional[FacebookClient]], interval: int, sync_minutes: int = 10) -> None:
+    """Run publishing and syncing until cancelled.
+
+    get_client is called every cycle, so connecting, reconnecting or disconnecting a Page in the UI
+    takes effect immediately. With no client configured the loop simply idles.
+    """
     log.info("Facebook publisher started (publishes every %s s, syncs every %s min)", interval, sync_minutes)
     last_sync: Optional[datetime] = None
     while True:
         try:
-            stats = await asyncio.to_thread(process_due, client)
-            if any(stats.values()):
-                log.info("Publisher cycle: %s", stats)
+            client = await asyncio.to_thread(get_client)
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.exception("Publisher cycle failed")
-        if sync_minutes > 0 and (last_sync is None or datetime.now(timezone.utc) - last_sync >= timedelta(minutes=sync_minutes)):
-            last_sync = datetime.now(timezone.utc)  # set first so a failing sync is not retried every cycle
+            log.exception("Could not read the Facebook connection")
+            client = None
+        if client:
             try:
-                stats = await asyncio.to_thread(sync_posts, client)
-                log.info("Facebook sync: %s", stats)
+                stats = await asyncio.to_thread(process_due, client)
+                if any(stats.values()):
+                    log.info("Publisher cycle: %s", stats)
             except asyncio.CancelledError:
                 raise
             except Exception:
-                log.exception("Facebook sync failed")
+                log.exception("Publisher cycle failed")
+            if sync_minutes > 0 and (last_sync is None or datetime.now(timezone.utc) - last_sync >= timedelta(minutes=sync_minutes)):
+                last_sync = datetime.now(timezone.utc)  # set first so a failing sync is not retried every cycle
+                try:
+                    stats = await asyncio.to_thread(sync_posts, client)
+                    log.info("Facebook sync: %s", stats)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("Facebook sync failed")
+        else:
+            last_sync = None  # sync again promptly after a Page is connected
         await asyncio.sleep(max(5, interval))

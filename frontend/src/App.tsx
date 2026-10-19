@@ -28,6 +28,19 @@ const emptyPost = (): Partial<Post> => ({
 })
 const NEEDS_ATTENTION = ['awaiting_approval', 'failed']
 
+// Plain-English explanations for the reason codes the backend adds to the redirect after Facebook login.
+const OAUTH_REASONS: Record<string, string> = {
+  no_pages_selected: 'You did not tick any Page in the Facebook dialog. Click Connect Facebook again and select your Page.',
+  no_pages: 'Meta returned no Pages for this account. Check that you have a role on the Page and on the Meta app. If the Page is in a Business Portfolio, set FACEBOOK_REQUEST_BUSINESS_MANAGEMENT=true in backend/.env and restart the API.',
+  missing_permissions: 'Not all required permissions were granted. Connect again and accept every permission.',
+  page_token_unavailable: 'Meta listed the Page but gave no Page token. You may lack full control of the Page.',
+  invalid_state: 'The login session expired. Try again.',
+  authorization_cancelled: 'Authorization was cancelled.',
+  missing_code: 'Meta did not return an authorization code. Try again.',
+  setup: 'Facebook OAuth is not fully configured in backend/.env.',
+  meta_request_failed: 'A request to Meta failed. Check META_APP_ID and META_APP_SECRET in backend/.env.',
+}
+
 export default function App() {
   const [key, setKey] = useState(getKey())
   const [keyEntry, setKeyEntry] = useState('')
@@ -71,10 +84,13 @@ export default function App() {
       const params = new URLSearchParams(window.location.search)
       const oauthResult = params.get('facebook_oauth')
       if (oauthResult === 'choose_page') {
+        setPage('Configuration') // the Page picker lives here
         setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.')
         void loadFacebookPages()
       } else if (oauthResult === 'error') {
-        setError('Facebook authorization did not finish (' + (params.get('reason') || 'unknown error').replaceAll('_', ' ') + '). Check Meta setup and try again.')
+        setPage('Configuration')
+        const reason = params.get('reason') || 'unknown'
+        setError(OAUTH_REASONS[reason] ?? `Facebook authorization did not finish (${reason.replaceAll('_', ' ')}).`)
       }
       if (oauthResult) {
         params.delete('facebook_oauth'); params.delete('reason')
@@ -83,6 +99,9 @@ export default function App() {
       }
     }
   }, [key])
+
+  // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
+  useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -184,7 +203,7 @@ export default function App() {
     setBusy(true); setError('')
     try {
       await api('/api/integrations/facebook/disconnect', { method: 'POST' })
-      setNotice('Saved Facebook OAuth connection removed.')
+      setNotice('Saved Facebook connection removed. To also revoke Impala Hub at Meta, remove the app under Facebook Settings > Business Integrations.')
       setFacebookPages([])
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
@@ -205,7 +224,7 @@ export default function App() {
     try {
       const status = mode === 'draft' ? 'draft' : mode === 'approval' ? 'awaiting_approval' : 'scheduled'
       if (status === 'scheduled' && !isFuture(editor.publish_at)) {
-        throw new Error('Choose a future date and time to schedule this post. Publishing immediately is not available until Meta is connected.')
+        throw new Error('Choose a future date and time to schedule this post. Publishing immediately is not available.')
       }
       const payload = {
         title: editor.title ?? '',
@@ -222,8 +241,10 @@ export default function App() {
       }
       if (editor.id) await api(`/api/posts/${editor.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
       else await api('/api/posts', { method: 'POST', body: JSON.stringify(payload) })
+      const facebookLive = integrations.some((i) => i.provider === 'facebook' && i.status === 'connected')
       setNotice(
-        status === 'scheduled' ? 'Post saved as scheduled. Automatic publishing is not enabled yet.'
+        status === 'scheduled'
+          ? (facebookLive ? 'Post scheduled. It will be published to Facebook at the chosen time while the API is running.' : 'Post saved as scheduled. Connect Facebook in Configuration so it can be published.')
         : status === 'awaiting_approval' ? 'Post sent for approval.'
         : 'Draft saved.',
       )
@@ -335,6 +356,13 @@ export default function App() {
             <button aria-label="Dismiss error" onClick={() => setError('')}><X size={15} /></button>
           </div>
         )}
+
+        {/* Token expiry warning: visible on every screen so nobody misses it. */}
+        {key && integrations.filter((i) => i.provider === 'facebook' && i.token_warning).map((i) => (
+          <div className="warning" key="fb-token"><CircleAlert size={17} />{i.token_warning}
+            {page !== 'Configuration' && <button className="secondary" onClick={() => setPage('Configuration')}>Go to Configuration</button>}
+          </div>
+        ))}
 
         {!key && (
           <section className="key-panel">
@@ -539,6 +567,7 @@ export default function App() {
                     {i.provider === 'facebook' && i.token_type && <p><strong>Token type:</strong> {i.token_type}</p>}
                     {i.provider === 'facebook' && i.expires_at && <p><strong>Token expires:</strong> {new Date(i.expires_at * 1000).toLocaleString()}</p>}
                     {i.provider === 'facebook' && i.data_access_expires_at && <p><strong>Data access expires:</strong> {new Date(i.data_access_expires_at * 1000).toLocaleString()}</p>}
+                    {i.provider === 'facebook' && i.status === 'connected' && !i.expires_at && <p>Page token does not expire. Reconnect when data access expires.</p>}
                     {i.provider === 'facebook' && i.granted_permissions?.length > 0 && <p><strong>Granted permissions:</strong> {i.granted_permissions.join(', ')}</p>}
                     {i.provider === 'facebook' && i.missing_permissions?.length > 0 && <p><strong>Missing permissions:</strong> {i.missing_permissions.join(', ')}</p>}
                     {i.provider === 'facebook' && i.diagnostic_note && <p>{i.diagnostic_note}</p>}
@@ -674,7 +703,7 @@ export default function App() {
 
               <label htmlFor="post-when">Publication date and time <span>Required to schedule. Leave blank for a draft.</span></label>
               <input id="post-when" type="datetime-local" value={toLocalInput(editor.publish_at)} onChange={(e) => patchEditor({ publish_at: e.target.value })} />
-              <p className="hint">Scheduling stores the date and time. A background publishing worker will be enabled once the real channel integrations are configured.</p>
+              <p className="hint">Scheduled posts are published to the connected Facebook Page by a background worker while the API is running.</p>
             </div>
             <footer className="editor-foot">
               <button className="secondary" onClick={() => setEditor(null)}>Cancel</button>
