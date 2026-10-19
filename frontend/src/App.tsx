@@ -227,23 +227,27 @@ export default function App() {
           <div><b>IMPALA HUB</b><small>Marketing workspace</small></div>
         </div>
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
-        <div className="nav-label">WORKSPACE</div>
-        {([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Configuration', Settings]] as const).map(
-          ([label, Icon]) => (
-            <button
-              key={label}
-              className={`nav-item ${page === label || (label === 'Posts' && page === 'Post') ? 'active' : ''}`}
-              onClick={() => { setPage(label); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}
-            >
-              <Icon size={18} />{label}
-            </button>
-          ),
+        {page !== 'Apps' && (
+          <>
+            <div className="nav-label">WORKSPACE</div>
+            {([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Configuration', Settings]] as const).map(
+              ([label, Icon]) => (
+                <button
+                  key={label}
+                  className={`nav-item ${page === label || (label === 'Posts' && page === 'Post') ? 'active' : ''}`}
+                  onClick={() => { setPage(label); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}
+                >
+                  <Icon size={18} />{label}
+                </button>
+              ),
+            )}
+            <div className="sidebar-bottom">
+              <div className="connection-dot" /> <span>Local workspace</span>
+              <small>{integrations.some((i) => i.status === 'connected') ? 'Facebook connected' : 'Publishing not connected'}</small>
+              {key && <button className="text-button" onClick={disconnectKey}>Change API key</button>}
+            </div>
+          </>
         )}
-        <div className="sidebar-bottom">
-          <div className="connection-dot" /> <span>Local workspace</span>
-          <small>{integrations.some((i) => i.status === 'connected') ? 'Facebook connected' : 'Publishing not connected'}</small>
-          {key && <button className="text-button" onClick={disconnectKey}>Change API key</button>}
-        </div>
       </aside>
 
       <main className="main">
