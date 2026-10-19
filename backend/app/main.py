@@ -538,7 +538,12 @@ def upload_media(file: UploadFile = File(...)) -> dict:
     }
 
 
+FACEBOOK_LAST_CHECKED_AT: Optional[str] = None
+FACEBOOK_LAST_SUCCESS_AT: Optional[str] = None
+
+
 def facebook_integration() -> dict:
+    global FACEBOOK_LAST_CHECKED_AT, FACEBOOK_LAST_SUCCESS_AT
     base = {"provider": "facebook", "label": "Facebook Pages", "capabilities": ["page_posts", "page_media"]}
     client = facebook_client()
     if not client:
@@ -547,7 +552,9 @@ def facebook_integration() -> dict:
     try:
         details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
         status = "warning" if details.get("missing_permissions") else "connected"
-        return {**base, "status": status, "account_name": details["page_name"],
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
+        FACEBOOK_LAST_SUCCESS_AT = FACEBOOK_LAST_CHECKED_AT
+        return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": status, "account_name": details["page_name"],
                 "page_id": details["page_id"], "token_type": details["token_type"],
                 "token_valid": details["token_valid"], "expires_at": details["expires_at"],
                 "data_access_expires_at": details["data_access_expires_at"],
@@ -556,18 +563,24 @@ def facebook_integration() -> dict:
                 "diagnostics_available": details["diagnostics_available"],
                 "diagnostic_note": details.get("diagnostic_note")}
     except FacebookError as exc:
-        return {**base, "status": "error", "page_id": settings.facebook_page_id or None,
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
+        return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": "error", "page_id": settings.facebook_page_id or None,
                 "note": f"Facebook connection check failed: {exc}"}
 
 
 @app.post("/api/integrations/facebook/check", dependencies=[Depends(require_api_key)])
 def check_facebook_connection() -> dict:
+    global FACEBOOK_LAST_CHECKED_AT, FACEBOOK_LAST_SUCCESS_AT
     client = facebook_client()
     if not client:
         raise HTTPException(409, "Facebook is not configured. Add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env.")
     try:
-        return client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
+        details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
+        FACEBOOK_LAST_SUCCESS_AT = FACEBOOK_LAST_CHECKED_AT
+        return {**details, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT}
     except FacebookError as exc:
+        FACEBOOK_LAST_CHECKED_AT = now_iso()
         raise HTTPException(502, detail=f"Facebook connection check failed: {exc}")
 
 
