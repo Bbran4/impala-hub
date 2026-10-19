@@ -33,6 +33,8 @@ class Settings(BaseSettings):
 
     app_api_key: str = ""
     database_path: str = "./data/impala_hub.db"
+    rfq_bootstrap_admin_username: str = ""
+    rfq_bootstrap_admin_password: str = ""
     upload_dir: str = "./uploads"
     max_upload_mb: int = 15
     allow_insecure_local_dev: bool = False  # set ALLOW_INSECURE_LOCAL_DEV=true in .env to allow a weak key
@@ -221,7 +223,7 @@ def init_db() -> None:
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
         conn.commit()
-        init_auth_db()
+        init_auth_db(settings.rfq_bootstrap_admin_username, settings.rfq_bootstrap_admin_password, DB_PATH)
     finally:
         conn.close()
 
