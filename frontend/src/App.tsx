@@ -525,12 +525,6 @@ export default function App() {
                 )}
               </>
             )}
-              <div className="rfq-empty-card">
-                <Settings size={26} />
-                <h3>RFQ configuration</h3>
-                <p>Media platforms, sales codes, and status management will appear here when the RFQ backend is implemented.</p>
-              </div>
-            )}
           </section>
         )}
 
