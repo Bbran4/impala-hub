@@ -30,7 +30,10 @@ def _connect() -> sqlite3.Connection:
     return db
 
 
-def init_auth_db() -> None:
+def init_auth_db(bootstrap_username: str = "", bootstrap_password: str = "", database_path: Optional[Path] = None) -> None:
+    global DB_PATH
+    if database_path is not None:
+        DB_PATH = Path(database_path).resolve()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _connect() as db:
         db.executescript("""
@@ -55,8 +58,8 @@ def init_auth_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_sd_sessions_user ON sd_sessions(user_id);
         """)
         # Bootstrap only the very first administrator. Never reset or replace an existing account.
-        username = os.getenv("RFQ_BOOTSTRAP_ADMIN_USERNAME", "").strip()
-        password = os.getenv("RFQ_BOOTSTRAP_ADMIN_PASSWORD", "")
+        username = bootstrap_username.strip()
+        password = bootstrap_password
         count = db.execute("SELECT COUNT(*) FROM sd_users").fetchone()[0]
         if count == 0 and username and password:
             if len(password) < 14:
