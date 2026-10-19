@@ -205,6 +205,10 @@ def create_user(payload: UserCreateIn, _: dict = Depends(require_admin)) -> dict
     user_id = secrets.token_hex(16)
     sales_code = payload.sales_code.strip() if payload.sales_code else None
     with _connect() as db:
+        if payload.role == "salesperson":
+            configured = db.execute("SELECT 1 FROM sd_sales_codes WHERE code=? COLLATE NOCASE AND is_active=1", (sales_code,)).fetchone()
+            if not configured:
+                raise HTTPException(422, "Choose an active configured sales code")
         try:
             db.execute(
                 """INSERT INTO sd_users
