@@ -322,11 +322,24 @@ def patch_status(option_id: str, payload: dict, _: dict = Depends(require_admin)
         if not row:
             raise HTTPException(404, "Status not found")
         name = str(payload.get("name", row["name"])).strip()
-        if not name:
-            raise HTTPException(422, "Name cannot be blank")
-        db.execute("UPDATE sd_statuses SET name=?,sort_order=?,is_active=?,is_closed=?,updated_at=? WHERE id=?",
-                   (name, int(payload.get("sort_order", row["sort_order"])), int(bool(payload.get("is_active", row["is_active"]))),
-                    int(bool(payload.get("is_closed", row["is_closed"]))), _now(), option_id))
+        sort_order = payload.get("sort_order", row["sort_order"])
+        active_value = payload.get("is_active", bool(row["is_active"]))
+        closed_value = payload.get("is_closed", bool(row["is_closed"]))
+        if not name or len(name) > 100:
+            raise HTTPException(422, "Name must contain 1 to 100 characters")
+        if isinstance(sort_order, bool) or not isinstance(sort_order, int) or not 0 <= sort_order <= 10000:
+            raise HTTPException(422, "Sort order must be an integer from 0 to 10000")
+        if not isinstance(active_value, (bool, int)) or active_value not in (False, True, 0, 1):
+            raise HTTPException(422, "is_active must be true or false")
+        if not isinstance(closed_value, (bool, int)) or closed_value not in (False, True, 0, 1):
+            raise HTTPException(422, "is_closed must be true or false")
+        if row["name"].lower() == "unclaimed" and not active_value:
+            raise HTTPException(409, "The Unclaimed status is required for new RFQs and cannot be deactivated")
+        try:
+            db.execute("UPDATE sd_statuses SET name=?,sort_order=?,is_active=?,is_closed=?,updated_at=? WHERE id=?",
+                       (name, sort_order, int(active_value), int(closed_value), _now(), option_id))
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(409, "A status with that name already exists") from exc
         return dict(db.execute("SELECT * FROM sd_statuses WHERE id=?", (option_id,)).fetchone())
 
 
