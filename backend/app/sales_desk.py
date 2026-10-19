@@ -52,6 +52,7 @@ def init_sales_desk_db(database_path: Optional[Path] = None) -> None:
         CREATE TABLE IF NOT EXISTS sd_statuses (
             id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
             sort_order INTEGER NOT NULL DEFAULT 0, is_active INTEGER NOT NULL DEFAULT 1,
+            is_closed INTEGER NOT NULL DEFAULT 0 CHECK(is_closed IN (0,1)),
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS sd_rfq_daily_sequences (
@@ -92,10 +93,23 @@ def init_sales_desk_db(database_path: Optional[Path] = None) -> None:
             created_at TEXT NOT NULL
         );
         """)
+        # Additive migration for databases created before status classification existed.
+        status_columns = {row["name"] for row in db.execute("PRAGMA table_info(sd_statuses)").fetchall()}
+        if "is_closed" not in status_columns:
+            db.execute("ALTER TABLE sd_statuses ADD COLUMN is_closed INTEGER NOT NULL DEFAULT 0")
         now = _now()
-        for name, order in (("Unclaimed", 0), ("New", 1), ("In Progress", 2), ("Quoted", 3), ("Closed", 4)):
+        for name, order, closed in (
+            ("Unclaimed", 0, 0), ("New", 1, 0), ("In Progress", 2, 0),
+            ("Awaiting Customer", 3, 0), ("Quotation Issued", 4, 0),
+            ("Converted to Sale", 5, 1), ("Lost", 6, 1), ("Closed", 7, 1),
+        ):
             db.execute(
-                "INSERT OR IGNORE INTO sd_statuses(id,name,sort_order,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)",
+                "INSERT OR IGNORE INTO sd_statuses(id,name,sort_order,is_active,is_closed,created_at,updated_at) VALUES(?,?,?,1,?,?,?)",
+                (uuid.uuid4().hex, name, order, closed, now, now),
+            )
+        for name, order in (("Facebook", 0), ("WhatsApp", 1), ("Email", 2), ("Telephone", 3), ("Walk-in", 4)):
+            db.execute(
+                "INSERT OR IGNORE INTO sd_media_platforms(id,name,sort_order,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)",
                 (uuid.uuid4().hex, name, order, now, now),
             )
 
@@ -121,17 +135,19 @@ def _rfq(row: sqlite3.Row) -> dict:
 
 
 RFQ_SELECT = """SELECT r.*, m.name AS media_platform_name, sc.code AS sales_code_value,
-    u.display_name AS salesperson_name, st.name AS status_name
+    (SELECT u.display_name FROM sd_users u WHERE u.sales_code=sc.code COLLATE NOCASE
+       AND u.role='salesperson' AND u.is_active=1 ORDER BY u.display_name LIMIT 1) AS salesperson_name,
+    st.name AS status_name, st.is_closed AS status_is_closed
     FROM sd_rfqs r
     LEFT JOIN sd_media_platforms m ON m.id=r.media_platform_id
     LEFT JOIN sd_sales_codes sc ON sc.id=r.sales_code_id
-    LEFT JOIN sd_users u ON u.sales_code=sc.code AND u.role='salesperson' AND u.is_active=1
-    JOIN sd_statuses st ON st.id=r.status_id"""
+    JOIN sd_statuses st ON st.id=r.status_id""
 
 
 class ConfigOptionIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     sort_order: int = Field(default=0, ge=0, le=10000)
+    is_closed: bool = False
 
     @field_validator("name")
     @classmethod
@@ -197,10 +213,11 @@ def _assert_sales_code(db: sqlite3.Connection, code: Optional[str]) -> None:
 
 @router.get("/config")
 def get_config(user: dict = Depends(current_user)) -> dict:
+    active_filter = "" if user["role"] == "administrator" else " WHERE is_active=1"
     with _connect() as db:
-        media = db.execute("SELECT * FROM sd_media_platforms WHERE is_active=1 ORDER BY sort_order,name").fetchall()
-        codes = db.execute("SELECT * FROM sd_sales_codes WHERE is_active=1 ORDER BY code").fetchall()
-        statuses = db.execute("SELECT * FROM sd_statuses WHERE is_active=1 ORDER BY sort_order,name").fetchall()
+        media = db.execute("SELECT * FROM sd_media_platforms" + active_filter + " ORDER BY sort_order,name").fetchall()
+        codes = db.execute("SELECT * FROM sd_sales_codes" + active_filter + " ORDER BY code").fetchall()
+        statuses = db.execute("SELECT * FROM sd_statuses" + active_filter + " ORDER BY sort_order,name").fetchall()
     return {"media_platforms": [dict(x) for x in media], "sales_codes": [dict(x) for x in codes],
             "statuses": [dict(x) for x in statuses], "can_configure": user["role"] == "administrator"}
 
@@ -279,8 +296,8 @@ def create_status(payload: ConfigOptionIn, _: dict = Depends(require_admin)) -> 
     now, ident = _now(), uuid.uuid4().hex
     with _connect() as db:
         try:
-            db.execute("INSERT INTO sd_statuses(id,name,sort_order,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)",
-                       (ident, payload.name, payload.sort_order, now, now))
+            db.execute("INSERT INTO sd_statuses(id,name,sort_order,is_active,is_closed,created_at,updated_at) VALUES(?,?,?,1,?,?,?)",
+                       (ident, payload.name, payload.sort_order, int(payload.is_closed), now, now))
         except sqlite3.IntegrityError as exc:
             raise HTTPException(409, "Status already exists") from exc
         return dict(db.execute("SELECT * FROM sd_statuses WHERE id=?", (ident,)).fetchone())
@@ -288,9 +305,9 @@ def create_status(payload: ConfigOptionIn, _: dict = Depends(require_admin)) -> 
 
 @router.patch("/config/statuses/{option_id}")
 def patch_status(option_id: str, payload: dict, _: dict = Depends(require_admin)) -> dict:
-    allowed = {"name", "sort_order", "is_active"}
+    allowed = {"name", "sort_order", "is_active", "is_closed"}
     if not payload or set(payload) - allowed:
-        raise HTTPException(422, "Only name, sort_order and is_active can be changed")
+        raise HTTPException(422, "Only name, sort_order, is_active and is_closed can be changed")
     with _connect() as db:
         row = db.execute("SELECT * FROM sd_statuses WHERE id=?", (option_id,)).fetchone()
         if not row:
@@ -298,10 +315,9 @@ def patch_status(option_id: str, payload: dict, _: dict = Depends(require_admin)
         name = str(payload.get("name", row["name"])).strip()
         if not name:
             raise HTTPException(422, "Name cannot be blank")
-        if name != row["name"] and db.execute("SELECT 1 FROM sd_rfqs WHERE status_id=?", (option_id,)).fetchone():
-            raise HTTPException(409, "A status used by RFQs cannot be renamed; deactivate it instead")
-        db.execute("UPDATE sd_statuses SET name=?,sort_order=?,is_active=?,updated_at=? WHERE id=?",
-                   (name, int(payload.get("sort_order", row["sort_order"])), int(payload.get("is_active", row["is_active"])), _now(), option_id))
+        db.execute("UPDATE sd_statuses SET name=?,sort_order=?,is_active=?,is_closed=?,updated_at=? WHERE id=?",
+                   (name, int(payload.get("sort_order", row["sort_order"])), int(bool(payload.get("is_active", row["is_active"]))),
+                    int(bool(payload.get("is_closed", row["is_closed"])),), _now(), option_id))
         return dict(db.execute("SELECT * FROM sd_statuses WHERE id=?", (option_id,)).fetchone())
 
 
@@ -310,11 +326,15 @@ def list_rfqs(status_id: Optional[str] = None, sales_code_id: Optional[str] = No
               search: str = Query(default="", max_length=200), limit: int = Query(default=100, ge=1, le=500),
               offset: int = Query(default=0, ge=0), user: dict = Depends(current_user)) -> dict:
     clauses, args = [], []
+    unclaimed_only = False
     if user["role"] == "salesperson":
         if not user.get("sales_code"):
             raise HTTPException(403, "Your account is not linked to a configured sales code")
-        clauses.append("(r.sales_code_id=(SELECT id FROM sd_sales_codes WHERE code=? COLLATE NOCASE))")
+        clauses.append("(r.sales_code_id=(SELECT id FROM sd_sales_codes WHERE code=? COLLATE NOCASE) OR r.sales_code_id IS NULL)")
         args.append(user["sales_code"])
+    unclaimed = None
+    if unclaimed_only:
+        clauses.append("r.sales_code_id IS NULL")
     if status_id:
         clauses.append("r.status_id=?"); args.append(status_id)
     if sales_code_id and _admin_or_manager(user):
@@ -324,8 +344,9 @@ def list_rfqs(status_id: Optional[str] = None, sales_code_id: Optional[str] = No
         clauses.append("(r.rfq_no LIKE ? OR r.customer_name LIKE ? OR r.document_number LIKE ?)")
         args.extend([term, term, term])
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    sort = "CASE WHEN r.sales_code_id IS NULL THEN 0 ELSE 1 END ASC, r.received_at ASC, r.rfq_no ASC"
     with _connect() as db:
-        rows = db.execute(RFQ_SELECT + where + " ORDER BY r.received_at DESC LIMIT ? OFFSET ?", (*args, limit, offset)).fetchall()
+        rows = db.execute(RFQ_SELECT + where + f" ORDER BY {sort} LIMIT ? OFFSET ?", (*args, limit, offset)).fetchall()
         total = db.execute("SELECT COUNT(*) FROM sd_rfqs r" + where, args).fetchone()[0]
     return {"items": [_rfq(x) for x in rows], "total": total, "limit": limit, "offset": offset}
 
@@ -381,7 +402,7 @@ def get_rfq(rfq_id: str, user: dict = Depends(current_user)) -> dict:
         row = db.execute(RFQ_SELECT + " WHERE r.id=?", (rfq_id,)).fetchone()
         if not row:
             raise HTTPException(404, "RFQ not found")
-        if user["role"] == "salesperson" and row["sales_code_value"] != user.get("sales_code"):
+        if user["role"] == "salesperson" and row["sales_code_value"] and row["sales_code_value"].lower() != (user.get("sales_code") or "").lower():
             raise HTTPException(404, "RFQ not found")
         history = db.execute("SELECT action,changes_json,created_at,actor_user_id FROM sd_rfq_audit WHERE rfq_id=? ORDER BY id", (rfq_id,)).fetchall()
     result = _rfq(row)
@@ -430,3 +451,81 @@ def rfq_history(rfq_id: str, user: dict = Depends(current_user)) -> list[dict]:
     with _connect() as db:
         rows = db.execute("SELECT action,changes_json,created_at,actor_user_id FROM sd_rfq_audit WHERE rfq_id=? ORDER BY id", (rfq_id,)).fetchall()
     return [{**dict(x), "changes": json.loads(x["changes_json"])} for x in rows]
+
+
+@router.get("/dashboard")
+def dashboard(user: dict = Depends(current_user)) -> dict:
+    """Persisted summary totals, constrained to records visible to this user."""
+    today = datetime.now(BUSINESS_TZ).date().isoformat()
+    scope = ""
+    args: list[str] = []
+    if user["role"] == "salesperson":
+        if not user.get("sales_code"):
+            raise HTTPException(403, "Your account is not linked to a configured sales code")
+        scope = " AND (r.sales_code_id=(SELECT id FROM sd_sales_codes WHERE code=? COLLATE NOCASE) OR r.sales_code_id IS NULL)"
+        args.append(user["sales_code"])
+    with _connect() as db:
+        unclaimed = db.execute("SELECT COUNT(*) FROM sd_rfqs r WHERE r.sales_code_id IS NULL" + scope, args).fetchone()[0]
+        claimed = db.execute("SELECT COUNT(*) FROM sd_rfqs r WHERE r.sales_code_id IS NOT NULL" + scope, args).fetchone()[0]
+        received_today = db.execute(
+            "SELECT COUNT(*) FROM sd_rfqs r WHERE date(r.received_at, 'localtime')=?"+scope, [today, *args]
+        ).fetchone()[0]
+        opened = db.execute(
+            "SELECT COUNT(*) FROM sd_rfqs r JOIN sd_statuses st ON st.id=r.status_id WHERE st.is_closed=0"+scope, args
+        ).fetchone()[0]
+    return {"unclaimed": unclaimed, "claimed": claimed, "received_today": received_today, "open": opened}
+
+
+@router.post("/rfqs/{rfq_id}/claim")
+def claim_rfq(rfq_id: str, user: dict = Depends(current_user)) -> dict:
+    if user["role"] != "salesperson":
+        raise HTTPException(403, "Only salespeople can claim RFQs for themselves")
+    if not user.get("sales_code"):
+        raise HTTPException(403, "Your account is not linked to a configured sales code")
+    now = _now()
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        code = db.execute("SELECT id FROM sd_sales_codes WHERE code=? COLLATE NOCASE AND is_active=1", (user["sales_code"],)).fetchone()
+        if not code:
+            raise HTTPException(403, "Your configured sales code is inactive")
+        row = db.execute("SELECT * FROM sd_rfqs WHERE id=?", (rfq_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "RFQ not found")
+        if row["sales_code_id"] is not None:
+            raise HTTPException(409, "This RFQ has already been claimed. Refresh the list.")
+        new_status = db.execute("SELECT id FROM sd_statuses WHERE name='New' COLLATE NOCASE AND is_active=1").fetchone()
+        db.execute("UPDATE sd_rfqs SET sales_code_id=?,claimed_at=?,status_id=COALESCE(?,status_id),updated_by=?,updated_at=? WHERE id=? AND sales_code_id IS NULL",
+                   (code["id"], now, new_status["id"] if new_status else None, user["id"], now, rfq_id))
+        if db.execute("SELECT changes()").fetchone()[0] != 1:
+            raise HTTPException(409, "This RFQ has already been claimed. Refresh the list.")
+        _audit(db, rfq_id, user["id"], "claimed", {"sales_code": user["sales_code"], "claimed_at": now})
+        updated = db.execute(RFQ_SELECT + " WHERE r.id=?", (rfq_id,)).fetchone()
+    return _rfq(updated)
+
+
+@router.post("/rfqs/{rfq_id}/assign")
+def assign_rfq(rfq_id: str, payload: dict, user: dict = Depends(require_admin)) -> dict:
+    if set(payload) != {"sales_code_id"}:
+        raise HTTPException(422, "Provide sales_code_id, or null to unassign this RFQ")
+    sales_code_id = payload["sales_code_id"]
+    now = _now()
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT * FROM sd_rfqs WHERE id=?", (rfq_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "RFQ not found")
+        if sales_code_id is not None and not db.execute("SELECT 1 FROM sd_sales_codes WHERE id=? AND is_active=1", (sales_code_id,)).fetchone():
+            raise HTTPException(422, "Choose an active configured sales code, or null to unassign")
+        previous = db.execute("SELECT code FROM sd_sales_codes WHERE id=?", (row["sales_code_id"],)).fetchone() if row["sales_code_id"] else None
+        next_code = db.execute("SELECT code FROM sd_sales_codes WHERE id=?", (sales_code_id,)).fetchone() if sales_code_id else None
+        if row["sales_code_id"] == sales_code_id:
+            raise HTTPException(409, "RFQ is already assigned to that sales code")
+        claimed_at = now if sales_code_id else None
+        db.execute("UPDATE sd_rfqs SET sales_code_id=?,claimed_at=?,updated_by=?,updated_at=? WHERE id=?",
+                   (sales_code_id, claimed_at, user["id"], now, rfq_id))
+        action = "assigned" if previous is None and next_code else "unassigned" if next_code is None else "reassigned"
+        _audit(db, rfq_id, user["id"], action, {"from_sales_code": previous["code"] if previous else None,
+                                                 "to_sales_code": next_code["code"] if next_code else None,
+                                                 "claimed_at": claimed_at})
+        updated = db.execute(RFQ_SELECT + " WHERE r.id=?", (rfq_id,)).fetchone()
+    return _rfq(updated)
