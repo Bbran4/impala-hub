@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ImagePlus, Lock, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ImagePlus, Lock, Pencil, Trash2 } from 'lucide-react'
 import { api, EDITABLE, fmt, mediaSrc, metric, type Campaign, type HistoryEntry, type Post } from './lib'
 
 type Props = {
@@ -7,6 +7,7 @@ type Props = {
   campaigns: Campaign[]
   onBack: () => void
   onEdit: (p: Post) => void
+  onReschedule: (p: Post) => void
   onDelete: (id: string) => void
   onSaveCampaign: (postId: string, campaignId: string | null) => Promise<void>
   onError: (e: unknown) => void
@@ -21,7 +22,7 @@ function describeEntry(h: HistoryEntry): string {
   return `${VERBS[h.action] ?? h.action}${parts.length ? ' — ' + parts.join(' · ') : ''}`
 }
 
-export default function PostDetail({ post, campaigns, onBack, onEdit, onDelete, onSaveCampaign, onError }: Props) {
+export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedule, onDelete, onSaveCampaign, onError }: Props) {
   const [campaignId, setCampaignId] = useState(post.campaign_id || '')
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   const [saving, setSaving] = useState(false)
@@ -57,6 +58,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onDelete, 
         </div>
         <div className="row-actions">
           {editable && <button className="secondary" onClick={() => onEdit(post)}><Pencil size={15} /> Edit post</button>}
+          {post.status === 'failed' && <button className="secondary" onClick={() => onReschedule(post)}><CalendarClock size={15} /> Reschedule</button>}
           {!published && (
             <button className="icon-button" title="Delete post" aria-label="Delete post" onClick={() => onDelete(post.id)}><Trash2 size={16} /></button>
           )}
@@ -81,9 +83,6 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onDelete, 
           ))}
           {!post.media.length && <div className="media-empty"><ImagePlus size={22} /><span>No images attached</span></div>}
         </div>
-        {post.channels.includes('facebook') && post.facebook_groups.length > 0 && (
-          <p className="hint">Facebook groups: {post.facebook_groups.map((g) => (g.startsWith('sample:') ? `${g.slice(7)} (sample)` : g)).join(', ')}</p>
-        )}
       </div>
 
       <div className="detail-card">
