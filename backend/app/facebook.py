@@ -193,24 +193,26 @@ class FacebookClient:
             body = self._request("GET", next_url)
 
     def post_exists(self, post_id: str) -> bool:
-        """Check a known post ID. Return False only for explicit Graph 'not found' responses.
+        """Verify a known post against the Page's published-post listing.
 
-        Permission, token, throttling and transport errors must propagate so they cannot be
-        mistaken for deletion.
+        Avoids direct object lookup, which Meta can reject for Page posts even when the
+        Page token can read the Page's published_posts edge. Only return False after
+        the listing has been fully paginated successfully. API/permission errors propagate.
         """
-        try:
-            self._request("GET", f"/{post_id}", params={"fields": "id", "access_token": self._token})
-            return True
-        except FacebookError as exc:
-            message = str(exc).lower()
-            if exc.code == 803:
+        params = {
+            "fields": "id",
+            "limit": 100,
+            "access_token": self._token,
+        }
+        body = self._request("GET", f"/{self.page_id}/published_posts", params=params)
+        while True:
+            for item in body.get("data", []):
+                if str(item.get("id", "")) == str(post_id):
+                    return True
+            next_url = (body.get("paging") or {}).get("next")
+            if not next_url:
                 return False
-            if exc.code == 100 and (
-                "unsupported get request" in message
-                or "object with id" in message and "cannot be loaded" in message
-            ):
-                return False
-            raise
+            body = self._request("GET", next_url)
 
     def post_insights(self, post_id: str) -> dict:
         """Return organic Page-post reach and impressions when Meta exposes them.
