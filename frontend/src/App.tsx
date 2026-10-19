@@ -48,6 +48,7 @@ export default function App() {
   const [sdStatusFilter, setSdStatusFilter] = useState('')
   const [sdSalesCodeFilter, setSdSalesCodeFilter] = useState('')
   const [sdUnclaimedOnly, setSdUnclaimedOnly] = useState(true)
+  const [sdSort, setSdSort] = useState('received_asc')
   const [sdSelectedRfq, setSdSelectedRfq] = useState<any>(null)
   const [sdDashboard, setSdDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
   const [sdCreateOpen, setSdCreateOpen] = useState(false)
@@ -457,7 +458,14 @@ export default function App() {
     (!sdStatusFilter || r.status_id === sdStatusFilter) &&
     (!sdSalesCodeFilter || r.sales_code_id === sdSalesCodeFilter) &&
     (!sdSearch || `${r.rfq_no} ${r.customer_name} ${r.document_number}`.toLowerCase().includes(sdSearch.toLowerCase())),
-  )
+  ).sort((a, b) => {
+    if (sdSort === 'customer') return String(a.customer_name).localeCompare(String(b.customer_name))
+    if (sdSort === 'rfq_no') return String(b.rfq_no).localeCompare(String(a.rfq_no))
+    if (sdSort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
+    if (sdUnclaimedOnly) return String(a.received_at).localeCompare(String(b.received_at))
+    const unclaimedOrder = Number(!!a.sales_code) - Number(!!b.sales_code)
+    return unclaimedOrder || String(a.received_at).localeCompare(String(b.received_at))
+  })
 
   return (
     <div className="shell">
@@ -601,6 +609,7 @@ export default function App() {
                       <label>Filter by status<select value={sdStatusFilter} onChange={(e) => setSdStatusFilter(e.target.value)}><option value="">All statuses</option>{sdConfig.statuses.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
                       <label>Filter by sales code<select value={sdSalesCodeFilter} onChange={(e) => setSdSalesCodeFilter(e.target.value)} disabled={sdUser?.role === 'salesperson'}><option value="">All salespeople</option>{sdConfig.sales_codes.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.code} · {s.display_name}</option>)}</select></label>
                       <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={sdSearch} onChange={(e) => setSdSearch(e.target.value)} /></label>
+                      <label>Sort by<select value={sdSort} onChange={(e) => setSdSort(e.target.value)}><option value="received_asc">Oldest received</option><option value="received_desc">Newest received</option><option value="customer">Customer name</option><option value="rfq_no">RFQ number</option></select></label>
                       {['administrator', 'manager'].includes(sdUser?.role) && <button className="primary" onClick={() => { setSdDraft({ media_platform_id: sdConfig.media_platforms.find((m: any) => m.is_active)?.id || '', customer_name: '', contact_number: '', email_address: '', query_information: '', remarks: '', document_number: '' }); setSdCreateOpen(!sdCreateOpen) }}><Plus size={16}/> New RFQ</button>}
                     </div>
                     {sdCreateOpen && (
