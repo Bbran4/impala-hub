@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import secrets
+import time
+from urllib.parse import urlencode
+
+import httpx
+from cryptography.fernet import Fernet, InvalidToken
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager, contextmanager
@@ -11,6 +17,7 @@ from pathlib import Path
 from typing import Iterator, Literal, Optional, get_args
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError, create_model, field_validator, model_validator
@@ -34,6 +41,9 @@ class Settings(BaseSettings):
     facebook_api_version: str = "v26.0"  # use the version shown in your Meta app dashboard
     meta_app_id: str = ""
     meta_app_secret: str = ""
+    facebook_oauth_redirect_uri: str = "http://localhost:8000/api/integrations/facebook/callback"
+    facebook_frontend_url: str = "http://localhost:5173"
+    facebook_token_encryption_key: str = ""
     publisher_interval_seconds: int = 30
     facebook_sync_minutes: int = 10  # how often to import posts and figures from the Page; 0 turns it off
 
@@ -69,6 +79,31 @@ def db_session() -> Iterator[sqlite3.Connection]:
             yield conn
     finally:
         conn.close()
+
+
+SCHEMA_FACEBOOK_OAUTH = """
+CREATE TABLE IF NOT EXISTS facebook_oauth_states (
+    state TEXT PRIMARY KEY,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS facebook_pending_pages (
+    page_id TEXT PRIMARY KEY,
+    page_name TEXT NOT NULL,
+    encrypted_token TEXT NOT NULL,
+    token_expires_at INTEGER,
+    data_access_expires_at INTEGER,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS facebook_connection (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    page_id TEXT NOT NULL,
+    page_name TEXT NOT NULL,
+    encrypted_token TEXT NOT NULL,
+    token_expires_at INTEGER,
+    data_access_expires_at INTEGER,
+    updated_at TEXT NOT NULL
+);
+"""
 
 
 SCHEMA_V1 = """
@@ -162,6 +197,9 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V1)
         if version < 2:
             conn.executescript(SCHEMA_V2)
+        conn.executescript(SCHEMA_FACEBOOK_OAUTH)
+        conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
+        conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
     finally:
         conn.close()
 
@@ -183,7 +221,32 @@ async def lifespan(_: FastAPI):
             await asyncio.gather(worker, return_exceptions=True)
 
 
+def _fernet() -> Fernet:
+    key = settings.facebook_token_encryption_key.strip()
+    if not key:
+        raise HTTPException(503, "Facebook OAuth is not configured. Set FACEBOOK_TOKEN_ENCRYPTION_KEY in backend/.env.")
+    try:
+        return Fernet(key.encode("ascii"))
+    except (ValueError, UnicodeEncodeError) as exc:
+        raise HTTPException(503, "FACEBOOK_TOKEN_ENCRYPTION_KEY must be a valid Fernet key. Generate one with Fernet.generate_key().") from exc
+
+
+def _stored_facebook_connection() -> Optional[dict]:
+    with db_session() as db:
+        row = db.execute("SELECT * FROM facebook_connection WHERE id=1").fetchone()
+    if not row:
+        return None
+    try:
+        token = _fernet().decrypt(row["encrypted_token"].encode()).decode()
+    except (InvalidToken, UnicodeDecodeError):
+        return None
+    return {**dict(row), "token": token}
+
+
 def facebook_client():
+    stored = _stored_facebook_connection()
+    if stored:
+        return client_from_settings(stored["page_id"], stored["token"], settings.facebook_api_version)
     return client_from_settings(settings.facebook_page_id, settings.facebook_page_token, settings.facebook_api_version)
 
 
@@ -538,6 +601,19 @@ def upload_media(file: UploadFile = File(...)) -> dict:
     }
 
 
+def _token_expiry_warning(expires_at, data_access_expires_at) -> Optional[str]:
+    now = int(time.time())
+    for label, stamp in (("Page access token", expires_at), ("Facebook data access", data_access_expires_at)):
+        if not stamp:
+            continue
+        remaining = int(stamp) - now
+        if remaining <= 0:
+            return f"{label} has expired. Reconnect Facebook."
+        if remaining <= 7 * 86400:
+            return f"{label} expires within {max(1, remaining // 86400)} day(s). Reconnect soon."
+    return None
+
+
 FACEBOOK_LAST_CHECKED_AT: Optional[str] = None
 FACEBOOK_LAST_SUCCESS_AT: Optional[str] = None
 
@@ -546,18 +622,19 @@ def facebook_integration() -> dict:
     global FACEBOOK_LAST_CHECKED_AT, FACEBOOK_LAST_SUCCESS_AT
     base = {"provider": "facebook", "label": "Facebook Pages", "capabilities": ["page_posts", "page_media"]}
     client = facebook_client()
+    stored = _stored_facebook_connection()
     if not client:
-        note = "No Page credentials configured. Add FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN to backend/.env."
-        return {**base, "status": "not_connected", "note": note, "page_id": None}
+        note = "No Facebook Page connected. Select Connect Facebook to authorize Meta and choose a Page."
+        return {**base, "status": "not_connected", "note": note, "page_id": None, "oauth_configured": bool(settings.meta_app_id and settings.meta_app_secret and settings.facebook_token_encryption_key)}
     try:
         details = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
         status = "warning" if details.get("missing_permissions") else "connected"
         FACEBOOK_LAST_CHECKED_AT = now_iso()
         FACEBOOK_LAST_SUCCESS_AT = FACEBOOK_LAST_CHECKED_AT
         return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": status, "account_name": details["page_name"],
-                "page_id": details["page_id"], "token_type": details["token_type"],
+                "page_id": details["page_id"], "token_type": details["token_type"], "connection_source": "oauth" if stored else "environment", "oauth_configured": bool(settings.meta_app_id and settings.meta_app_secret and settings.facebook_token_encryption_key),
                 "token_valid": details["token_valid"], "expires_at": details["expires_at"],
-                "data_access_expires_at": details["data_access_expires_at"],
+                "data_access_expires_at": details["data_access_expires_at"], "token_warning": _token_expiry_warning(details.get("expires_at"), details.get("data_access_expires_at")),
                 "granted_permissions": details["granted_permissions"],
                 "missing_permissions": details["missing_permissions"],
                 "diagnostics_available": details["diagnostics_available"],
@@ -566,6 +643,175 @@ def facebook_integration() -> dict:
         FACEBOOK_LAST_CHECKED_AT = now_iso()
         return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": "error", "page_id": settings.facebook_page_id or None,
                 "note": f"Facebook connection check failed: {exc}"}
+
+
+
+
+# --------------------------------------------------------------------------- Facebook OAuth / Page selection
+FACEBOOK_OAUTH_SCOPES = "pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts"
+
+
+def _meta_graph_get(path: str, params: dict) -> dict:
+    url = f"https://graph.facebook.com/{settings.facebook_api_version}/{path.lstrip('/')}"
+    try:
+        response = httpx.get(url, params=params, timeout=25)
+        body = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(502, "Could not complete the request to Meta. Please try again.") from exc
+    if response.status_code >= 400 or (isinstance(body, dict) and body.get("error")):
+        error = body.get("error", {}) if isinstance(body, dict) else {}
+        # Do not return request URLs or token-bearing error details to the browser.
+        raise HTTPException(502, f"Meta OAuth request failed: {error.get('message', 'unexpected response')}")
+    return body
+
+
+def _oauth_configured() -> None:
+    missing = []
+    if not settings.meta_app_id.strip(): missing.append("META_APP_ID")
+    if not settings.meta_app_secret.strip(): missing.append("META_APP_SECRET")
+    if not settings.facebook_oauth_redirect_uri.strip(): missing.append("FACEBOOK_OAUTH_REDIRECT_URI")
+    if not settings.facebook_token_encryption_key.strip(): missing.append("FACEBOOK_TOKEN_ENCRYPTION_KEY")
+    if missing:
+        raise HTTPException(503, "Facebook OAuth setup is incomplete. Configure: " + ", ".join(missing) + " in backend/.env.")
+
+
+@app.post("/api/integrations/facebook/oauth-url", dependencies=[Depends(require_api_key)])
+def facebook_oauth_url() -> dict:
+    _oauth_configured()
+    _fernet()
+    state = secrets.token_urlsafe(32)
+    with db_session() as db:
+        db.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
+        db.execute("INSERT INTO facebook_oauth_states(state,created_at) VALUES(?,?)", (state, time.time()))
+    params = {
+        "client_id": settings.meta_app_id.strip(),
+        "redirect_uri": settings.facebook_oauth_redirect_uri.strip(),
+        "state": state,
+        "response_type": "code",
+        "scope": FACEBOOK_OAUTH_SCOPES,
+    }
+    return {"url": "https://www.facebook.com/" + settings.facebook_api_version + "/dialog/oauth?" + urlencode(params)}
+
+
+@app.get("/api/integrations/facebook/callback")
+def facebook_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
+    frontend = settings.facebook_frontend_url.rstrip("/")
+    if error:
+        return RedirectResponse(frontend + "/?facebook_oauth=error&reason=authorization_cancelled")
+    if not code or not state:
+        return RedirectResponse(frontend + "/?facebook_oauth=error&reason=missing_code")
+    with db_session() as db:
+        valid = db.execute("SELECT state FROM facebook_oauth_states WHERE state=? AND created_at>=?", (state, time.time() - 900)).fetchone()
+        db.execute("DELETE FROM facebook_oauth_states WHERE state=?", (state,))
+    if not valid:
+        return RedirectResponse(frontend + "/?facebook_oauth=error&reason=invalid_state")
+    try:
+        _oauth_configured()
+        token_response = _meta_graph_get("oauth/access_token", {
+            "client_id": settings.meta_app_id.strip(),
+            "client_secret": settings.meta_app_secret.strip(),
+            "redirect_uri": settings.facebook_oauth_redirect_uri.strip(),
+            "code": code,
+        })
+        user_token = token_response.get("access_token")
+        if not user_token:
+            raise HTTPException(502, "Meta did not return an access token.")
+        long_response = _meta_graph_get("oauth/access_token", {
+            "grant_type": "fb_exchange_token",
+            "client_id": settings.meta_app_id.strip(),
+            "client_secret": settings.meta_app_secret.strip(),
+            "fb_exchange_token": user_token,
+        })
+        long_token = long_response.get("access_token") or user_token
+        pages_response = _meta_graph_get("me/accounts", {
+            "fields": "id,name,access_token,tasks",
+            "limit": 100,
+            "access_token": long_token,
+        })
+        pages = [p for p in pages_response.get("data", []) if p.get("id") and p.get("access_token")]
+        if not pages:
+            return RedirectResponse(frontend + "/?facebook_oauth=error&reason=no_pages")
+        encrypted = _fernet()
+        debug = _meta_graph_get("debug_token", {
+            "input_token": long_token,
+            "access_token": f"{settings.meta_app_id.strip()}|{settings.meta_app_secret.strip()}",
+        }).get("data", {})
+        user_expiry = debug.get("expires_at") or None
+        data_expiry = debug.get("data_access_expires_at") or None
+        with db_session() as db:
+            db.execute("DELETE FROM facebook_pending_pages")
+            for page in pages:
+                db.execute(
+                    """INSERT OR REPLACE INTO facebook_pending_pages
+                    (page_id,page_name,encrypted_token,token_expires_at,data_access_expires_at,created_at)
+                    VALUES(?,?,?,?,?,?)""",
+                    (str(page["id"]), str(page.get("name") or "Facebook Page"),
+                     encrypted.encrypt(str(page["access_token"]).encode()).decode(), user_expiry, data_expiry, time.time()),
+                )
+        return RedirectResponse(frontend + "/?facebook_oauth=choose_page")
+    except HTTPException as exc:
+        reason = "setup" if exc.status_code == 503 else "meta_request_failed"
+        return RedirectResponse(frontend + f"/?facebook_oauth=error&reason={reason}")
+
+
+@app.get("/api/integrations/facebook/pages", dependencies=[Depends(require_api_key)])
+def facebook_oauth_pages() -> dict:
+    with db_session() as db:
+        db.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
+        rows = db.execute("SELECT page_id,page_name FROM facebook_pending_pages ORDER BY page_name").fetchall()
+    connection = _stored_facebook_connection()
+    return {
+        "pages": [{"id": r["page_id"], "name": r["page_name"]} for r in rows],
+        "connected_page_id": connection["page_id"] if connection else None,
+    }
+
+
+class FacebookPageSelection(BaseModel):
+    page_id: str = Field(min_length=1, max_length=100)
+
+
+@app.post("/api/integrations/facebook/select-page", dependencies=[Depends(require_api_key)])
+def select_facebook_page(payload: FacebookPageSelection) -> dict:
+    _oauth_configured()
+    with db_session() as db:
+        row = db.execute("SELECT * FROM facebook_pending_pages WHERE page_id=? AND created_at>=?", (payload.page_id, time.time() - 1800)).fetchone()
+    if not row:
+        raise HTTPException(404, "That Page is no longer available. Click Connect Facebook and try again.")
+    try:
+        token = _fernet().decrypt(row["encrypted_token"].encode()).decode()
+    except (InvalidToken, UnicodeDecodeError) as exc:
+        raise HTTPException(500, "Could not read the saved Page credential. Reconnect Facebook.") from exc
+    client = client_from_settings(row["page_id"], token, settings.facebook_api_version)
+    try:
+        diagnostics = client.connection_diagnostics(settings.meta_app_id, settings.meta_app_secret)
+    except FacebookError as exc:
+        raise HTTPException(502, f"Could not verify the selected Facebook Page: {exc}") from exc
+    encrypted_token = _fernet().encrypt(token.encode()).decode()
+    with db_session() as db:
+        db.execute(
+            """INSERT INTO facebook_connection(id,page_id,page_name,encrypted_token,token_expires_at,data_access_expires_at,updated_at)
+            VALUES(1,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET page_id=excluded.page_id,page_name=excluded.page_name,
+            encrypted_token=excluded.encrypted_token,token_expires_at=excluded.token_expires_at,
+            data_access_expires_at=excluded.data_access_expires_at,updated_at=excluded.updated_at""",
+            (row["page_id"], row["page_name"], encrypted_token, diagnostics.get("expires_at"),
+             diagnostics.get("data_access_expires_at"), now_iso()),
+        )
+        db.execute("DELETE FROM facebook_pending_pages")
+        audit(db, "connected", "integration", "facebook", {"page_id": row["page_id"], "page_name": row["page_name"]})
+    return {"connected": True, "page_id": row["page_id"], "page_name": row["page_name"], "expires_at": diagnostics.get("expires_at"), "data_access_expires_at": diagnostics.get("data_access_expires_at")}
+
+
+@app.post("/api/integrations/facebook/disconnect", dependencies=[Depends(require_api_key)])
+def disconnect_facebook() -> dict:
+    with db_session() as db:
+        row = db.execute("SELECT page_id FROM facebook_connection WHERE id=1").fetchone()
+        db.execute("DELETE FROM facebook_connection WHERE id=1")
+        db.execute("DELETE FROM facebook_pending_pages")
+        if row:
+            audit(db, "disconnected", "integration", "facebook", {"page_id": row["page_id"]})
+    return {"disconnected": True, "using_environment_fallback": bool(settings.facebook_page_id and settings.facebook_page_token)}
+
 
 
 @app.post("/api/integrations/facebook/check", dependencies=[Depends(require_api_key)])
