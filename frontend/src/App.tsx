@@ -770,7 +770,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete }: {
               </small>
               {p.status === 'published' && (
                 <small>
-                  Clicks {metric(p.clicks)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}
+                  Reach {metric(p.reach)} · Impressions {metric(p.impressions)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}
                   {p.metrics_refreshed_at ? ` · updated ${fmt(p.metrics_refreshed_at)}` : ''}
                 </small>
               )}
