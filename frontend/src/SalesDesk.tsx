@@ -438,8 +438,8 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
   }
 
   const convert = (r: any) => {
-    if (!window.confirm(`Convert ${r.rfq_no} to an invoice? Its number will become ${r.rfq_no}INV and this cannot be undone.`)) return
-    void act(() => request(`/api/sales-desk/rfqs/${r.id}/convert-to-invoice`, { method: 'POST' }), `${r.rfq_no} converted to an invoice.`)
+    if (!window.confirm(`Create an invoice copy of ${r.rfq_no}? The original quotation will remain unchanged and the new invoice will be numbered ${r.rfq_no}INV.`)) return
+    void act(() => request(`/api/sales-desk/rfqs/${r.id}/convert-to-invoice`, { method: 'POST' }), `Invoice ${r.rfq_no}INV created. The original quotation was kept.`)
   }
   const claim = (r: any) => void act(() => request(`/api/sales-desk/rfqs/${r.id}/claim`, { method: 'POST' }), `Claimed ${r.rfq_no} for your sales code.`)
 
