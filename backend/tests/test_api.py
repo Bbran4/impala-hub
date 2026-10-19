@@ -364,3 +364,33 @@ def test_concurrent_rfq_creation_allocates_unique_daily_numbers():
         assert len(set(references)) == len(references)
         daily_numbers = sorted(int(reference[-2:]) for reference in references)
         assert daily_numbers == list(range(daily_numbers[0], daily_numbers[0] + 8))
+
+
+def test_concurrent_claim_has_one_winner():
+    import secrets
+    from concurrent.futures import ThreadPoolExecutor
+    from app import sales_desk_auth as auth
+
+    auth.init_auth_db()
+    admin_user, admin_password = _sd_create_user("claim-admin-" + secrets.token_hex(3), "administrator")
+    with TestClient(app) as client:
+        admin = _sd_login(client, admin_user, admin_password)
+        media = client.post("/api/sales-desk/config/media-platforms", headers=admin, json={"name": "Claim race-" + secrets.token_hex(3)})
+        code_a = client.post("/api/sales-desk/config/sales-codes", headers=admin, json={"code": "CA" + secrets.token_hex(3), "display_name": "Claim A"})
+        code_b = client.post("/api/sales-desk/config/sales-codes", headers=admin, json={"code": "CB" + secrets.token_hex(3), "display_name": "Claim B"})
+        assert media.status_code == code_a.status_code == code_b.status_code == 201
+        user_a, pass_a = _sd_create_user("claim-a-" + secrets.token_hex(3), "salesperson", code_a.json()["code"])
+        user_b, pass_b = _sd_create_user("claim-b-" + secrets.token_hex(3), "salesperson", code_b.json()["code"])
+        token_a, token_b = _sd_login(client, user_a, pass_a), _sd_login(client, user_b, pass_b)
+        rfq = client.post("/api/sales-desk/rfqs", headers=admin, json={
+            "media_platform_id": media.json()["id"], "customer_name": "Concurrent claim customer"
+        })
+        assert rfq.status_code == 201, rfq.text
+        url = f"/api/sales-desk/rfqs/{rfq.json()['id']}/claim"
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(client.post, url, headers=token_a),
+                pool.submit(client.post, url, headers=token_b),
+            ]
+            responses = [future.result() for future in futures]
+        assert sorted(response.status_code for response in responses) == [200, 409]
