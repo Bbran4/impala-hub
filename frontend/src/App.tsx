@@ -47,7 +47,6 @@ export default function App() {
   const [sdSearch, setSdSearch] = useState('')
   const [sdStatusFilter, setSdStatusFilter] = useState('')
   const [sdSalesCodeFilter, setSdSalesCodeFilter] = useState('')
-  const [sdUnclaimedOnly, setSdUnclaimedOnly] = useState(true)
   const [sdSort, setSdSort] = useState('received_asc')
   const [sdSelectedRfq, setSdSelectedRfq] = useState<any>(null)
   const [sdDashboard, setSdDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
@@ -117,7 +116,7 @@ export default function App() {
       const [me, cfg, result, dashboard] = await Promise.all([
         sdApi('/api/sales-desk/auth/me'),
         sdApi('/api/sales-desk/config'),
-        sdApi(`/api/sales-desk/rfqs?limit=500&unclaimed_only=${sdUnclaimedOnly}`),
+        sdApi('/api/sales-desk/rfqs?limit=500'),
         sdApi('/api/sales-desk/dashboard'),
       ])
       setSdUser(me); setSdConfig(cfg); setSdRfqs(result.items || []); setSdDashboard(dashboard)
@@ -180,7 +179,7 @@ export default function App() {
     setBusy(true); setError('')
     try {
       const result = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}/assign`, { method: 'POST', body: JSON.stringify({ sales_code_id: sales_code_id || null }) })
-      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice('RFQ assignment updated.')
+      setSdSelectedRfq(result); setSdDetailDraft((draft: any) => draft ? { ...draft, sales_code_id: result.sales_code_id, sales_code: result.sales_code, salesperson_name: result.salesperson_name, claimed_at: result.claimed_at } : result); setNotice('RFQ assignment updated.')
       await sdRefresh()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
@@ -233,7 +232,7 @@ export default function App() {
 
   // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
   useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
-  useEffect(() => { if (isSalesDeskPage && sdToken) void loadSalesDesk() }, [page, sdToken, sdUnclaimedOnly])
+  useEffect(() => { if (isSalesDeskPage && sdToken) void loadSalesDesk() }, [page, sdToken])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -462,7 +461,6 @@ export default function App() {
     if (sdSort === 'customer') return String(a.customer_name).localeCompare(String(b.customer_name))
     if (sdSort === 'rfq_no') return String(b.rfq_no).localeCompare(String(a.rfq_no))
     if (sdSort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
-    if (sdUnclaimedOnly) return String(a.received_at).localeCompare(String(b.received_at))
     const unclaimedOrder = Number(!!a.sales_code) - Number(!!b.sales_code)
     return unclaimedOrder || String(a.received_at).localeCompare(String(b.received_at))
   })
