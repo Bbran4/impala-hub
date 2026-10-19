@@ -113,6 +113,57 @@ class FacebookClient:
             )
         return body
 
+    def connection_diagnostics(self, app_id: str = "", app_secret: str = "") -> dict:
+        """Validate the configured Page token and report expiry/permission diagnostics when app credentials exist."""
+        page = self.check()
+        result = {
+            "page_id": str(page.get("id", self.page_id)),
+            "page_name": page.get("name", ""),
+            "token_valid": True,
+            "token_type": "page",
+            "expires_at": None,
+            "data_access_expires_at": None,
+            "granted_permissions": [],
+            "missing_permissions": [],
+            "diagnostics_available": False,
+        }
+        required = {"pages_manage_posts", "pages_read_engagement"}
+        if not app_id.strip() or not app_secret.strip():
+            result["diagnostic_note"] = "Page identity is verified. Configure META_APP_ID and META_APP_SECRET to check token expiry and granted permissions."
+            return result
+
+        app_token = f"{app_id.strip()}|{app_secret.strip()}"
+        debug = self._request(
+            "GET", "/debug_token",
+            params={"input_token": self._token, "access_token": app_token},
+        ).get("data", {})
+        if not debug.get("is_valid", False):
+            raise FacebookError("The Facebook Page access token is invalid, expired, or revoked.")
+        if str(debug.get("app_id", "")) != app_id.strip():
+            raise FacebookError("The Facebook Page token was issued for a different Meta app.")
+        token_type = str(debug.get("type", "")).lower()
+        if token_type not in {"page", "user"}:
+            raise FacebookError(f"Unexpected Facebook token type: {debug.get('type', 'unknown')}.")
+        scopes = sorted(set(debug.get("scopes") or []))
+        granular = debug.get("granular_scopes") or []
+        # Page tokens commonly inherit permissions from the user token that generated them.
+        for item in granular:
+            scope = item.get("scope")
+            if scope and scope not in scopes:
+                scopes.append(scope)
+        result.update({
+            "token_type": token_type,
+            "expires_at": debug.get("expires_at") or None,
+            "data_access_expires_at": debug.get("data_access_expires_at") or None,
+            "granted_permissions": sorted(set(scopes)),
+            "missing_permissions": sorted(required - set(scopes)),
+            "diagnostics_available": True,
+            "application_name": debug.get("application"),
+        })
+        if result["missing_permissions"]:
+            result["diagnostic_note"] = "The token is valid but may not have all permissions needed by Impala Hub."
+        return result
+
     def list_published_posts(self, limit: int = 100) -> list[dict]:
         """Newest-first posts published by the Page itself (not visitor posts), with engagement counts.
 
