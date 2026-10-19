@@ -602,11 +602,34 @@ def post_history(post_id: str) -> list[dict]:
 
 @app.delete("/api/posts/{post_id}", dependencies=[Depends(require_api_key)], status_code=204)
 def delete_post(post_id: str) -> None:
+    # A Facebook post must be confirmed absent before its local record can be removed.
+    # API errors (permissions, expired tokens, throttling, connectivity) fail closed.
     with db_session() as db:
-        if fetch_post(db, post_id)["status"] == "published":
-            raise HTTPException(409, "Published posts are kept as a record and cannot be deleted")
+        current = fetch_post(db, post_id)
+        facebook_id = current["provider_ids"].get("facebook")
+        if facebook_id:
+            client = facebook_client()
+            if not client:
+                raise HTTPException(409, "Cannot verify this post on Facebook because no Page connection is available.")
+            try:
+                exists = client.post_exists(facebook_id)
+            except FacebookError as exc:
+                raise HTTPException(
+                    502,
+                    "Could not verify whether this post still exists on Facebook. Check the connection and try again.",
+                ) from exc
+            if exists:
+                raise HTTPException(
+                    409,
+                    "This post still exists on Facebook. Delete it on Facebook first, then try deleting it here.",
+                )
+        elif current["status"] == "published":
+            raise HTTPException(
+                409,
+                "This post is marked as published but has no Facebook post ID, so its deletion cannot be verified.",
+            )
         db.execute("DELETE FROM posts WHERE id=?", (post_id,))
-        audit(db, "deleted", "post", post_id, {})
+        audit(db, "deleted", "post", post_id, {"facebook_post_id": facebook_id, "facebook_absent_verified": bool(facebook_id)})
 
 
 @app.post("/api/media", dependencies=[Depends(require_api_key)], status_code=201)
