@@ -58,7 +58,12 @@ export async function api(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {})
   headers.set('Authorization', `Bearer ${getKey()}`)
   if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  const res = await fetch(`${API}${path}`, { ...options, headers })
+  let res: Response
+  try {
+    res = await fetch(`${API}${path}`, { ...options, headers })
+  } catch {
+    throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and confirm that http://127.0.0.1:8000/api/health opens. If the frontend is on another port or host, check backend CORS settings and VITE_API_URL.`)
+  }
   if (res.status === 401) {
     sessionStorage.removeItem(KEY_STORAGE)
     throw new AuthError('The API key was not accepted. Enter it again.')
