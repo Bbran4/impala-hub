@@ -16,16 +16,14 @@ RETRY_SAFE_CODES = {4, 17, 32, 341, 368, 613}
 class FacebookError(Exception):
     """transient=True means nothing was posted and retrying later is safe."""
 
-    def __init__(self, message: str, *, transient: bool = False):
+    def __init__(self, message: str, *, transient: bool = False, code: Optional[int] = None):
         super().__init__(message)
         self.transient = transient
+        self.code = code  # Facebook's error code, e.g. 10 or 200 for a permission problem
 
 
-POST_FIELDS = (
-    "id,message,created_time,permalink_url,full_picture,"
-    "attachments{media,subattachments},"
-    "likes.limit(0).summary(true),comments.limit(0).summary(true),shares"
-)
+BASE_FIELDS = "id,message,created_time,permalink_url,full_picture,attachments{media,subattachments}"
+POST_FIELDS = BASE_FIELDS + ",likes.limit(0).summary(true),comments.limit(0).summary(true),shares"
 
 
 def _images(raw: dict) -> list[str]:
@@ -54,8 +52,9 @@ def parse_post(raw: dict) -> dict:
         "images": _images(raw),
         "likes": _count(raw, "likes"),
         "comments": _count(raw, "comments"),
-        # Facebook leaves "shares" out entirely when a post has none, so a missing value means 0.
-        "shares": (raw.get("shares") or {}).get("count", 0),
+        # Facebook leaves "shares" out entirely when a post has none, so a missing value means 0 -- but only
+        # when engagement figures were requested at all. Without them it is "not available".
+        "shares": (raw.get("shares") or {}).get("count", 0) if "likes" in raw or "comments" in raw else None,
     }
 
 
@@ -86,7 +85,7 @@ class FacebookClient:
             err = body.get("error", {}) if isinstance(body, dict) else {}
             message = err.get("message") or f"Facebook returned HTTP {res.status_code}."
             transient = res.status_code == 429 or err.get("code") in RETRY_SAFE_CODES
-            raise FacebookError(message, transient=transient)
+            raise FacebookError(message, transient=transient, code=err.get("code"))
         return body
 
     @staticmethod
@@ -111,8 +110,20 @@ class FacebookClient:
         return body
 
     def list_published_posts(self, limit: int = 100) -> list[dict]:
-        """Newest-first posts published by the Page itself (not visitor posts), with engagement counts."""
-        params = {"fields": POST_FIELDS, "limit": 25, "access_token": self._token}
+        """Newest-first posts published by the Page itself (not visitor posts), with engagement counts.
+
+        If Facebook refuses the engagement fields (permission errors 10 / 200), the posts are still
+        listed without likes, comments and shares rather than failing the whole import.
+        """
+        try:
+            return self._list(limit, POST_FIELDS)
+        except FacebookError as exc:
+            if exc.code not in (10, 200):
+                raise
+            return self._list(limit, BASE_FIELDS)
+
+    def _list(self, limit: int, fields: str) -> list[dict]:
+        params = {"fields": fields, "limit": 25, "access_token": self._token}
         body = self._request("GET", f"/{self.page_id}/published_posts", params=params)
         posts: list[dict] = []
         while True:

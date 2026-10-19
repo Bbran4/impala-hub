@@ -325,3 +325,22 @@ def test_sync_endpoint(monkeypatch):
 
     monkeypatch.setattr(main, "facebook_client", lambda: Broken())
     assert client.post("/api/integrations/facebook/sync", headers=headers).status_code == 502
+
+
+def test_import_falls_back_to_posts_without_figures_when_engagement_is_refused():
+    def handler(request):
+        if "likes" in request.url.params["fields"]:
+            return httpx.Response(403, json={"error": {"message": "(#10) needs pages_read_engagement", "code": 10}})
+        return httpx.Response(200, json={"data": [{"id": "P_1", "message": "Hi", "created_time": "2026-10-01T08:00:00+0000"}]})
+
+    posts = graph(handler).list_published_posts()
+    assert [p["id"] for p in posts] == ["P_1"]
+    assert (posts[0]["likes"], posts[0]["comments"], posts[0]["shares"]) == (None, None, None)
+
+
+def test_a_permission_error_on_the_basic_fields_is_still_reported():
+    def handler(request):
+        return httpx.Response(403, json={"error": {"message": "(#10) needs pages_read_engagement", "code": 10}})
+
+    with pytest.raises(FacebookError, match="pages_read_engagement"):
+        graph(handler).list_published_posts()
