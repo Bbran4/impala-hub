@@ -150,14 +150,23 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             if fb_id:
                 known[fb_id] = (row["id"], json.loads(row["provider_ids_json"]))
         for item in remote:
+            # Organic reach/impressions are separate from ad delivery metrics. Meta may
+            # deny insights for old posts or tokens without read_insights, so keep syncing
+            # engagement figures and leave unavailable insight values untouched.
+            insights = {"reach": None, "impressions": None}
+            try:
+                insights = client.post_insights(item["id"])
+            except FacebookError as exc:
+                log.info("Organic insights unavailable for Facebook post %s: %s", item["id"], exc)
             if item["id"] in known:
                 local_id, ids = known[item["id"]]
                 if item["permalink_url"]:
                     ids["permalink"] = item["permalink_url"]
                 db.execute(
                     "UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),shares=COALESCE(?,shares),"
+                    "reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),"
                     "metrics_refreshed_at=?,provider_ids_json=? WHERE id=?",
-                    (item["likes"], item["comments"], item["shares"], stamp, json.dumps(ids), local_id),
+                    (item["likes"], item["comments"], item["shares"], insights["reach"], insights["impressions"], stamp, json.dumps(ids), local_id),
                 )
                 stats["updated"] += 1
                 continue
@@ -169,10 +178,10 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             published_at = _fb_time(item["created_time"]) if item["created_time"] else stamp
             db.execute(
                 """INSERT INTO posts(id,title,caption,channels_json,status,published_at,media_json,provider_ids_json,
-                   likes,comments,shares,metrics_refreshed_at,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   likes,comments,shares,reach,impressions,metrics_refreshed_at,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (local_id, "", item["message"], json.dumps(["facebook"]), "published", published_at, json.dumps(media),
-                 json.dumps(ids), item["likes"], item["comments"], item["shares"], stamp, stamp, stamp),
+                 json.dumps(ids), item["likes"], item["comments"], item["shares"], insights["reach"], insights["impressions"], stamp, stamp, stamp),
             )
             audit(db, "imported", "post", local_id, {"status": "published", "channels": ["facebook"], "facebook_post_id": item["id"]})
             stats["imported"] += 1
