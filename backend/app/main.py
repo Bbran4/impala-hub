@@ -614,9 +614,11 @@ def delete_post(post_id: str) -> None:
             try:
                 exists = client.post_exists(facebook_id)
             except FacebookError as exc:
+                # Surface Meta's actionable error text, but never credentials or request URLs.
+                detail = str(exc).strip() or "Facebook returned an unspecified API error."
                 raise HTTPException(
                     502,
-                    "Could not verify whether this post still exists on Facebook. Check the connection and try again.",
+                    f"Facebook could not verify this post: {detail} Check the Facebook connection and Page permissions, then try again.",
                 ) from exc
             if exists:
                 raise HTTPException(
