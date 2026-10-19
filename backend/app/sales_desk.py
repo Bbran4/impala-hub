@@ -345,10 +345,10 @@ def patch_status(option_id: str, payload: dict, _: dict = Depends(require_admin)
 
 @router.get("/rfqs")
 def list_rfqs(status_id: Optional[str] = None, sales_code_id: Optional[str] = None,
-              search: str = Query(default="", max_length=200), limit: int = Query(default=100, ge=1, le=500),
+              search: str = Query(default="", max_length=200), unclaimed_only: bool = False,
+              limit: int = Query(default=100, ge=1, le=500),
               offset: int = Query(default=0, ge=0), user: dict = Depends(current_user)) -> dict:
     clauses, args = [], []
-    unclaimed_only = False
     if user["role"] == "salesperson":
         if not user.get("sales_code"):
             raise HTTPException(403, "Your account is not linked to a configured sales code")
