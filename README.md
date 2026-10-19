@@ -581,3 +581,8 @@ The current implementation is being updated in `feature/marketing-workflow-metri
 - Paid-ad reporting is a separate follow-up: it requires access to the relevant ad account and the appropriate Marketing API permissions (typically including `ads_read`). Paid delivery metrics must not be added to organic post engagement totals.
 
 Organic insights syncing is implemented but not yet validated against a live Meta account. Paid-ad reporting is still not implemented. Run the backend test suite and frontend build before merging, then verify publishing and granted permissions with an authorised test Page.
+
+
+#### Facebook sync reliability follow-up
+
+- Manual Facebook sync now avoids issuing a separate Insights request for every post. The published-post listing continues to sync post content and engagement, while existing organic reach/impressions values are preserved. This keeps sync bounded; Insights refresh should be handled separately with rate limits/timeouts.
