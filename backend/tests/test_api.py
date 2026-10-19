@@ -166,3 +166,51 @@ def test_scheduling_needs_a_future_date_and_drag_style_patches_work():
         assert client.patch(url, headers=H, json={"status": "scheduled"}).json()["status"] == "scheduled"
         # scheduled is now locked, so it cannot be dragged back
         assert client.patch(url, headers=H, json={"status": "draft"}).status_code == 409
+
+
+"""Sales Desk identity and authorization tests."""
+import secrets
+
+from app import sales_desk_auth as sd_auth
+
+
+def test_sales_desk_login_and_role_protection():
+    sd_auth.init_auth_db()
+    salt, password_hash = sd_auth._hash_password("correct-horse-battery-staple-91")
+    now = sd_auth._now()
+    username = "admin-" + secrets.token_hex(4)
+    user_id = secrets.token_hex(16)
+    with sd_auth._connect() as db:
+        db.execute(
+            """INSERT INTO sd_users
+            (id,username,display_name,password_salt,password_hash,role,sales_code,is_active,created_at,updated_at)
+            VALUES(?,?,?,?,?,'administrator',NULL,1,?,?)""",
+            (user_id, username, "Test Administrator", salt, password_hash, now, now),
+        )
+
+    with TestClient(app) as client:
+        bad = client.post("/api/sales-desk/auth/login", json={"username": username, "password": "wrong-password"})
+        assert bad.status_code == 401
+        login = client.post(
+            "/api/sales-desk/auth/login",
+            json={"username": username, "password": "correct-horse-battery-staple-91"},
+        )
+        assert login.status_code == 200, login.text
+        token = login.json()["access_token"]
+        auth = {"Authorization": f"Bearer {token}"}
+        assert client.get("/api/sales-desk/auth/me", headers=auth).json()["role"] == "administrator"
+        created = client.post(
+            "/api/sales-desk/auth/users",
+            headers=auth,
+            json={
+                "username": "sales-" + secrets.token_hex(3),
+                "display_name": "Test Salesperson",
+                "password": "another-correct-horse-battery-92",
+                "role": "salesperson",
+                "sales_code": "TEST01",
+            },
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["sales_code"] == "TEST01"
+        assert client.post("/api/sales-desk/auth/logout", headers=auth).status_code == 200
+        assert client.get("/api/sales-desk/auth/me", headers=auth).status_code == 401
