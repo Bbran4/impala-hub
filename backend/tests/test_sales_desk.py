@@ -247,11 +247,16 @@ def test_closed_rfq_converts_to_invoice_once():
         assert client.patch(f"/api/sales-desk/rfqs/{rfq['id']}", headers=manager,
                             json={"status_id": _status_id(client, admin, "Closed")}).status_code == 200
         done = client.post(convert, headers=sp)  # the owning consultant may convert
-        assert done.status_code == 200, done.text
+        assert done.status_code == 201, done.text
         body = done.json()
+        assert body["id"] != rfq["id"]
         assert body["rfq_type"] == "invoice" and body["rfq_no"] == rfq["rfq_no"] + "INV"
         assert body["original_rfq_no"] == rfq["rfq_no"]
-        assert any(h["action"] == "converted_to_invoice" for h in body["audit_history"])
+        assert any(h["action"] == "created_from_quotation" for h in body["audit_history"])
+        original = client.get(f"/api/sales-desk/rfqs/{rfq['id']}", headers=manager)
+        assert original.status_code == 200
+        assert original.json()["rfq_type"] == "quotation" and original.json()["rfq_no"] == rfq["rfq_no"]
+        assert any(h["action"] == "invoice_copy_created" for h in original.json()["audit_history"])
         assert client.post(convert, headers=manager).status_code == 409
         assert client.get("/api/sales-desk/rfqs?rfq_type=invoice&search=INV", headers=manager).json()["total"] >= 1
 
