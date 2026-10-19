@@ -317,7 +317,7 @@ def patch_status(option_id: str, payload: dict, _: dict = Depends(require_admin)
             raise HTTPException(422, "Name cannot be blank")
         db.execute("UPDATE sd_statuses SET name=?,sort_order=?,is_active=?,is_closed=?,updated_at=? WHERE id=?",
                    (name, int(payload.get("sort_order", row["sort_order"])), int(bool(payload.get("is_active", row["is_active"]))),
-                    int(bool(payload.get("is_closed", row["is_closed"])),), _now(), option_id))
+                    int(bool(payload.get("is_closed", row["is_closed"]))), _now(), option_id))
         return dict(db.execute("SELECT * FROM sd_statuses WHERE id=?", (option_id,)).fetchone())
 
 
@@ -468,7 +468,7 @@ def dashboard(user: dict = Depends(current_user)) -> dict:
         unclaimed = db.execute("SELECT COUNT(*) FROM sd_rfqs r WHERE r.sales_code_id IS NULL" + scope, args).fetchone()[0]
         claimed = db.execute("SELECT COUNT(*) FROM sd_rfqs r WHERE r.sales_code_id IS NOT NULL" + scope, args).fetchone()[0]
         received_today = db.execute(
-            "SELECT COUNT(*) FROM sd_rfqs r WHERE date(r.received_at, 'localtime')=?"+scope, [today, *args]
+            "SELECT COUNT(*) FROM sd_rfqs r WHERE date(r.received_at, '+2 hours')=?"+scope, [today, *args]
         ).fetchone()[0]
         opened = db.execute(
             "SELECT COUNT(*) FROM sd_rfqs r JOIN sd_statuses st ON st.id=r.status_id WHERE st.is_closed=0"+scope, args
