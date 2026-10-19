@@ -31,7 +31,7 @@ const NEEDS_ATTENTION = ['awaiting_approval', 'failed']
 export default function App() {
   const [key, setKey] = useState(getKey())
   const [keyEntry, setKeyEntry] = useState('')
-  const [page, setPage] = useState('Feed')
+  const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [integrations, setIntegrations] = useState<any[]>([])
@@ -226,6 +226,7 @@ export default function App() {
           <div className="brand-mark">I</div>
           <div><b>IMPALA HUB</b><small>Marketing workspace</small></div>
         </div>
+        <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
         <div className="nav-label">WORKSPACE</div>
         {([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Configuration', Settings]] as const).map(
           ([label, Icon]) => (
@@ -247,10 +248,10 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / MARKETING</div><h1>{page === 'Post' ? 'Post details' : page}</h1></div>
-          <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
+          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : page}</h1></div>
+          {page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
-          </button>
+          </button>}
         </header>
 
         {notice && (
@@ -275,6 +276,37 @@ export default function App() {
                 onKeyDown={(e) => { if (e.key === 'Enter') connectKey() }}
               />
               <button className="primary" onClick={connectKey}>Connect</button>
+            </div>
+          </section>
+        )}
+
+        {page === 'Apps' && (
+          <section className="apps-dashboard">
+            <div className="apps-intro">
+              <span className="eyebrow">YOUR WORKSPACE</span>
+              <h2>Welcome to Impala Hub</h2>
+              <p>Choose an application to get started. More tools will appear here as they become available.</p>
+            </div>
+            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>1 available</span></div>
+            <div className="app-cards">
+              <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
+                <div className="app-card-icon"><Megaphone size={25} /></div>
+                <div className="app-card-copy"><h3>Marketing</h3><p>Plan campaigns, organise content, and manage social publishing.</p></div>
+                <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
+              </button>
+              {[
+                { title: 'Smart Stock Control', description: 'Stock levels, replenishment, and branch transfers.' },
+                { title: 'Sales Desk', description: 'Customer enquiries, RFQs, and sales follow-ups.' },
+                { title: 'Returns & Claims', description: 'Track returns, damage claims, and supplier outcomes.' },
+                { title: 'Fleet Management', description: 'Fleet visibility and vehicle activity.' },
+                { title: 'E-commerce', description: 'Shopify orders, catalogue, and integration health.' },
+              ].map((item) => (
+                <div className="app-card app-card-disabled" key={item.title} aria-disabled="true">
+                  <div className="app-card-icon"><ClipboardList size={25} /></div>
+                  <div className="app-card-copy"><h3>{item.title}</h3><p>{item.description}</p></div>
+                  <div className="app-card-footer"><span className="app-status-dot app-status-planned" /> Planned <span className="app-card-lock">Coming later</span></div>
+                </div>
+              ))}
             </div>
           </section>
         )}
