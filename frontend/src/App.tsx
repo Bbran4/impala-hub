@@ -9,12 +9,6 @@ import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
 import { api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
-const SAMPLE_FB_GROUPS = [
-  'sample:Impala Spares Community',
-  'sample:Truck & Trailer Parts Network',
-  'sample:South African Transport Industry',
-]
-const groupLabel = (g: string) => (g.startsWith('sample:') ? `${g.slice(7)} (sample)` : g)
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
   if (!value) return ''
@@ -22,7 +16,7 @@ const toLocalInput = (value?: string | null) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 const emptyPost = (): Partial<Post> => ({
-  title: '', caption: '', campaign_id: null, channels: ['facebook'], facebook_groups: [],
+  title: '', caption: '', campaign_id: null, channels: ['facebook'],
   whatsapp_recipient_type: 'contact', whatsapp_recipient_id: '', whatsapp_recipient_name: '',
   status: 'draft', publish_at: '', media: [],
 })
@@ -129,7 +123,7 @@ export default function App() {
   const currentMonthPosts = useMemo(() => {
     const now = new Date()
     return posts.filter((p) => {
-      const stamp = p.publish_at || p.created_at
+      const stamp = p.published_at || p.publish_at || p.created_at
       if (!stamp) return false
       const d = new Date(stamp)
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
@@ -218,20 +212,19 @@ export default function App() {
     } catch (e) { handleError(e) } finally { setBusy(false) }
   }
 
-  async function savePost(mode: 'draft' | 'approval' | 'schedule') {
+  async function savePost(mode: 'draft' | 'approval' | 'schedule' | 'publish-now') {
     if (!editor) return
     setBusy(true); setError('')
     try {
-      const status = mode === 'draft' ? 'draft' : mode === 'approval' ? 'awaiting_approval' : 'scheduled'
-      if (status === 'scheduled' && !isFuture(editor.publish_at)) {
-        throw new Error('Choose a future date and time to schedule this post. Publishing immediately is not available.')
+      const status = mode === 'draft' ? 'draft' : mode === 'approval' ? 'awaiting_approval' : mode === 'schedule' ? 'scheduled' : 'draft'
+      if (mode === 'schedule' && !isFuture(editor.publish_at)) {
+        throw new Error('Choose a future date and time to schedule this post.')
       }
       const payload = {
         title: editor.title ?? '',
         caption: editor.caption ?? '',
         campaign_id: editor.campaign_id || null,
         channels: editor.channels ?? [],
-        facebook_groups: editor.facebook_groups ?? [],
         whatsapp_recipient_type: editor.whatsapp_recipient_type ?? null,
         whatsapp_recipient_id: editor.whatsapp_recipient_id ?? null,
         whatsapp_recipient_name: editor.whatsapp_recipient_name ?? null,
@@ -239,15 +232,22 @@ export default function App() {
         status,
         publish_at: editor.publish_at ? new Date(editor.publish_at).toISOString() : null,
       }
-      if (editor.id) await api(`/api/posts/${editor.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
-      else await api('/api/posts', { method: 'POST', body: JSON.stringify(payload) })
+      let saved: Post
+      if (editor.id) saved = await api(`/api/posts/${editor.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+      else saved = await api('/api/posts', { method: 'POST', body: JSON.stringify(payload) })
       const facebookLive = integrations.some((i) => i.provider === 'facebook' && i.status === 'connected')
-      setNotice(
-        status === 'scheduled'
-          ? (facebookLive ? 'Post scheduled. It will be published to Facebook at the chosen time while the API is running.' : 'Post saved as scheduled. Connect Facebook in Configuration so it can be published.')
-        : status === 'awaiting_approval' ? 'Post sent for approval.'
-        : 'Draft saved.',
-      )
+      if (mode === 'publish-now') {
+        if (!facebookLive) throw new Error('Connect Facebook in Configuration before publishing.')
+        await api(`/api/posts/${saved.id}/publish-now`, { method: 'POST' })
+        setNotice('Publish requested. Check the post status for the confirmed Facebook result.')
+      } else {
+        setNotice(
+          status === 'scheduled'
+            ? (facebookLive ? 'Post scheduled. It will be published to Facebook at the chosen time while the API is running.' : 'Post saved as scheduled. Connect Facebook in Configuration so it can be published.')
+          : status === 'awaiting_approval' ? 'Post sent for approval.'
+          : 'Draft saved.',
+        )
+      }
       setEditor(null)
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
@@ -425,7 +425,7 @@ export default function App() {
                 { label: 'Published Posts', value: currentMonthPosts.filter((p) => p.status === 'published').length, filter: 'published', icon: CheckCircle2 },
                 { label: 'Scheduled', value: currentMonthPosts.filter((p) => p.status === 'scheduled').length, filter: 'scheduled', icon: CalendarClock },
                 { label: 'Needs Attention', value: currentMonthPosts.filter((p) => NEEDS_ATTENTION.includes(p.status)).length, filter: 'awaiting_approval', icon: CircleAlert },
-                { label: 'Engagements', value: '—', filter: 'engagements', icon: BarChart3 },
+                { label: 'Facebook engagements', value: currentMonthPosts.filter((p) => p.status === 'published' && p.channels.includes('facebook')).reduce((sum, p) => sum + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0), filter: 'engagements', icon: BarChart3 },
               ].map((s) => (
                 <button
                   className="stat-card" key={s.label}
@@ -433,7 +433,7 @@ export default function App() {
                 >
                   <div className="stat-top"><span>{s.label}</span><s.icon size={18} /></div>
                   <strong>{s.value}</strong>
-                  <small>{s.filter === 'engagements' ? 'Available after account connection' : 'This month'}</small>
+                  <small>{s.filter === 'engagements' ? 'Facebook-sourced · this month' : 'This month'}</small>
                 </button>
               ))}
             </div>
@@ -625,26 +625,7 @@ export default function App() {
                 ))}
               </div>
 
-              {channels.includes('facebook') && (
-                <>
-                  <label id="lbl-groups">Additional Facebook groups <span>Choose up to 3. Sample groups only until Facebook is connected.</span></label>
-                  <div className="group-checks" role="group" aria-labelledby="lbl-groups">
-                    {SAMPLE_FB_GROUPS.map((g) => {
-                      const selected = editor.facebook_groups || []
-                      return (
-                        <label key={g}>
-                          <input
-                            type="checkbox" checked={selected.includes(g)}
-                            disabled={!selected.includes(g) && selected.length >= 3}
-                            onChange={(e) => patchEditor({ facebook_groups: e.target.checked ? [...selected, g] : selected.filter((x) => x !== g) })}
-                          />{groupLabel(g)}
-                        </label>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-
+ 
               {channels.includes('whatsapp') && (
                 <>
                   <label id="lbl-wa">WhatsApp destination</label>
@@ -709,6 +690,9 @@ export default function App() {
               <button className="secondary" onClick={() => setEditor(null)}>Cancel</button>
               <button className="secondary" disabled={busy} onClick={() => void savePost('draft')}>Save as draft</button>
               <button className="secondary" disabled={busy} onClick={() => void savePost('approval')}>Send for approval</button>
+              <button className="secondary" disabled={busy || !integrations.some((i) => i.provider === 'facebook' && i.status === 'connected')} onClick={() => void savePost('publish-now')} title="Publish this post to the connected Facebook Page now">
+                <Send size={15} /> Publish now
+              </button>
               <button className="primary" disabled={busy || !canSchedule} title={canSchedule ? '' : 'Choose a future date and time first'} onClick={() => void savePost('schedule')}>
                 <Send size={15} />{busy ? 'Saving...' : 'Schedule post'}
               </button>
