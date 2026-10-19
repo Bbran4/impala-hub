@@ -290,6 +290,16 @@ export default function App() {
 
   function openPost(id: string) { setDetailId(id); setPage('Post'); setError('') }
 
+  // Failed posts reopen with their existing content and a safe near-future time.
+  function reschedulePost(p: Post) {
+    const when = new Date(Date.now() + 15 * 60 * 1000)
+    setEditor({ ...p, status: 'draft', publish_at: toLocalInput(when.toISOString()) })
+    setDetailId(null)
+    setPage('Posts')
+    setError('')
+    setNotice('Review the post and scheduled time, then confirm Schedule post.')
+  }
+
   // Scheduled and published posts cannot be edited, so they open the detail view instead.
   function openEditor(p: Post) {
     if (EDITABLE.includes(p.status)) { setEditor(p); setError('') } else openPost(p.id)
@@ -539,7 +549,7 @@ export default function App() {
           selected ? (
             <PostDetail
               post={selected} campaigns={campaigns} onBack={() => setPage('Posts')} onEdit={openEditor}
-              onDelete={removePost} onSaveCampaign={saveCampaign} onError={handleError}
+              onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onError={handleError}
             />
           ) : (
             <div className="empty">
