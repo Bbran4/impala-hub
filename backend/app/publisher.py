@@ -155,7 +155,8 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
                 if item["permalink_url"]:
                     ids["permalink"] = item["permalink_url"]
                 db.execute(
-                    "UPDATE posts SET likes=?,comments=?,shares=?,metrics_refreshed_at=?,provider_ids_json=? WHERE id=?",
+                    "UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),shares=COALESCE(?,shares),"
+                    "metrics_refreshed_at=?,provider_ids_json=? WHERE id=?",
                     (item["likes"], item["comments"], item["shares"], stamp, json.dumps(ids), local_id),
                 )
                 stats["updated"] += 1

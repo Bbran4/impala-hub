@@ -23,7 +23,11 @@ class FacebookError(Exception):
 
 
 BASE_FIELDS = "id,message,created_time,permalink_url,full_picture,attachments{media,subattachments}"
-POST_FIELDS = BASE_FIELDS + ",likes.limit(0).summary(true),comments.limit(0).summary(true),shares"
+LIKES_FIELDS = ",likes.limit(0).summary(true),shares"
+COMMENTS_FIELDS = ",comments.limit(0).summary(true)"
+# Tried in this order. Comments are user-generated content and may need a different permission
+# (pages_read_user_content) than likes and shares, so a refusal there must not hide the rest.
+FIELD_SETS = [BASE_FIELDS + LIKES_FIELDS + COMMENTS_FIELDS, BASE_FIELDS + LIKES_FIELDS, BASE_FIELDS]
 
 
 def _images(raw: dict) -> list[str]:
@@ -112,15 +116,16 @@ class FacebookClient:
     def list_published_posts(self, limit: int = 100) -> list[dict]:
         """Newest-first posts published by the Page itself (not visitor posts), with engagement counts.
 
-        If Facebook refuses the engagement fields (permission errors 10 / 200), the posts are still
-        listed without likes, comments and shares rather than failing the whole import.
+        If Facebook refuses some engagement fields (permission errors 10 / 200), the posts are still
+        listed with whatever figures it does allow; the rest stay "not available".
         """
-        try:
-            return self._list(limit, POST_FIELDS)
-        except FacebookError as exc:
-            if exc.code not in (10, 200):
-                raise
-            return self._list(limit, BASE_FIELDS)
+        for i, fields in enumerate(FIELD_SETS):
+            try:
+                return self._list(limit, fields)
+            except FacebookError as exc:
+                if exc.code not in (10, 200) or i == len(FIELD_SETS) - 1:
+                    raise
+        raise AssertionError("unreachable")
 
     def _list(self, limit: int, fields: str) -> list[dict]:
         params = {"fields": fields, "limit": 25, "access_token": self._token}
