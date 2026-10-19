@@ -59,9 +59,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         <div className="row-actions">
           {editable && <button className="secondary" onClick={() => onEdit(post)}><Pencil size={15} /> Edit post</button>}
           {post.status === 'failed' && <button className="secondary" onClick={() => onReschedule(post)}><CalendarClock size={15} /> Reschedule</button>}
-          {!published && (
-            <button className="icon-button" title="Delete post" aria-label="Delete post" onClick={() => onDelete(post.id)}><Trash2 size={16} /></button>
-          )}
+          <button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(post.id)}><Trash2 size={16} /></button>
         </div>
       </div>
 
@@ -69,7 +67,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         <div className="lock-banner">
           <Lock size={16} />
           {published
-            ? 'This post has been published and is a permanent record. Only its campaign can be changed.'
+            ? 'Published posts can only be removed from Impala Hub after they no longer exist on Facebook.'
             : 'This post is scheduled. Only its campaign can be changed.'}
         </div>
       )}
