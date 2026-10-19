@@ -362,7 +362,7 @@ def test_concurrent_rfq_creation_allocates_unique_daily_numbers():
         assert all(response.status_code == 201 for response in responses), [response.text for response in responses]
         references = [response.json()["rfq_no"] for response in responses]
         assert len(set(references)) == len(references)
-        daily_numbers = sorted(int(reference[-2:]) for reference in references)
+        daily_numbers = sorted(int(reference[9:]) for reference in references)
         assert daily_numbers == list(range(daily_numbers[0], daily_numbers[0] + 8))
 
 
