@@ -723,14 +723,44 @@ def facebook_oauth_callback(code: Optional[str] = None, state: Optional[str] = N
             "fb_exchange_token": user_token,
         })
         long_token = long_response.get("access_token") or user_token
+        # Try the long-lived user token first, then the freshly exchanged token. Some
+        # Meta setups return an empty Page list for the exchanged token even though the
+        # initial user token has the required Page permissions.
         pages_response = _meta_graph_get("me/accounts", {
             "fields": "id,name,access_token,tasks",
             "limit": 100,
             "access_token": long_token,
         })
-        pages = [p for p in pages_response.get("data", []) if p.get("id") and p.get("access_token")]
+        raw_pages = pages_response.get("data", [])
+        if not raw_pages and user_token != long_token:
+            pages_response = _meta_graph_get("me/accounts", {
+                "fields": "id,name,access_token,tasks",
+                "limit": 100,
+                "access_token": user_token,
+            })
+            raw_pages = pages_response.get("data", [])
+        pages = [p for p in raw_pages if p.get("id") and p.get("access_token")]
         if not pages:
-            return RedirectResponse(frontend + "/?facebook_oauth=error&reason=no_pages")
+            # Give the frontend a useful, non-sensitive diagnosis rather than a generic
+            # "no pages" message. Never include access tokens or raw Meta responses.
+            granted = set()
+            try:
+                permission_response = _meta_graph_get("me/permissions", {"access_token": long_token})
+                granted = {
+                    item.get("permission")
+                    for item in permission_response.get("data", [])
+                    if item.get("status") == "granted"
+                }
+            except HTTPException:
+                pass
+            required = {"pages_show_list", "pages_manage_posts", "pages_read_engagement"}
+            if not required.issubset(granted):
+                reason = "missing_permissions"
+            elif raw_pages:
+                reason = "page_token_unavailable"
+            else:
+                reason = "no_pages"
+            return RedirectResponse(frontend + f"/?facebook_oauth=error&reason={reason}")
         encrypted = _fernet()
         debug = _meta_graph_get("debug_token", {
             "input_token": long_token,
