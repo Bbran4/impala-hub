@@ -69,9 +69,14 @@ export default function App() {
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
 
   async function sdApi(path: string, init: RequestInit = {}) {
-    const response = await fetch(`${API}${path}`, {
-      ...init, headers: { 'Content-Type': 'application/json', ...(sdToken ? { Authorization: `Bearer ${sdToken}` } : {}), ...(init.headers || {}) },
-    })
+    let response: Response
+    try {
+      response = await fetch(`${API}${path}`, {
+        ...init, headers: { 'Content-Type': 'application/json', ...(sdToken ? { Authorization: `Bearer ${sdToken}` } : {}), ...(init.headers || {}) },
+      })
+    } catch {
+      throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL. Sales Desk sign-in does not depend on Marketing configuration.`)
+    }
     const body = response.status === 204 ? null : await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : `Sales Desk request failed (${response.status})`)
     return body
@@ -80,8 +85,13 @@ export default function App() {
   async function sdLogin() {
     setBusy(true); setError('')
     try {
-      const response = await fetch(`${API}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: sdUsername, password: sdPassword }) })
-      const body = await response.json()
+      let response: Response
+      try {
+        response = await fetch(`${API}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: sdUsername, password: sdPassword }) })
+      } catch {
+        throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL. Marketing configuration is not required for Sales Desk sign-in.`)
+      }
+      const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body?.detail || 'Sign-in failed')
       sessionStorage.setItem('impala_sales_desk_token', body.access_token)
       setSdToken(body.access_token); setSdUser(body.user); setSdPassword('')
