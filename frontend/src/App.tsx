@@ -48,6 +48,11 @@ export default function App() {
   const [sdStatusFilter, setSdStatusFilter] = useState('')
   const [sdSalesCodeFilter, setSdSalesCodeFilter] = useState('')
   const [sdSelectedRfq, setSdSelectedRfq] = useState<any>(null)
+  const [sdDashboard, setSdDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
+  const [sdCreateOpen, setSdCreateOpen] = useState(false)
+  const [sdDraft, setSdDraft] = useState<any>({ media_platform_id: '', customer_name: '', contact_number: '', email_address: '', query_information: '', remarks: '', document_number: '' })
+  const [sdConfigDraft, setSdConfigDraft] = useState<any>({ mediaName: '', mediaSort: 0, salesCode: '', salesName: '', statusName: '', statusSort: 0, statusClosed: false })
+  const [sdDetailDraft, setSdDetailDraft] = useState<any>(null)
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -107,12 +112,13 @@ export default function App() {
   async function loadSalesDesk() {
     if (!sdToken) return
     try {
-      const [me, cfg, result] = await Promise.all([
+      const [me, cfg, result, dashboard] = await Promise.all([
         sdApi('/api/sales-desk/auth/me'),
         sdApi('/api/sales-desk/config'),
-        sdApi('/api/sales-desk/rfqs?limit=200'),
+        sdApi('/api/sales-desk/rfqs?limit=500'),
+        sdApi('/api/sales-desk/dashboard'),
       ])
-      setSdUser(me); setSdConfig(cfg); setSdRfqs(result.items || [])
+      setSdUser(me); setSdConfig(cfg); setSdRfqs(result.items || []); setSdDashboard(dashboard)
     } catch (e) {
       const message = (e as Error).message
       if (message.toLowerCase().includes('session') || message.toLowerCase().includes('sign in')) {
@@ -120,6 +126,71 @@ export default function App() {
       }
       setError(message)
     }
+  }
+
+  async function sdRefresh() {
+    const [cfg, result, dashboard] = await Promise.all([
+      sdApi('/api/sales-desk/config'),
+      sdApi('/api/sales-desk/rfqs?limit=500'),
+      sdApi('/api/sales-desk/dashboard'),
+    ])
+    setSdConfig(cfg); setSdRfqs(result.items || []); setSdDashboard(dashboard)
+    if (sdSelectedRfq?.id) {
+      const detail = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}`)
+      setSdSelectedRfq(detail); setSdDetailDraft(detail)
+    }
+  }
+
+  async function sdCreateRfq() {
+    setBusy(true); setError('')
+    try {
+      const result = await sdApi('/api/sales-desk/rfqs', { method: 'POST', body: JSON.stringify(sdDraft) })
+      setSdCreateOpen(false); setSdDraft({ media_platform_id: '', customer_name: '', contact_number: '', email_address: '', query_information: '', remarks: '', document_number: '' })
+      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice(`RFQ ${result.rfq_no} created.`)
+      await sdRefresh()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function sdSaveRfq() {
+    if (!sdSelectedRfq || !sdDetailDraft) return
+    setBusy(true); setError('')
+    try {
+      const body = sdUser?.role === 'salesperson'
+        ? { remarks: sdDetailDraft.remarks, query_information: sdDetailDraft.query_information, document_number: sdDetailDraft.document_number }
+        : { media_platform_id: sdDetailDraft.media_platform_id, customer_name: sdDetailDraft.customer_name, contact_number: sdDetailDraft.contact_number, email_address: sdDetailDraft.email_address, query_information: sdDetailDraft.query_information, remarks: sdDetailDraft.remarks, document_number: sdDetailDraft.document_number, status_id: sdDetailDraft.status_id }
+      const result = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice('RFQ changes saved.')
+      await sdRefresh()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function sdClaimRfq(rfq: any) {
+    setBusy(true); setError('')
+    try {
+      const result = await sdApi(`/api/sales-desk/rfqs/${rfq.id}/claim`, { method: 'POST' })
+      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice(`Claimed ${result.rfq_no} for your sales code.`)
+      await sdRefresh()
+    } catch (e) { setError((e as Error).message); await loadSalesDesk() } finally { setBusy(false) }
+  }
+
+  async function sdAssignRfq(sales_code_id: string) {
+    if (!sdSelectedRfq) return
+    setBusy(true); setError('')
+    try {
+      const result = await sdApi(`/api/sales-desk/rfqs/${sdSelectedRfq.id}/assign`, { method: 'POST', body: JSON.stringify({ sales_code_id: sales_code_id || null }) })
+      setSdSelectedRfq(result); setSdDetailDraft(result); setNotice('RFQ assignment updated.')
+      await sdRefresh()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function sdConfigAction(path: string, body: any, method = 'POST') {
+    setBusy(true); setError('')
+    try {
+      await sdApi(path, { method, body: JSON.stringify(body) })
+      setNotice('Configuration saved.')
+      setSdConfigDraft((d: any) => ({ ...d, mediaName: '', salesCode: '', salesName: '', statusName: '' }))
+      await sdRefresh()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
