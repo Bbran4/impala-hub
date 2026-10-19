@@ -614,3 +614,20 @@ The Sales Desk work is being delivered incrementally on `feature/sales-desk-rfqs
 - The existing Marketing API continues using its current shared API key, so the new identity mechanism does not change its authentication behaviour.
 
 **Not complete yet:** salesperson mappings are not yet validated against the configurable sales-code table; the RFQ database, daily numbering, configuration screens, live RFQ queue, claim/assignment workflows and live dashboard totals are still pending. Automated tests have been added for the initial auth flow but have not yet been executed in this environment. Do not treat the Sales Desk as production-ready until the full permission and concurrency test suite passes.
+
+
+### Latest Sales Desk progress
+
+The feature branch now includes:
+- Frontend username/password sign-in for Sales Desk, with a separate browser session token from the Marketing API key.
+- A current-user/session check and sign-out flow.
+- Configurable media-platform, sales-code and status API endpoints. Options referenced by RFQs are protected from destructive changes; deactivate rather than delete.
+- Administrator-created salesperson accounts must be mapped to an active configured sales-code record.
+- RFQ schema and endpoints for creation, listing, detail, and permitted-field updates.
+- Daily incremental RFQ references in the format `IMPYYMMDDNN`, using the `Africa/Johannesburg` business date, a unique database constraint and serialized SQLite write transaction.
+- UTC timestamps and an RFQ audit-history table recording creation and field updates.
+- Tests added for sign-in/user provisioning and basic RFQ numbering/audit behaviour.
+
+The RFQ workspace can now request live records through the API and has working search and status/sales-code filters. Claiming and assignment are intentionally not implemented yet; salespeople cannot create RFQs directly. The configuration page is currently a basic status/count view, and full configuration/user administration forms remain to be built.
+
+**Verification caveat:** automated tests and the frontend build have not yet been executed in this environment. Treat this as implementation in progress, not a production-ready deployment. Phase 5 claim/assignment protections and Phase 6 concurrency/regression validation remain outstanding.
