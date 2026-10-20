@@ -65,8 +65,16 @@ export default function App() {
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
   function handleError(e: unknown) {
-    if (e instanceof AuthError) { setKey(''); setKeyEntry('') }
-    setError((e as Error).message)
+    const message = (e as Error).message
+    // A stale token can otherwise keep the login panel hidden while every protected
+    // request fails. Return to the sign-in state for connectivity/auth bootstrap errors.
+    if (e instanceof AuthError || message.startsWith('Cannot reach the Impala Hub API')) {
+      localStorage.removeItem(KEY_STORAGE)
+      sessionStorage.removeItem(KEY_STORAGE)
+      setKey('')
+      setKeyEntry('')
+    }
+    setError(message)
   }
 
   async function load() {
