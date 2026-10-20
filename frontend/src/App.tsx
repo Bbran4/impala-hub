@@ -50,6 +50,7 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<Partial<Post> | null>(null)
   const [campaignModal, setCampaignModal] = useState(false)
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null)
   const [campaignName, setCampaignName] = useState('')
   const [campaignObjective, setCampaignObjective] = useState('')
   const [notice, setNotice] = useState('')
@@ -285,10 +286,14 @@ export default function App() {
   async function createCampaign() {
     if (!campaignName.trim()) return
     try {
-      await api('/api/campaigns', { method: 'POST', body: JSON.stringify({ name: campaignName, objective: campaignObjective }) })
-      setCampaignName(''); setCampaignObjective(''); setCampaignModal(false); setNotice('Campaign created.')
+      const payload = { name: campaignName, objective: campaignObjective }
+      await api(editingCampaignId ? `/api/campaigns/${editingCampaignId}` : '/api/campaigns', { method: editingCampaignId ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
+      setCampaignName(''); setCampaignObjective(''); setEditingCampaignId(null); setCampaignModal(false); setNotice(editingCampaignId ? 'Campaign updated.' : 'Campaign created.')
       await load()
     } catch (e) { handleError(e) }
+  }
+  function openCampaignEditor(c: Campaign) {
+    setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignModal(true)
   }
 
   async function removePost(id: string) {
@@ -540,7 +545,7 @@ export default function App() {
           <>
             <div className="section-head">
               <div><h2>Campaigns</h2><p>Group related posts under a shared marketing objective.</p></div>
-              <button className="primary" onClick={() => setCampaignModal(true)}><Plus size={16} /> New campaign</button>
+              <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>
             </div>
             <div className="campaign-grid">
               {campaigns.map((c) => (
@@ -548,10 +553,6 @@ export default function App() {
                   <div className="campaign-icon"><Megaphone size={20} /></div>
                   <div className="campaign-card-heading"><h3>{c.name}</h3><span className="status-badge">New</span></div>
                   <p>{c.objective || 'No objective added yet.'}</p>
-                  <div className="campaign-engagement">
-                    <span>{posts.filter((p) => p.campaign_id === c.id).length} Posts</span>
-                    <span>Engagements {posts.filter((p) => p.campaign_id === c.id).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)}</span>
-                  </div>
                   <div className="campaign-footer">
                     <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
                   </div>
@@ -561,7 +562,7 @@ export default function App() {
                 <div className="empty">
                   <Megaphone size={28} /><h3>No campaigns yet</h3>
                   <p>Create a campaign to organise related posts.</p>
-                  <button className="secondary" onClick={() => setCampaignModal(true)}>Create campaign</button>
+                  <button className="secondary" onClick={() => setCampaignModal(true)}>{editingCampaignId ? 'Save changes' : 'Create campaign'}</button>
                 </div>
               )}
             </div>
@@ -713,7 +714,7 @@ export default function App() {
         <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCampaignModal(false) }}>
           <section className="small-modal" role="dialog" aria-modal="true" aria-label="New campaign">
             <header className="editor-head">
-              <h2>New campaign</h2>
+              <h2>{editingCampaignId ? 'Edit campaign' : 'New campaign'}</h2>
               <button className="icon-button" aria-label="Close" onClick={() => setCampaignModal(false)}><X size={20} /></button>
             </header>
             <label htmlFor="campaign-name">Campaign name</label>
