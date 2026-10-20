@@ -1034,6 +1034,15 @@ def _ensure_instagram_tables() -> None:
             last_checked_at TEXT, token_expires_at INTEGER, data_access_expires_at INTEGER,
             granted_permissions_json TEXT NOT NULL DEFAULT '[]', connection_source TEXT NOT NULL DEFAULT 'oauth'
         )""")
+        for column, definition in (
+            ("last_checked_at", "TEXT"), ("token_expires_at", "INTEGER"),
+            ("data_access_expires_at", "INTEGER"), ("granted_permissions_json", "TEXT NOT NULL DEFAULT '[]'"),
+            ("connection_source", "TEXT NOT NULL DEFAULT 'oauth'"),
+        ):
+            try:
+                db.execute(f"ALTER TABLE instagram_connection ADD COLUMN {column} {definition}")
+            except sqlite3.OperationalError:
+                pass
 
 @app.post("/api/integrations/instagram/oauth-url", dependencies=[Depends(require_api_key)])
 def instagram_oauth_url() -> dict:
