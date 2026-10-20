@@ -749,7 +749,7 @@ export default function App() {
             <textarea id="campaign-objective" value={campaignObjective} onChange={(e) => setCampaignObjective(e.target.value)} placeholder="What should this campaign achieve?" rows={3} />
             <footer className="editor-foot">
               <button className="secondary" onClick={() => setCampaignModal(false)}>Cancel</button>
-              <button className="primary" onClick={() => void createCampaign()">{editingCampaignId ? 'Save changes' : 'Create campaign'}</button>
+              <button className="primary" onClick={() => void createCampaign()}>{editingCampaignId ?{editingCampaignId ? 'Save changes' : 'Create campaign'}</button>
             </footer>
           </section>
         </div>
