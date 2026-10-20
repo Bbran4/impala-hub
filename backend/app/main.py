@@ -1016,7 +1016,7 @@ def audit_log(limit: int = Query(100, ge=1, le=500)) -> list[dict]:
 def _instagram_integration_status() -> dict:
     _ensure_instagram_tables()
     with db_session() as db:
-        row = db.execute("SELECT account_id,account_name,username,updated_at FROM instagram_connection WHERE id=1").fetchone()
+        row = db.execute("SELECT * FROM instagram_connection WHERE id=1").fetchone()
     if not row:
         return {"provider": "instagram", "label": "Instagram Professional", "status": "not_connected", "capabilities": ["image_posts", "carousel_posts", "insights"]}
     return {"provider": "instagram", "label": "Instagram Professional", "status": "connected", "account_id": row["account_id"], "account_name": row["account_name"], "username": row["username"], "last_checked_at": row["last_checked_at"] or row["updated_at"], "last_success_at": row["last_checked_at"] or row["updated_at"], "token_type": "page", "expires_at": row["token_expires_at"], "data_access_expires_at": row["data_access_expires_at"], "granted_permissions": json.loads(row["granted_permissions_json"] or "[]"), "connection_source": row["connection_source"], "capabilities": ["image_posts", "carousel_posts", "insights"]}
