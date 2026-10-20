@@ -995,7 +995,6 @@ def integrations() -> list[dict]:
     return [
         facebook_integration(),
         _instagram_integration_status(),
-        {"provider": "whatsapp", "label": "WhatsApp Business Platform", "status": "not_connected", "capabilities": ["business_messaging"], "note": "Group messaging availability depends on account eligibility and supported Meta APIs."},
     ]
 
 
