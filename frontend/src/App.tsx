@@ -463,7 +463,7 @@ export default function App() {
           </section>
         )}
 
-        {isSalesDeskPage && <SalesDesk page={page} setNotice={setNotice} setError={setError} />}
+        {isSalesDeskPage && <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} />}
 
         {key && page === 'Feed' && (
           <>
