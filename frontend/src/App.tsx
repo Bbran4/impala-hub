@@ -534,10 +534,13 @@ export default function App() {
               {campaigns.map((c) => (
                 <div className="campaign-card" key={c.id}>
                   <div className="campaign-icon"><Megaphone size={20} /></div>
-                  <h3>{c.name}</h3>
+                  <div className="campaign-card-heading"><h3>{c.name}</h3><span className="status-badge">New</span></div>
                   <p>{c.objective || 'No objective added yet.'}</p>
+                  <div className="campaign-engagement">
+                    <span>{posts.filter((p) => p.campaign_id === c.id).length} Posts</span>
+                    <span>Engagements {posts.filter((p) => p.campaign_id === c.id).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)}</span>
+                  </div>
                   <div className="campaign-footer">
-                    <span>{posts.filter((p) => p.campaign_id === c.id).length} posts</span>
                     <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
                   </div>
                 </div>
@@ -633,7 +636,7 @@ export default function App() {
             <div className="editor-body">
               <label id="lbl-channels">Channels <span>Choose where this post should appear</span></label>
               <div className="channel-checks" role="group" aria-labelledby="lbl-channels">
-                {[['facebook', 'Facebook'], ['instagram', 'Instagram'], ['whatsapp', 'WhatsApp']].map(([v, l]) => (
+                {[['facebook', 'Facebook'], ['instagram', 'Instagram']].map(([v, l]) => (
                   <label className="check-chip" key={v}>
                     <input
                       type="checkbox" checked={channels.includes(v)}
@@ -643,34 +646,7 @@ export default function App() {
                 ))}
               </div>
 
- 
-              {channels.includes('whatsapp') && (
-                <>
-                  <label id="lbl-wa">WhatsApp destination</label>
-                  <div className="two-col" role="group" aria-labelledby="lbl-wa">
-                    <select
-                      aria-label="WhatsApp destination type" value={editor.whatsapp_recipient_type || 'contact'}
-                      onChange={(e) => patchEditor({ whatsapp_recipient_type: e.target.value, whatsapp_recipient_id: '', whatsapp_recipient_name: '' })}
-                    >
-                      <option value="contact">Contact</option>
-                      <option value="group">Group (subject to API eligibility)</option>
-                    </select>
-                    <select
-                      aria-label="WhatsApp destination" value={editor.whatsapp_recipient_name || ''}
-                      onChange={(e) => patchEditor({ whatsapp_recipient_name: e.target.value, whatsapp_recipient_id: e.target.value })}
-                    >
-                      <option value="">Select {editor.whatsapp_recipient_type || 'contact'}</option>
-                      {(editor.whatsapp_recipient_type === 'group'
-                        ? ['Sample fleet updates group', 'Sample customer promotions group']
-                        : ['Sample customer contact', 'Sample workshop contact']
-                      ).map((n) => <option key={n}>{n}</option>)}
-                    </select>
-                  </div>
-                  <p className="hint">Sample destinations only. WhatsApp support is not built yet.</p>
-                </>
-              )}
-
-              <label htmlFor="post-title">Title</label>
+                             <label htmlFor="post-title">Title</label>
               <input id="post-title" maxLength={160} placeholder="Internal title for this post" value={editor.title || ''} onChange={(e) => patchEditor({ title: e.target.value })} />
 
               <label htmlFor="post-caption">Caption / message</label>
