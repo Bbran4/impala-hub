@@ -992,7 +992,7 @@ def integrations() -> list[dict]:
     # Deliberately no fake connected accounts: "connected" only after a live check against Facebook.
     return [
         facebook_integration(),
-        {"provider": "instagram", "label": "Instagram Professional", "status": "not_connected", "capabilities": ["image_posts", "carousel_posts"]},
+        _instagram_integration_status(),
         {"provider": "whatsapp", "label": "WhatsApp Business Platform", "status": "not_connected", "capabilities": ["business_messaging"], "note": "Group messaging availability depends on account eligibility and supported Meta APIs."},
     ]
 
@@ -1009,6 +1009,14 @@ def audit_log(limit: int = Query(100, ge=1, le=500)) -> list[dict]:
         rows = db.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [audit_item(r) for r in rows]
 
+
+def _instagram_integration_status() -> dict:
+    _ensure_instagram_tables()
+    with db_session() as db:
+        row = db.execute("SELECT account_id,account_name,username,updated_at FROM instagram_connection WHERE id=1").fetchone()
+    if not row:
+        return {"provider": "instagram", "label": "Instagram Professional", "status": "not_connected", "capabilities": ["image_posts", "carousel_posts", "insights"]}
+    return {"provider": "instagram", "label": "Instagram Professional", "status": "connected", "account_id": row["account_id"], "account_name": row["account_name"], "username": row["username"], "last_checked_at": row["updated_at"], "capabilities": ["image_posts", "carousel_posts", "insights"]}
 
 # --------------------------------------------------------------------------- Instagram OAuth / account connection
 INSTAGRAM_OAUTH_SCOPES = "instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,business_management"
