@@ -3,7 +3,6 @@ import { ClipboardList, Download, Eye, GripVertical, Paperclip, Plus, Settings, 
 import { API } from './lib'
 import './salesdesk.css'
 
-const TOKEN_KEY = 'impala_sales_desk_token'
 const FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx'
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
@@ -22,7 +21,7 @@ function describeDetail(detail: unknown, status: number): string {
 }
 
 type Req = (path: string, init?: RequestInit) => Promise<any>
-type Props = { page: string; setNotice: (m: string) => void; setError: (m: string) => void }
+type Props = { page: string; token: string; setNotice: (m: string) => void; setError: (m: string) => void }
 
 // ---------------------------------------------------------------------------------------------
 // Drag-and-drop list used for media platforms and statuses.
@@ -360,11 +359,8 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
 }
 
 // ---------------------------------------------------------------------------------------------
-export default function SalesDesk({ page, setNotice, setError }: Props) {
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || '')
+export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   const [user, setUser] = useState<any>(null)
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [rfqs, setRfqs] = useState<any[]>([])
   const [config, setConfig] = useState<any>({ media_platforms: [], sales_codes: [], statuses: [] })
@@ -381,10 +377,6 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
   const [newUser, setNewUser] = useState({ display_name: '', username: '', password: '', role: 'salesperson' })
 
   const closePanel = useCallback(() => setPanel(null), [])
-  const endSession = useCallback(() => {
-    sessionStorage.removeItem(TOKEN_KEY); setToken(''); setUser(null); setRfqs([]); setPanel(null)
-  }, [])
-
   const request: Req = useCallback(async (path, init = {}) => {
     const headers = new Headers(init.headers || {})
     if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -393,10 +385,10 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
     try { res = await fetch(`${API}${path}`, { ...init, headers }) }
     catch { throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL.`) }
     const body = res.status === 204 ? null : await res.json().catch(() => ({}))
-    if (res.status === 401 && token) { endSession(); throw new Error('Your Sales Desk session has expired. Please sign in again.') }
+    if (res.status === 401 && token) { throw new Error('Your Impala Hub session has expired. Please sign in again.') }
     if (!res.ok) throw new Error(describeDetail(body?.detail, res.status))
     return body
-  }, [token, endSession])
+  }, [token])
 
   const load = useCallback(async () => {
     if (!token) return
@@ -410,25 +402,6 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
     } catch (e) { setError((e as Error).message) }
   }, [token, request, setError])
   useEffect(() => { void load() }, [load, page])
-
-  async function login() {
-    setBusy(true); setError('')
-    try {
-      let res: Response
-      try { res = await fetch(`${API}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }) }
-      catch { throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL.`) }
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(describeDetail(body?.detail, res.status) || 'Sign-in failed')
-      sessionStorage.setItem(TOKEN_KEY, body.access_token)
-      setToken(body.access_token); setUser(body.user); setPassword('')
-      setNotice(`Signed in to Sales Desk as ${body.user.display_name}.`)
-    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
-  }
-
-  async function logout() {
-    try { await request('/api/sales-desk/auth/logout', { method: 'POST' }) } catch { /* already signed out */ }
-    endSession()
-  }
 
   async function act(work: () => Promise<unknown>, success?: string) {
     setBusy(true); setError('')
@@ -481,21 +454,9 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
           : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>
       </div>
 
-      {!token ? (
-        <div className="rfq-empty-card">
-          <h3>Sign in to Sales Desk</h3>
-          <p>Use your individual Sales Desk account. Marketing API credentials are not used for Sales Desk access.</p>
-          <div className="sd-login-form">
-            <label>Username<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></label>
-            <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void login() }} /></label>
-            <button className="primary" disabled={busy || !username.trim() || !password} onClick={() => void login()}>{busy ? 'Signing in…' : 'Sign in'}</button>
-          </div>
-        </div>
-      ) : (
-        <>
+      <>
           <div className="sd-session-bar">
             <span>Signed in as <b>{user?.display_name || username}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
-            <button className="secondary" onClick={() => void logout()}>Sign out</button>
           </div>
 
           {page === 'RFQs' ? (
@@ -610,8 +571,7 @@ export default function SalesDesk({ page, setNotice, setError }: Props) {
               )}
             </div>
           )}
-        </>
-      )}
+      </>
 
       {panel && token && user && (
         <RfqPanel
