@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     facebook_token_encryption_key: str = ""
     # Set true only if your Page lives in a Meta Business Portfolio and "me/accounts" comes back empty.
     facebook_request_business_management: bool = False
+    instagram_oauth_redirect_uri: str = "http://localhost:8000/api/integrations/instagram/callback"
     publisher_interval_seconds: int = 30
     facebook_sync_minutes: int = 10  # how often to import posts and figures from the Page; 0 turns it off
 
@@ -1007,3 +1008,98 @@ def audit_log(limit: int = Query(100, ge=1, le=500)) -> list[dict]:
     with db_session() as db:
         rows = db.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [audit_item(r) for r in rows]
+
+
+# --------------------------------------------------------------------------- Instagram OAuth / account connection
+INSTAGRAM_OAUTH_SCOPES = "instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,business_management"
+
+def _ensure_instagram_tables() -> None:
+    with db_session() as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS instagram_oauth_states (
+            state TEXT PRIMARY KEY, created_at REAL NOT NULL
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS instagram_connection (
+            id INTEGER PRIMARY KEY CHECK (id = 1), account_id TEXT NOT NULL,
+            account_name TEXT NOT NULL, username TEXT NOT NULL DEFAULT '',
+            encrypted_token TEXT NOT NULL, updated_at TEXT NOT NULL
+        )""")
+
+@app.post("/api/integrations/instagram/oauth-url", dependencies=[Depends(require_api_key)])
+def instagram_oauth_url() -> dict:
+    _ensure_instagram_tables()
+    _oauth_configured()
+    state = secrets.token_urlsafe(32)
+    with db_session() as db:
+        db.execute("DELETE FROM instagram_oauth_states WHERE created_at < ?", (time.time() - 900,))
+        db.execute("INSERT INTO instagram_oauth_states(state,created_at) VALUES(?,?)", (state, time.time()))
+    params = {
+        "client_id": settings.meta_app_id.strip(),
+        "redirect_uri": settings.instagram_oauth_redirect_uri.strip(),
+        "state": state,
+        "response_type": "code",
+        "scope": INSTAGRAM_OAUTH_SCOPES,
+        "auth_type": "rerequest",
+    }
+    return {"url": "https://www.facebook.com/" + settings.facebook_api_version + "/dialog/oauth?" + urlencode(params)}
+
+@app.get("/api/integrations/instagram/callback")
+def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    _ensure_instagram_tables()
+    frontend = settings.facebook_frontend_url.rstrip("/")
+    if error or not code or not state:
+        return RedirectResponse(frontend + "/?instagram_oauth=error")
+    with db_session() as db:
+        valid = db.execute("SELECT state FROM instagram_oauth_states WHERE state=? AND created_at>=?", (state, time.time() - 900)).fetchone()
+        db.execute("DELETE FROM instagram_oauth_states WHERE state=?", (state,))
+    if not valid:
+        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=invalid_state")
+    try:
+        token_response = _meta_graph_get("oauth/access_token", {
+            "client_id": settings.meta_app_id.strip(), "client_secret": settings.meta_app_secret.strip(),
+            "redirect_uri": settings.instagram_oauth_redirect_uri.strip(), "code": code,
+        })
+        token = token_response.get("access_token")
+        if not token:
+            return RedirectResponse(frontend + "/?instagram_oauth=error&reason=no_token")
+        accounts = _meta_graph_get("me/accounts", {
+            "fields": "id,name,access_token,instagram_business_account", "limit": 100, "access_token": token,
+        }).get("data", [])
+        candidates = []
+        for page in accounts:
+            ig = page.get("instagram_business_account") or {}
+            if ig.get("id"):
+                details = _meta_graph_get(str(ig["id"]), {"fields": "id,username,name", "access_token": page.get("access_token") or token})
+                candidates.append({"id": str(details.get("id")), "name": details.get("name") or details.get("username") or "Instagram", "username": details.get("username") or "", "token": page.get("access_token") or token})
+        if not candidates:
+            return RedirectResponse(frontend + "/?instagram_oauth=error&reason=no_professional_account")
+        encrypted = _fernet()
+        with db_session() as db:
+            db.execute("DELETE FROM instagram_connection")
+            chosen = candidates[0]
+            db.execute("INSERT INTO instagram_connection(id,account_id,account_name,username,encrypted_token,updated_at) VALUES(1,?,?,?,?,?)",
+                       (chosen["id"], chosen["name"], chosen["username"], encrypted.encrypt(chosen["token"].encode()).decode(), now_iso()))
+        return RedirectResponse(frontend + "/?instagram_oauth=connected")
+    except HTTPException:
+        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=meta_request_failed")
+
+@app.post("/api/integrations/instagram/disconnect", dependencies=[Depends(require_api_key)])
+def disconnect_instagram() -> dict:
+    _ensure_instagram_tables()
+    with db_session() as db:
+        db.execute("DELETE FROM instagram_connection")
+    return {"disconnected": True}
+
+@app.post("/api/integrations/instagram/check", dependencies=[Depends(require_api_key)])
+def check_instagram() -> dict:
+    _ensure_instagram_tables()
+    from .instagram import InstagramClient, InstagramError
+    with db_session() as db:
+        row = db.execute("SELECT * FROM instagram_connection WHERE id=1").fetchone()
+    if not row:
+        raise HTTPException(409, "Instagram is not connected.")
+    try:
+        token = _fernet().decrypt(row["encrypted_token"].encode()).decode()
+        details = InstagramClient(row["account_id"], token, settings.facebook_api_version).check()
+        return {"provider": "instagram", "status": "connected", "account_id": row["account_id"], "account_name": details.get("name"), "username": details.get("username")}
+    except (InvalidToken, InstagramError) as exc:
+        raise HTTPException(502, f"Instagram connection check failed: {exc}") from exc
