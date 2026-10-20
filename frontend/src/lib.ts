@@ -36,8 +36,8 @@ export type HistoryEntry = {
 export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-export const KEY_STORAGE = 'impala_api_key'
-export const getKey = () => sessionStorage.getItem(KEY_STORAGE) || ''
+export const KEY_STORAGE = 'impala_session_token'
+export const getKey = () => localStorage.getItem(KEY_STORAGE) || ''
 
 export class AuthError extends Error {}
 
@@ -65,7 +65,7 @@ export async function api(path: string, options: RequestInit = {}) {
     throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and confirm that http://127.0.0.1:8000/api/health opens. If the frontend is on another port or host, check backend CORS settings and VITE_API_URL.`)
   }
   if (res.status === 401) {
-    sessionStorage.removeItem(KEY_STORAGE)
+    localStorage.removeItem(KEY_STORAGE)
     throw new AuthError('The API key was not accepted. Enter it again.')
   }
   if (!res.ok) {
