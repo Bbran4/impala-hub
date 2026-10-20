@@ -570,6 +570,7 @@ export default function App() {
                     <span>Engagements {posts.filter((p) => p.campaign_id === c.id).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)}</span>
                   </div>
                   <div className="campaign-footer">
+                    <button className="text-button" onClick={() => openCampaignEditor(c)}>Edit</button>
                     <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
                   </div>
                 </div>
@@ -748,7 +749,7 @@ export default function App() {
             <textarea id="campaign-objective" value={campaignObjective} onChange={(e) => setCampaignObjective(e.target.value)} placeholder="What should this campaign achieve?" rows={3} />
             <footer className="editor-foot">
               <button className="secondary" onClick={() => setCampaignModal(false)}>Cancel</button>
-              <button className="primary" onClick={() => void createCampaign()}>Create campaign</button>
+              <button className="primary" onClick={() => void createCampaign()">{editingCampaignId ? 'Save changes' : 'Create campaign'}</button>
             </footer>
           </section>
         </div>
