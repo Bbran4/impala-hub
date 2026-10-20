@@ -563,6 +563,10 @@ export default function App() {
                   <div className="campaign-icon"><Megaphone size={20} /></div>
                   <div className="campaign-card-heading"><h3>{c.name}</h3><span className="status-badge">New</span></div>
                   <p>{c.objective || 'No objective added yet.'}</p>
+                  <div className="campaign-metrics">
+                    <span>{posts.filter((p) => p.campaign_id === c.id).length} Posts</span>
+                    <span>Engagements {posts.filter((p) => p.campaign_id === c.id).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)}</span>
+                  </div>
                   <div className="campaign-footer">
                     <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
                   </div>
@@ -599,7 +603,7 @@ export default function App() {
               <div><h2>Connected channels</h2><p>Facebook Page connection health and account identity.</p></div>
             </div>
             <div className="integration-list">
-              {integrations.map((i) => (
+              {integrations.filter((i) => i.provider === 'facebook' || i.provider === 'instagram').map((i) => (
                 <div className="integration" key={i.provider}>
                   <div className={`provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : i.provider === 'instagram' ? '◎' : '◉'}</div>
                   <div className="integration-info">
