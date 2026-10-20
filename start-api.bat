@@ -19,11 +19,12 @@ echo Installing packages...
 pip install -q -r requirements.txt
 
 if not exist .env (
-  echo Creating .env with a new random API key...
+  echo Creating backend/.env from the example configuration...
   copy .env.example .env >nul
-  python -c "import secrets,re,pathlib;p=pathlib.Path('.env');k=secrets.token_urlsafe(32);p.write_text(re.sub(r'APP_API_KEY=.*','APP_API_KEY='+k,p.read_text()));print();print('YOUR API KEY - type this into the web app:');print(k);print()"
+  echo Set RFQ_BOOTSTRAP_ADMIN_USERNAME and RFQ_BOOTSTRAP_ADMIN_PASSWORD in backend/.env before signing in.
 )
 
-echo Starting the API on http://127.0.0.1:8000  (press Ctrl+C to stop)
+echo Starting the API on http://127.0.0.1:8000
+echo Health check: http://127.0.0.1:8000/api/health
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 pause
