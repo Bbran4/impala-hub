@@ -77,8 +77,12 @@ export default function App() {
     if (key) {
       void load()
       const params = new URLSearchParams(window.location.search)
-      const oauthResult = params.get('facebook_oauth')
-      if (oauthResult === 'choose_page') {
+      const oauthResult = params.get('facebook_oauth') || params.get('instagram_oauth')
+      if (oauthResult === 'connected' && params.get('instagram_oauth')) {
+        setPage('Configuration'); setNotice('Instagram connected.'); void load()
+      } else if (oauthResult === 'error' && params.get('instagram_oauth')) {
+        setPage('Configuration'); setError('Instagram authorization did not finish. Check that a professional Instagram account is linked to a managed Facebook Page.')
+      } else if (oauthResult === 'choose_page') {
         setPage('Configuration') // the Page picker lives here
         setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.')
         void loadFacebookPages()
@@ -172,6 +176,14 @@ export default function App() {
       if (result.connected_page_id) setSelectedFacebookPage(result.connected_page_id)
       else if (result.pages?.length) setSelectedFacebookPage(result.pages[0].id)
     } catch (e) { handleError(e) }
+  }
+
+  async function connectInstagram() {
+    setBusy(true); setError('')
+    try {
+      const result = await api('/api/integrations/instagram/oauth-url', { method: 'POST' })
+      window.location.assign(result.url)
+    } catch (e) { handleError(e); setBusy(false) }
   }
 
   async function connectFacebook() {
@@ -611,7 +623,10 @@ export default function App() {
                           <button className="secondary" disabled={busy || !selectedFacebookPage} onClick={() => void chooseFacebookPage()}>Use this Page</button>
                         </div>}
                       </div>
-                    : <button className="secondary" disabled>{'Connect later'}</button>}
+                    : <div className="integration-actions">
+                         <button className="primary" disabled={busy} onClick={() => void connectInstagram()}>{busy ? 'Working...' : (i.status === 'connected' ? 'Reconnect Instagram' : 'Connect Instagram')}</button>
+                         <button className="secondary" disabled={busy || i.status !== 'connected'} onClick={() => void api('/api/integrations/instagram/check', { method: 'POST' }).then(() => load()).catch(handleError)}>Check connection</button>
+                       </div>}
                 </div>
               ))}
             </div>
