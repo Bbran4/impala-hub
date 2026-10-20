@@ -120,7 +120,7 @@ export default function App() {
   async function signIn() {
     setError('')
     try {
-      const response = await fetch(`${apiBase()}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
+      const response = await fetch(`${apiBaseUrl}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
       const body = await response.json()
       if (!response.ok) throw new Error(body.detail || 'Sign-in failed')
       localStorage.setItem(KEY_STORAGE, body.access_token)
@@ -374,7 +374,7 @@ export default function App() {
             <div className="sidebar-bottom">
               <div className="connection-dot" /> <span>Local workspace</span>
               <small>{integrations.some((i) => i.status === 'connected') ? 'Facebook connected' : 'Publishing not connected'}</small>
-              {key && <button className="text-button" onClick={disconnectKey}>Change API key</button>}
+              {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
             </div>
           </>
         )}
