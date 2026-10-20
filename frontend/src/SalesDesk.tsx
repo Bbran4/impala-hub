@@ -456,7 +456,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
 
       <>
           <div className="sd-session-bar">
-            <span>Signed in as <b>{user?.display_name || username}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
+            <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
           </div>
 
           {page === 'RFQs' ? (
