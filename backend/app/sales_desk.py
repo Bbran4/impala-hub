@@ -432,6 +432,57 @@ def delete_status(option_id: str, _: dict = Depends(require_admin)) -> dict:
 
 
 # --------------------------------------------------------------------------- RFQs
+
+@router.get("/analytics")
+def rfq_analytics(
+    period: Literal["year", "month", "week"] = "year",
+    year: Optional[int] = None,
+    month: Optional[int] = Query(default=None, ge=1, le=12),
+    week: Optional[int] = Query(default=None, ge=1, le=53),
+    user: dict = Depends(current_user),
+) -> dict:
+    """Return scope-aware RFQ lifecycle totals and a time series for the dashboard."""
+    now = datetime.now(BUSINESS_TZ)
+    selected_year = year or now.year
+    with _connect() as db:
+        rows = db.execute(RFQ_SELECT + " ORDER BY r.received_at", ()).fetchall()
+    visible = [row for row in rows if _visible(user, row)]
+    points = []
+    for row in visible:
+        received = datetime.fromisoformat(row["received_at"].replace("Z", "+00:00")).astimezone(BUSINESS_TZ)
+        if received.year != selected_year:
+            continue
+        iso_week = received.isocalendar().week
+        if period == "month" and month and received.month != month:
+            continue
+        if period == "week" and week and iso_week != week:
+            continue
+        points.append((row, received))
+    def lifecycle(row: sqlite3.Row) -> str:
+        status = (row["status_name"] or "").lower()
+        if row["rfq_type"] == "invoice":
+            return "invoiced"
+        if any(word in status for word in ("scrap", "dropped", "drop", "lost")):
+            return "dropped" if "drop" in status else "scrapped"
+        if any(word in status for word in ("complete", "converted", "closed")):
+            return "completed"
+        if row["sales_code_value"]:
+            return "claimed"
+        return "unclaimed"
+    totals = {key: 0 for key in ("claimed", "scrapped", "dropped", "completed", "invoiced", "unclaimed")}
+    buckets: dict[str, dict[str, int]] = {}
+    for row, received in points:
+        key = lifecycle(row)
+        totals[key] += 1
+        bucket = received.strftime("%Y-%m-%d" if period == "week" else "%Y-%m")
+        buckets.setdefault(bucket, {name: 0 for name in totals})
+        buckets[bucket][key] += 1
+    return {
+        "period": period, "year": selected_year, "month": month, "week": week,
+        "totals": totals, "series": [{"label": key, **value} for key, value in sorted(buckets.items())],
+    }
+
+
 @router.get("/rfqs")
 def list_rfqs(status_id: Optional[str] = None, sales_code_id: Optional[str] = None,
               rfq_type: Optional[str] = Query(default=None, pattern="^(quotation|invoice)$"),
