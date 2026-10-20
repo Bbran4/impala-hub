@@ -8,7 +8,7 @@ import PostBoard from './PostBoard'
 import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
 import SalesDesk from './SalesDesk'
-import { api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
+import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
@@ -39,6 +39,8 @@ const OAUTH_REASONS: Record<string, string> = {
 export default function App() {
   const [key, setKey] = useState(getKey())
   const [keyEntry, setKeyEntry] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -114,6 +116,17 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [editor, campaignModal])
+
+  async function signIn() {
+    setError('')
+    try {
+      const response = await fetch(`${apiBase()}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.detail || 'Sign-in failed')
+      localStorage.setItem(KEY_STORAGE, body.access_token)
+      setKey(body.access_token); setPassword(''); setPage('Apps'); setNotice('Signed in successfully.')
+    } catch (e) { setError((e as Error).message) }
+  }
 
   function connectKey() {
     const trimmed = keyEntry.trim()
@@ -395,15 +408,12 @@ export default function App() {
 
         {!key && (
           <section className="key-panel">
-            <h2>Connect to your local API</h2>
-            <p>Enter the API key configured in <code>backend/.env</code>. This keeps the local API from accepting unauthorised requests.</p>
+            <h2>Sign in to Impala Hub</h2>
+            <p>Use your employee account to open the App Dashboard. Sessions persist securely across refreshes until they expire or you log out.</p>
             <div className="inline-form">
-              <input
-                type="password" aria-label="API key" placeholder="API key" value={keyEntry}
-                onChange={(e) => setKeyEntry(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') connectKey() }}
-              />
-              <button className="primary" onClick={connectKey}>Connect</button>
+              <input aria-label="Username" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+              <input type="password" aria-label="Password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void signIn() }} />
+              <button className="primary" onClick={() => void signIn()}>Sign in</button>
             </div>
           </section>
         )}
