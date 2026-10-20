@@ -365,6 +365,11 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   const [rfqs, setRfqs] = useState<any[]>([])
   const [config, setConfig] = useState<any>({ media_platforms: [], sales_codes: [], statuses: [] })
   const [dashboard, setDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
+  const [analytics, setAnalytics] = useState<any>({ totals: {}, series: [] })
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<'year' | 'month' | 'week'>('year')
+  const [analyticsMonth, setAnalyticsMonth] = useState(new Date().getMonth() + 1)
+  const [analyticsWeek, setAnalyticsWeek] = useState(1)
+  const [view, setView] = useState<'dashboard' | 'rfqs' | 'analytics'>('dashboard')
   const [users, setUsers] = useState<any[]>([])
   const [panel, setPanel] = useState<{ mode: 'create' | 'edit'; id?: string } | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -393,14 +398,15 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   const load = useCallback(async () => {
     if (!token) return
     try {
-      const [me, cfg, list, dash] = await Promise.all([
+      const [me, cfg, list, dash, analyticsResult] = await Promise.all([
         request('/api/sales-desk/auth/me'), request('/api/sales-desk/config'),
         request('/api/sales-desk/rfqs?limit=500'), request('/api/sales-desk/dashboard'),
+        request('/api/sales-desk/analytics?period=' + analyticsPeriod + '&month=' + analyticsMonth + '&week=' + analyticsWeek),
       ])
-      setUser(me); setConfig(cfg); setRfqs(list.items || []); setDashboard(dash)
+      setUser(me); setConfig(cfg); setRfqs(list.items || []); setDashboard(dash); setAnalytics(analyticsResult)
       if (me.role === 'administrator') setUsers(await request('/api/sales-desk/auth/users'))
     } catch (e) { setError((e as Error).message) }
-  }, [token, request, setError])
+  }, [token, request, setError, analyticsPeriod, analyticsMonth, analyticsWeek])
   useEffect(() => { void load() }, [load, page])
 
   async function act(work: () => Promise<unknown>, success?: string) {
@@ -457,9 +463,30 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
       <>
           <div className="sd-session-bar">
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
+            {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button></div>}
           </div>
 
-          {page === 'RFQs' ? (
+          {page === 'RFQs' && view === 'dashboard' ? (
+            <div className="sd-dashboard">
+              <div className="sd-dashboard-grid">
+                {([['Unclaimed', dashboard.unclaimed], ['Claimed', dashboard.claimed], ['Received today', dashboard.received_today], ['Open RFQs', dashboard.open]] as [string, number][]).map(([label, value]) => (
+                  <div className="sd-metric" key={label}><span>{label}</span><strong>{value}</strong></div>
+                ))}
+              </div>
+              <div className="sd-dashboard-actions"><button className="primary" onClick={() => setView('rfqs')}>Open RFQ queue</button><button className="secondary" onClick={() => setView('analytics')}>View RFQ analytics</button></div>
+              <div className="rfq-empty-card"><h3>Sales Desk overview</h3><p>Use the queue to claim and manage enquiries, or open analytics to review lifecycle performance.</p></div>
+            </div>
+          ) : page === 'RFQs' && view === 'analytics' ? (
+            <div className="sd-analytics">
+              <div className="sd-analytics-toolbar">
+                <label>Period<select value={analyticsPeriod} onChange={(e) => setAnalyticsPeriod(e.target.value as 'year' | 'month' | 'week')}><option value="year">Year</option><option value="month">Month</option><option value="week">Week</option></select></label>
+                <label>Month<select value={analyticsMonth} onChange={(e) => setAnalyticsMonth(Number(e.target.value))}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i, 1).toLocaleString(undefined, { month: 'long' })}</option>)}</select></label>
+                <label>Week<input type="number" min="1" max="53" value={analyticsWeek} onChange={(e) => setAnalyticsWeek(Number(e.target.value) || 1)} /></label>
+              </div>
+              <div className="sd-dashboard-grid">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <div className="sd-metric" key={key}><span>{key[0].toUpperCase() + key.slice(1)}</span><strong>{analytics.totals?.[key] || 0}</strong></div>)}</div>
+              <div className="sd-chart"><h3>RFQ lifecycle by period</h3>{(analytics.series || []).map((point: any) => <div className="sd-chart-row" key={point.label}><b>{point.label}</b><div className="sd-chart-bars">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <span className={key} key={key} style={{ width: Math.max(2, ((point[key] || 0) / Math.max(1, ...((analytics.series || []).map((p: any) => Math.max(p.claimed || 0, p.scrapped || 0, p.dropped || 0, p.completed || 0, p.invoiced || 0))))) * 100) + '%' }}>{point[key] || 0}</span>)}</div></div>)}{!analytics.series?.length && <p className="hint">No RFQ data for this period.</p>}</div>
+            </div>
+          ) : page === 'RFQs' ? (
             <>
               <div className="sd-metrics">
                 {([['Unclaimed', dashboard.unclaimed], ['Claimed', dashboard.claimed], ['Received today', dashboard.received_today], ['Open RFQs', dashboard.open]] as [string, number][]).map(([label, value]) => (
