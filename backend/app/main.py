@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, ValidationError, create_model, field_vali
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .facebook import FacebookError, client_from_settings
-from .sales_desk_auth import init_auth_db, router as sales_desk_auth_router
+from .sales_desk_auth import current_user, init_auth_db, router as sales_desk_auth_router
 from .sales_desk import init_sales_desk_db, router as sales_desk_router
 
 
@@ -303,16 +303,18 @@ def key_is_weak(key: str) -> bool:
 
 
 def require_api_key(authorization: Optional[str] = Header(default=None)) -> None:
-    expected = settings.app_api_key
-    if key_is_weak(expected) and not settings.allow_insecure_local_dev:
-        raise HTTPException(
-            status_code=503,
-            detail="Set APP_API_KEY in backend/.env to a random value of at least 24 characters, then restart the API",
-        )
     supplied = authorization.removeprefix("Bearer ").strip() if authorization else ""
-    # Compare bytes: compare_digest raises TypeError on non-ASCII str, which would be a 500.
-    if not expected or not secrets.compare_digest(supplied.encode(), expected.encode()):
-        raise HTTPException(status_code=401, detail="Missing or invalid API key")
+    expected = settings.app_api_key
+    if expected and not key_is_weak(expected) and secrets.compare_digest(supplied.encode(), expected.encode()):
+        return
+    # Production requests may use an individual server-side session instead of the legacy
+    # shared development key. The session token is opaque and never stored in plaintext.
+    if supplied:
+        current_user(authorization)
+        return
+    if key_is_weak(expected) and not settings.allow_insecure_local_dev:
+        raise HTTPException(status_code=503, detail="Sign in or configure APP_API_KEY in backend/.env")
+    raise HTTPException(status_code=401, detail="Missing or invalid session")
 
 
 def audit(db: sqlite3.Connection, action: str, entity_type: str, entity_id: str, details: dict) -> None:
