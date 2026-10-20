@@ -66,7 +66,7 @@ export async function api(path: string, options: RequestInit = {}) {
   }
   if (res.status === 401) {
     localStorage.removeItem(KEY_STORAGE)
-    throw new AuthError('The API key was not accepted. Enter it again.')
+    throw new AuthError('Your session expired or is no longer valid. Sign in again.')
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
