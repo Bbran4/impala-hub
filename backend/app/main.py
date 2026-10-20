@@ -1017,7 +1017,7 @@ def _instagram_integration_status() -> dict:
         row = db.execute("SELECT account_id,account_name,username,updated_at FROM instagram_connection WHERE id=1").fetchone()
     if not row:
         return {"provider": "instagram", "label": "Instagram Professional", "status": "not_connected", "capabilities": ["image_posts", "carousel_posts", "insights"]}
-    return {"provider": "instagram", "label": "Instagram Professional", "status": "connected", "account_id": row["account_id"], "account_name": row["account_name"], "username": row["username"], "last_checked_at": row["updated_at"], "capabilities": ["image_posts", "carousel_posts", "insights"]}
+    return {"provider": "instagram", "label": "Instagram Professional", "status": "connected", "account_id": row["account_id"], "account_name": row["account_name"], "username": row["username"], "last_checked_at": row["last_checked_at"] or row["updated_at"], "last_success_at": row["last_checked_at"] or row["updated_at"], "token_type": "page", "expires_at": row["token_expires_at"], "data_access_expires_at": row["data_access_expires_at"], "granted_permissions": json.loads(row["granted_permissions_json"] or "[]"), "connection_source": row["connection_source"], "capabilities": ["image_posts", "carousel_posts", "insights"]}
 
 # --------------------------------------------------------------------------- Instagram OAuth / account connection
 INSTAGRAM_OAUTH_SCOPES = "instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,business_management"
@@ -1030,7 +1030,9 @@ def _ensure_instagram_tables() -> None:
         db.execute("""CREATE TABLE IF NOT EXISTS instagram_connection (
             id INTEGER PRIMARY KEY CHECK (id = 1), account_id TEXT NOT NULL,
             account_name TEXT NOT NULL, username TEXT NOT NULL DEFAULT '',
-            encrypted_token TEXT NOT NULL, updated_at TEXT NOT NULL
+            encrypted_token TEXT NOT NULL, updated_at TEXT NOT NULL,
+            last_checked_at TEXT, token_expires_at INTEGER, data_access_expires_at INTEGER,
+            granted_permissions_json TEXT NOT NULL DEFAULT '[]', connection_source TEXT NOT NULL DEFAULT 'oauth'
         )""")
 
 @app.post("/api/integrations/instagram/oauth-url", dependencies=[Depends(require_api_key)])
@@ -1084,9 +1086,12 @@ def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
         encrypted = _fernet()
         with db_session() as db:
             db.execute("DELETE FROM instagram_connection")
+            permissions = _meta_graph_get("me/permissions", {"access_token": chosen["token"]}).get("data", [])
+            granted = [p.get("permission") for p in permissions if p.get("status") == "granted"]
+            debug = _meta_graph_get("debug_token", {"input_token": chosen["token"], "access_token": f"{settings.meta_app_id.strip()}|{settings.meta_app_secret.strip()}"}).get("data", {})
             chosen = candidates[0]
-            db.execute("INSERT INTO instagram_connection(id,account_id,account_name,username,encrypted_token,updated_at) VALUES(1,?,?,?,?,?)",
-                       (chosen["id"], chosen["name"], chosen["username"], encrypted.encrypt(chosen["token"].encode()).decode(), now_iso()))
+            db.execute("INSERT INTO instagram_connection(id,account_id,account_name,username,encrypted_token,updated_at,last_checked_at,token_expires_at,data_access_expires_at,granted_permissions_json,connection_source) VALUES(1,?,?,?,?,?,?,?,?,?,?)",
+                       (chosen["id"], chosen["name"], chosen["username"], encrypted.encrypt(chosen["token"].encode()).decode(), now_iso(), now_iso(), debug.get("expires_at"), debug.get("data_access_expires_at"), json.dumps(granted), "oauth"))
         return RedirectResponse(frontend + "/?instagram_oauth=connected")
     except HTTPException:
         return RedirectResponse(frontend + "/?instagram_oauth=error&reason=meta_request_failed")
@@ -1112,3 +1117,29 @@ def check_instagram() -> dict:
         return {"provider": "instagram", "status": "connected", "account_id": row["account_id"], "account_name": details.get("name"), "username": details.get("username")}
     except (InvalidToken, InstagramError) as exc:
         raise HTTPException(502, f"Instagram connection check failed: {exc}") from exc
+
+
+@app.post("/api/integrations/sync", dependencies=[Depends(require_api_key)])
+def sync_all_integrations() -> dict:
+    result = {"facebook": None, "instagram": None}
+    try:
+        result["facebook"] = sync_facebook()
+    except HTTPException as exc:
+        result["facebook"] = {"status": "error", "detail": exc.detail}
+    try:
+        _ensure_instagram_tables()
+        from .instagram import InstagramClient, InstagramError
+        with db_session() as db:
+            row = db.execute("SELECT * FROM instagram_connection WHERE id=1").fetchone()
+        if not row:
+            result["instagram"] = {"status": "not_connected"}
+        else:
+            token = _fernet().decrypt(row["encrypted_token"].encode()).decode()
+            client = InstagramClient(row["account_id"], token, settings.facebook_api_version)
+            media = client.media()
+            result["instagram"] = {"status": "synced", "account_id": row["account_id"], "items": len(media.get("data") or [])}
+            with db_session() as db:
+                db.execute("UPDATE instagram_connection SET last_checked_at=?, updated_at=? WHERE id=1", (now_iso(), now_iso()))
+    except Exception as exc:
+        result["instagram"] = {"status": "error", "detail": str(exc)}
+    return result
