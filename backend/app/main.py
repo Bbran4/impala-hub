@@ -208,6 +208,11 @@ ALTER TABLE posts ADD COLUMN impressions INTEGER;
 PRAGMA user_version = 4;
 """
 
+SCHEMA_V5 = """
+ALTER TABLE campaigns ADD COLUMN stage TEXT NOT NULL DEFAULT 'new';
+PRAGMA user_version = 5;
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -221,6 +226,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V3)
         if version < 4:
             conn.executescript(SCHEMA_V4)
+        if version < 5:
+            conn.executescript(SCHEMA_V5)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
@@ -344,6 +351,7 @@ def validate(model: type[BaseModel], values: dict) -> BaseModel:
 
 class CampaignIn(BaseModel):
     name: str = Field(max_length=160)
+    stage: Literal["new", "in_progress", "done"] = "new"
     objective: str = Field(default="", max_length=1000)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -489,7 +497,7 @@ def list_campaigns() -> list[dict]:
 
 def campaign_values(data: CampaignIn) -> tuple:
     return (
-        data.name, data.objective,
+        data.name, data.objective, data.stage,
         data.start_date.isoformat() if data.start_date else None,
         data.end_date.isoformat() if data.end_date else None,
     )
@@ -500,7 +508,7 @@ def create_campaign(payload: CampaignIn) -> dict:
     campaign_id, stamp = str(uuid.uuid4()), now_iso()
     with db_session() as db:
         db.execute(
-            "INSERT INTO campaigns(id,name,objective,start_date,end_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO campaigns(id,name,objective,stage,start_date,end_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
             (campaign_id, *campaign_values(payload), stamp, stamp),
         )
         audit(db, "created", "campaign", campaign_id, {"name": payload.name})
@@ -514,7 +522,7 @@ def update_campaign(campaign_id: str, patch: CampaignPatch) -> dict:  # type: ig
         merged = {k: current[k] for k in CampaignIn.model_fields} | patch.model_dump(exclude_unset=True)
         data = validate(CampaignIn, merged)
         db.execute(
-            "UPDATE campaigns SET name=?,objective=?,start_date=?,end_date=?,updated_at=? WHERE id=?",
+            "UPDATE campaigns SET name=?,objective=?,stage=?,start_date=?,end_date=?,updated_at=? WHERE id=?",
             (*campaign_values(data), now_iso(), campaign_id),
         )
         audit(db, "updated", "campaign", campaign_id, {"name": data.name})
