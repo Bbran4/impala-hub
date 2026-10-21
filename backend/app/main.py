@@ -147,6 +147,14 @@ SCHEMA_PARTS_QUERIES = """
 CREATE TABLE IF NOT EXISTS development_statuses (
     name TEXT PRIMARY KEY
 );
+CREATE TABLE IF NOT EXISTS parts_query_suppliers (
+    id TEXT PRIMARY KEY,
+    query_id TEXT NOT NULL REFERENCES parts_queries(id) ON DELETE CASCADE,
+    supplier TEXT NOT NULL,
+    cost REAL,
+    msrp REAL,
+    notes TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS parts_queries (
     id TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
@@ -611,13 +619,18 @@ def create_supplier_quote(payload: SupplierQuoteIn) -> dict:
         return dict(db.execute("SELECT * FROM supplier_quotes WHERE id=?", (record_id,)).fetchone())
 
 
+class SupplierQuoteIn(BaseModel):
+    supplier: str = Field(min_length=1, max_length=160)
+    cost: Optional[float] = Field(default=None, ge=0)
+    msrp: Optional[float] = Field(default=None, ge=0)
+    notes: str = Field(default='', max_length=2000)
+
+
 class PartsQueryIn(BaseModel):
     part_number: str = Field(min_length=1, max_length=120)
     description: str = Field(min_length=1, max_length=1000)
     qty: int = Field(gt=0, le=1000000)
-    supplier: str = Field(default='', max_length=160)
-    cost: Optional[float] = Field(default=None, ge=0)
-    msrp: Optional[float] = Field(default=None, ge=0)
+    suppliers: list[SupplierQuoteIn] = Field(default_factory=list, max_length=100)
     development_status: str = Field(min_length=1, max_length=120)
     status: Literal['In Progress', 'Submitted', 'Cancelled'] = 'In Progress'
 
@@ -638,6 +651,28 @@ def create_development_status(payload: dict) -> dict:
     return {"name": name}
 
 
+@app.get("/api/parts-queries/development-statuses", dependencies=[Depends(require_api_key)])
+def list_development_statuses() -> list[str]:
+    with db_session() as db:
+        return [r["name"] for r in db.execute("SELECT name FROM development_statuses ORDER BY name COLLATE NOCASE")]
+
+
+@app.post("/api/parts-queries/development-statuses", dependencies=[Depends(require_api_key)], status_code=201)
+def create_development_status(payload: dict) -> dict:
+    name = str(payload.get("name", "")).strip()
+    if not name or len(name) > 120:
+        raise HTTPException(422, "Development status must contain between 1 and 120 characters")
+    with db_session() as db:
+        db.execute("INSERT OR IGNORE INTO development_statuses(name) VALUES(?)", (name,))
+    return {"name": name}
+
+
+def parts_query_row(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
+    item = dict(row)
+    item["suppliers"] = [dict(r) for r in db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE query_id=? ORDER BY rowid", (item["id"],))]
+    return item
+
+
 @app.get("/api/parts-queries", dependencies=[Depends(require_api_key)])
 def list_parts_queries(development_status: Optional[str] = None, status: Optional[str] = None) -> list[dict]:
     query, args = "SELECT * FROM parts_queries", []
@@ -649,7 +684,7 @@ def list_parts_queries(development_status: Optional[str] = None, status: Optiona
     if filters: query += " WHERE " + " AND ".join(filters)
     query += " ORDER BY created_at DESC"
     with db_session() as db:
-        return [dict(r) for r in db.execute(query, args)]
+        return [parts_query_row(db, r) for r in db.execute(query, args)]
 
 
 @app.post("/api/parts-queries", dependencies=[Depends(require_api_key)], status_code=201)
@@ -662,8 +697,11 @@ def create_parts_query(payload: PartsQueryIn) -> dict:
             "INSERT INTO parts_queries(id,created_at,part_number,description,qty,supplier,cost,msrp,development_status,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, payload.supplier.strip(), payload.cost, payload.msrp, payload.development_status.strip(), payload.status),
         )
+        for quote in payload.suppliers:
+            db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
+                       (uuid.uuid4().hex, record_id, quote.supplier.strip(), quote.cost, quote.msrp, quote.notes.strip()))
         audit(db, "created", "parts_query", record_id, payload.model_dump())
-        return dict(db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
+        return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
 
 
 @app.delete("/api/parts-queries/{query_id}", dependencies=[Depends(require_api_key)], status_code=204)
