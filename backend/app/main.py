@@ -659,7 +659,7 @@ class ReturnClaimIn(BaseModel):
     part_number: str = Field(min_length=1, max_length=120)
     description: str = Field(min_length=1, max_length=1000)
     qty: int = Field(gt=0, le=1000000)
-    outcome_request: Optional[Literal['Credit', 'Replacement Part']] = None
+    outcome_request: Optional[Literal['Credit', 'Replacement Part', '']] = None
     returned_by: str = Field(default='', max_length=160)
     received_by: str = Field(default='', max_length=160)
     supplier_received: Literal['Yes', 'No'] = 'No'
@@ -908,7 +908,7 @@ def create_returns_claim(payload: ReturnClaimIn) -> dict:
     with db_session() as db:
         columns = "id,date,company,rfc_book_number,customer,contact_person,contact_number,invoice_number,invoice_date,reason,part_number,description,qty,outcome_request,returned_by,received_by,supplier_received,comments,attachments_json,status,created_at,updated_at"
         db.execute(f"INSERT INTO returns_claims({columns}) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                   (record_id, values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"], values["returned_by"], values["received_by"], values["supplier_received"], json.dumps(values["attachments"]), values["status"], stamp, stamp))
+                   (record_id, values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"] or None, values["returned_by"], values["received_by"], values["supplier_received"], json.dumps(values["attachments"]), values["status"], stamp, stamp))
         audit(db, "created", "returns_claim", record_id, values)
         return returns_claim_row(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
 
