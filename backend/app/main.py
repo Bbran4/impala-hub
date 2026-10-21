@@ -1018,6 +1018,8 @@ def sync_facebook() -> dict:
         return sync_posts(client)
     except FacebookError as exc:
         raise HTTPException(502, f"Facebook: {exc}")
+    except Exception as exc:
+        raise HTTPException(500, f"Facebook sync failed unexpectedly ({exc.__class__.__name__}). See the backend log.")
 
 
 @app.get("/api/integrations", dependencies=[Depends(require_api_key)])
@@ -1189,7 +1191,7 @@ def sync_all_integrations() -> dict:
     try:
         result["facebook"] = sync_facebook()
     except HTTPException as exc:
-        result["facebook"] = {"status": "error", "detail": exc.detail}
+        result["facebook"] = {"status": "not_connected"} if exc.status_code == 409 else {"status": "error", "detail": exc.detail}
     try:
         _ensure_instagram_tables()
         from .instagram import InstagramClient, InstagramError
