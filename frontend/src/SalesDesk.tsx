@@ -454,6 +454,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
     <section className="rfq-workspace">
       <>
           <div className="sd-session-bar">
+            {page === 'RFQs' && <button className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => setPanel({ mode: 'create' })}><Plus size={18} /></button>}
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
             {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button></div>}
           </div>
@@ -491,7 +492,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                 <label>Type<select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Quotes and invoices</option><option value="quotation">Quotes</option><option value="invoice">Invoices</option></select></label>
                 <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
                 <label>Sort by<select value={sort} onChange={(e) => setSort(e.target.value)}><option value="received_asc">Oldest received</option><option value="received_desc">Newest received</option><option value="customer">Customer name</option><option value="rfq_no">RFQ number</option></select></label>
-                {isStaff && <button className="primary" onClick={() => setPanel({ mode: 'create' })}><Plus size={16} /> New RFQ</button>}
+                
               </div>
               <div className="rfq-table-wrap"><table className="rfq-table">
                 <thead><tr><th>RFQ No.</th><th>Type</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th>Actions</th></tr></thead>
