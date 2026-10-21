@@ -155,10 +155,7 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             # of extra Graph API requests and cause the browser request to fail or time out.
             # Preserve any previously stored organic reach/impressions until a bounded
             # Insights refresh can run independently.
-            try:
-                insights = client.post_insights(item["id"])
-            except FacebookError:
-                insights = {"reach": None, "impressions": None}
+            insights = {"reach": None, "impressions": None}  # preserve existing metrics; refresh separately
             if item["id"] in known:
                 local_id, ids = known[item["id"]]
                 if item["permalink_url"]:
