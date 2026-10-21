@@ -573,6 +573,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
         ) : page === 'Returns & Claims Roadmap' || page === 'Stock Control Roadmap' ? (
           <section className="roadmap-page">
             <div className="section-head"><div><h2>{page === 'Returns & Claims Roadmap' ? 'Returns & Claims roadmap' : 'Smart Stock Control roadmap'}</h2><p>Current workspace coverage, known gaps, and implementation priorities.</p></div></div>
+            <div className="roadmap-priorities">{page === 'Returns & Claims Roadmap' ? <><strong>Next priorities</strong><span>Supplier outcome tracking</span><span>Claim ageing and SLA reporting</span><span>Attachment preview and management</span><span>Exports and audit history</span></> : <><strong>Next priorities</strong><span>Supplier response workflow</span><span>Stock and availability checks</span><span>Approval workflow</span><span>Cost and savings reporting</span></>}</div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
               {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
