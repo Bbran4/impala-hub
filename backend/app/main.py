@@ -317,7 +317,7 @@ app.add_middleware(
         "http://localhost:4173", "http://127.0.0.1:4173",
     ],
     # Also allow local Vite fallback ports and localhost/127.0.0.1 consistently.
-    allow_origin_regex=r"^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
