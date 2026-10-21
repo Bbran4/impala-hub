@@ -54,3 +54,8 @@ Implemented today:
 | Export/reporting | Partial | Add CSV, XLSX, and print views |
 | DMS integration | Planned | Reconcile with Qlik before production use |
 | Personal consultant dashboard | Planned | Add sales, GP, customer, and daily reporting |
+
+
+## Wildcard search
+
+Sales Desk roadmap now includes wildcard search across RFQ numbers, customers, document numbers and other searchable RFQ fields.
