@@ -277,6 +277,11 @@ ALTER TABLE campaigns ADD COLUMN stage TEXT NOT NULL DEFAULT 'new';
 PRAGMA user_version = 5;
 """
 
+SCHEMA_V6 = """
+ALTER TABLE posts ADD COLUMN views INTEGER;
+PRAGMA user_version = 6;
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -295,6 +300,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V4)
         if version < 5:
             conn.executescript(SCHEMA_V5)
+        if version < 6:
+            conn.executescript(SCHEMA_V6)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
@@ -1689,7 +1696,7 @@ def sync_all_integrations() -> dict:
                         local_id, ids = known[instagram_id]
                         if item.get("permalink"):
                             ids["permalink"] = item["permalink"]
-                        db.execute("UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),clicks=COALESCE(?,clicks),reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),metrics_refreshed_at=?,provider_ids_json=? WHERE id=?", (likes, comments, clicks, reach, impressions, stamp, json.dumps(ids), local_id))
+                        db.execute("UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),clicks=COALESCE(?,clicks),reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),views=COALESCE(?,views),metrics_refreshed_at=?,provider_ids_json=? WHERE id=?", (likes, comments, clicks, reach, impressions, stamp, json.dumps(ids), local_id))
                         updated += 1
                         continue
                     local_id = "ig-" + instagram_id.replace("_", "-")
