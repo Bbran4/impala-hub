@@ -44,6 +44,13 @@ export default function Buyouts({ token, setNotice, setError }: Props) {
       setPanel(false); setNotice('Parts Query saved.'); await load()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
+  const deleteQuery = async (query: Query) => {
+    if (!window.confirm(`Delete Parts Query ${query.id}?`)) return
+    try {
+      await request(token, `/api/parts-queries/${query.id}`, { method: 'DELETE' })
+      setNotice('Parts Query deleted.'); await load()
+    } catch (e) { setError((e as Error).message) }
+  }
   const addDevelopmentStatus = async () => {
     const name = window.prompt('New Development status')
     if (!name?.trim()) return
@@ -61,7 +68,7 @@ export default function Buyouts({ token, setNotice, setError }: Props) {
       <button className="primary" onClick={() => open()}><Plus size={16} /> New Parts Query</button>
     </div>
     <div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>ID</th><th>Date/time</th><th>Part Number</th><th>Description</th><th>Qty</th><th>Supplier</th><th>Cost</th><th>MSRP</th><th>Development Status</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-      {visible.map(q => <tr key={q.id} className="rfq-data-row"><td>{q.id}</td><td>{new Date(q.created_at).toLocaleString()}</td><td>{q.part_number}</td><td>{q.description}</td><td>{q.qty}</td><td>{q.supplier || '—'}</td><td>{q.cost == null ? '—' : q.cost.toFixed(2)}</td><td>{q.msrp == null ? '—' : q.msrp.toFixed(2)}</td><td>{q.development_status}</td><td>{q.status}</td><td className="sd-actions-cell"><button className="secondary" onClick={() => open(q)}>View</button></td></tr>)}
+      {visible.map(q => <tr key={q.id} className="rfq-data-row"><td>{q.id}</td><td>{new Date(q.created_at).toLocaleString()}</td><td>{q.part_number}</td><td>{q.description}</td><td>{q.qty}</td><td>{q.supplier || '—'}</td><td>{q.cost == null ? '—' : q.cost.toFixed(2)}</td><td>{q.msrp == null ? '—' : q.msrp.toFixed(2)}</td><td>{q.development_status}</td><td>{q.status}</td><td className="sd-actions-cell"><button className="secondary" onClick={() => open(q)}>View</button><button className="secondary" onClick={() => void deleteQuery(q)}>Delete</button></td></tr>)}
       {!visible.length && <tr><td colSpan={11}><div className="rfq-empty"><ClipboardList size={28} /><h3>{search || developmentFilter || statusFilter ? 'No matching Parts Queries' : 'No Parts Queries yet'}</h3><p>{search || developmentFilter || statusFilter ? 'Adjust the search or filters.' : 'Create the first Parts Query.'}</p></div></td></tr>}
     </tbody></table></div>
     {panel && <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setPanel(false) }}><section className="editor" role="dialog" aria-modal="true" aria-label={readOnly ? 'Parts Query details' : 'New Parts Query'}>
