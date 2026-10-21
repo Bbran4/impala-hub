@@ -1163,7 +1163,9 @@ def disconnect_instagram() -> dict:
     _ensure_instagram_tables()
     with db_session() as db:
         db.execute("DELETE FROM instagram_connection")
-    return {"disconnected": True}
+        removed = _remove_network_posts(db, "instagram")
+        audit(db, "disconnected", "integration", "instagram", {"posts_removed_from_feed": removed})
+    return {"disconnected": True, "posts_removed": removed}
 
 @app.post("/api/integrations/instagram/check", dependencies=[Depends(require_api_key)])
 def check_instagram() -> dict:
