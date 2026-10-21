@@ -34,7 +34,7 @@ class InstagramClient:
         return body
 
     def check(self) -> dict:
-        return self._request("GET", f"/{self.account_id}", params={"fields": "id,username,name,profile_picture_url"})
+        return self._request("GET", f"/{self.account_id}", params={"fields": "id,username,name,profile_picture_url,followers_count"})
 
     def insights(self, metrics: str = "impressions,reach,profile_views") -> dict:
         return self._request("GET", f"/{self.account_id}/insights", params={"metric": metrics, "period": "day"})
