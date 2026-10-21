@@ -1113,10 +1113,10 @@ def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
         encrypted = _fernet()
         with db_session() as db:
             db.execute("DELETE FROM instagram_connection")
+            chosen = candidates[0]
             permissions = _meta_graph_get("me/permissions", {"access_token": chosen["token"]}).get("data", [])
             granted = [p.get("permission") for p in permissions if p.get("status") == "granted"]
             debug = _meta_graph_get("debug_token", {"input_token": chosen["token"], "access_token": f"{settings.meta_app_id.strip()}|{settings.meta_app_secret.strip()}"}).get("data", {})
-            chosen = candidates[0]
             db.execute("INSERT INTO instagram_connection(id,account_id,account_name,username,encrypted_token,updated_at,last_checked_at,token_expires_at,data_access_expires_at,granted_permissions_json,connection_source) VALUES(1,?,?,?,?,?,?,?,?,?,?)",
                        (chosen["id"], chosen["name"], chosen["username"], encrypted.encrypt(chosen["token"].encode()).decode(), now_iso(), now_iso(), debug.get("expires_at"), debug.get("data_access_expires_at"), json.dumps(granted), "oauth"))
         return RedirectResponse(frontend + "/?instagram_oauth=connected")
