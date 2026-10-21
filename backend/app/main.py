@@ -299,7 +299,7 @@ def init_db() -> None:
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
         conn.executescript(SCHEMA_RETURNS_CLAIMS)
-        columns = {r['name'] for r in conn.execute('PRAGMA table_info(returns_claims)')}
+        columns = {r['name']: r for r in conn.execute('PRAGMA table_info(returns_claims)')}
         if 'attachments_json' not in columns:
             conn.execute("ALTER TABLE returns_claims ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'")
         if columns.get('outcome_request') and columns['outcome_request']['notnull']:
