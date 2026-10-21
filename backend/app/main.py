@@ -1081,7 +1081,7 @@ def instagram_oauth_url() -> dict:
     return {"url": "https://www.facebook.com/" + settings.facebook_api_version + "/dialog/oauth?" + urlencode(params)}
 
 @app.get("/api/integrations/instagram/callback")
-def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None, error_reason: Optional[str] = None, error_code: Optional[str] = None):
+def _instagram_oauth_callback_impl(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None, error_reason: Optional[str] = None, error_code: Optional[str] = None):
     _ensure_instagram_tables()
     frontend = settings.facebook_frontend_url.rstrip("/")
     if error:
@@ -1126,6 +1126,15 @@ def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
     except HTTPException:
         return RedirectResponse(frontend + "/?instagram_oauth=error&reason=meta_request_failed")
     except Exception:
+        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=callback_failed")
+
+ 
+@app.get("/api/integrations/instagram/callback")
+def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None, error_reason: Optional[str] = None, error_code: Optional[str] = None):
+    try:
+        return _instagram_oauth_callback_impl(code, state, error, error_description, error_reason, error_code)
+    except Exception:
+        frontend = settings.facebook_frontend_url.rstrip("/")
         return RedirectResponse(frontend + "/?instagram_oauth=error&reason=callback_failed")
 
 @app.post("/api/integrations/instagram/disconnect", dependencies=[Depends(require_api_key)])
