@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus,
+  BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
@@ -492,8 +492,14 @@ export default function App() {
                 const change = older ? ((recent - older) / older) * 100 : 0
                 return (
                   <div className="feed-stream-card feed-network-column" key={i.provider}>
-                    <div className="feed-network-head"><div className={`feed-provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : '◎'}</div><div><strong>{i.account_name || i.page_name || i.label}</strong><small>{i.provider === 'facebook' ? 'Facebook Page' : 'Instagram Professional'} · {providerPosts.length} posts</small></div><span className={`status-badge ${i.status}`}>Live</span></div>
-                    <div className="feed-network-metrics"><span title="Audience Number of followers of your channel"><b>Followers</b>{i.followers_count ?? '—'}</span><span title="Engagement Number of times people engaged with your posts (likes, comments, shares, clicks, and other reported interactions)"><b>Engagement</b>{engagement}</span><span title="Percentage change compares the newest half of posts with the older half." className={change >= 0 ? 'metric-up' : 'metric-down'}><b>Change</b>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</span></div>
+                    <div className="feed-network-head">
+                    <div className={`feed-provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : '◎'}</div>
+                    <div className="feed-network-title"><strong>{i.account_name || i.page_name || i.label}</strong><a href={i.provider === 'facebook' ? `https://www.facebook.com/${i.page_id || ''}` : `https://www.instagram.com/${i.username || ''}`} target="_blank" rel="noreferrer">Insights <ExternalLink size={11} /></a></div>
+                  </div>
+                  <div className="feed-network-metrics">
+                    <span title="Audience Number of followers of your channel"><Users size={15} /><strong>{i.followers_count ?? '—'}</strong></span>
+                    <span title="Engagement Number of times people engaged with your posts (likes, comments, shares, clicks, and other reported interactions)"><MessageCircle size={15} /><strong>{engagement}</strong><em className={change >= 0 ? 'metric-up' : 'metric-down'}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</em></span>
+                  </div>
                     <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} card />
                   </div>
                 )
@@ -832,34 +838,30 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false }: 
         const heading = p.title?.trim() || p.caption?.trim().slice(0, 110) || 'Untitled post'
         return (
           <article className={card ? "post-row feed-post-card" : "post-row"} key={p.id}>
-            <div className="post-preview" style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
-              {p.media?.[0] ? <img src={mediaSrc(p.media[0])} alt="" /> : <ImagePlus size={22} />}
-            </div>
-            <div
-              className="post-copy" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
-              onClick={() => onOpen(p.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id) }}
-            >
-              <div className="post-meta">
-                <span className={`status ${p.status}`}>{p.status.replace(/_/g, ' ')}</span>
-                <span>{p.channels.join(' · ') || 'No channel'}</span>
-              </div>
-              <b>{heading}</b>
-              <small>
-                {campaigns.find((c) => c.id === p.campaign_id)?.name || 'No campaign'} ·{' '}
-                {p.published_at ? `Posted ${fmt(p.published_at)}` : fmt(p.publish_at)}
-              </small>
-              {p.status === 'published' && (
-                <small>
-                  Views {metric(p.impressions ?? p.reach)} · Reach {metric(p.reach)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}
-                  {p.metrics_refreshed_at ? ` · updated ${fmt(p.metrics_refreshed_at)}` : ''}
-                </small>
-              )}
-            </div>
-            <div className="row-actions">
-              <button className="secondary" onClick={() => onOpen(p.id)}>View</button>
-              {EDITABLE.includes(p.status) && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}
-              <button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button>
-            </div>
+            {card ? (
+              <>
+                <div className="feed-post-top"><a href={p.provider_ids?.permalink || '#'} target="_blank" rel="noreferrer" onClick={(e) => { if (!p.provider_ids?.permalink) e.preventDefault() }}>{p.channels[0] || 'Social page'}</a><time>{fmt(p.published_at || p.publish_at, 'Not posted')}</time></div>
+                <p className="feed-card-caption" onClick={() => onOpen(p.id)}>{p.caption || heading}</p>
+                <div className="feed-card-images" onClick={() => onOpen(p.id)}>
+                  {p.media.slice(0, 2).map((m, index) => <div className="feed-card-image" key={m.id || m.url}><img src={mediaSrc(m)} alt={m.name} />{index === 1 && p.media.length > 2 && <span>+{p.media.length - 2}</span>}</div>)}
+                  {!p.media.length && <div className="feed-card-no-image"><ImagePlus size={20} /></div>}
+                </div>
+                <div className="feed-card-bottom"><span><Heart size={14} /> {metric(p.likes)}</span><span><MessageCircle size={14} /> {metric(p.comments)}</span><span className="feed-card-views"><Eye size={14} /> {metric(p.impressions ?? p.reach)}</span></div>
+              </>
+            ) : (
+              <>
+                <div className="post-preview" style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
+                  {p.media?.[0] ? <img src={mediaSrc(p.media[0])} alt="" /> : <ImagePlus size={22} />}
+                </div>
+                <div className="post-copy" role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(p.id) }}>
+                  <div className="post-meta"><span className={`status ${p.status}`}>{p.status.replace(/_/g, ' ')}</span><span>{p.channels.join(' · ') || 'No channel'}</span></div>
+                  <b>{heading}</b>
+                  <small>{campaigns.find((c) => c.id === p.campaign_id)?.name || 'No campaign'} · {p.published_at ? `Posted ${fmt(p.published_at)}` : fmt(p.publish_at)}</small>
+                  {p.status === 'published' && <small>Views {metric(p.impressions ?? p.reach)} · Reach {metric(p.reach)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}{p.metrics_refreshed_at ? ` · updated ${fmt(p.metrics_refreshed_at)}` : ''}</small>}
+                </div>
+                <div className="row-actions"><button className="secondary" onClick={() => onOpen(p.id)}>View</button>{EDITABLE.includes(p.status) && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}<button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button></div>
+              </>
+            )}
           </article>
         )
       })}
