@@ -58,11 +58,17 @@ export async function api(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {})
   headers.set('Authorization', `Bearer ${getKey()}`)
   if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  let res: Response
-  try {
-    res = await fetch(`${API}${path}`, { ...options, headers })
-  } catch {
-    throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and confirm that http://127.0.0.1:8000/api/health opens. If the frontend is on another port or host, check backend CORS settings and VITE_API_URL.`)
+  let res: Response | undefined
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      res = await fetch(`${API}${path}`, { ...options, headers })
+      break
+    } catch {
+      if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)))
+    }
+  }
+  if (!res) {
+    throw new Error(`Cannot reach the Impala Hub API at ${API}. The request was retried three times. Confirm that http://127.0.0.1:8000/api/health opens and that the backend is not restarting.`)
   }
   if (res.status === 401) {
     localStorage.removeItem(KEY_STORAGE)
