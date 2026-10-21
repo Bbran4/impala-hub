@@ -666,6 +666,15 @@ def create_parts_query(payload: PartsQueryIn) -> dict:
         return dict(db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
 
 
+@app.delete("/api/parts-queries/{query_id}", dependencies=[Depends(require_api_key)], status_code=204)
+def delete_parts_query(query_id: str) -> None:
+    with db_session() as db:
+        deleted = db.execute("DELETE FROM parts_queries WHERE id=?", (query_id,))
+        if deleted.rowcount != 1:
+            raise HTTPException(404, "Parts Query not found")
+        audit(db, "deleted", "parts_query", query_id, {})
+
+
 @app.get("/api/campaigns", dependencies=[Depends(require_api_key)])
 def list_campaigns() -> list[dict]:
     with db_session() as db:
