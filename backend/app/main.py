@@ -74,9 +74,14 @@ def now_iso() -> str:
 
 
 def connect() -> sqlite3.Connection:
-    db = sqlite3.connect(DB_PATH)
+    # SQLite is used by the API, background publisher and Sales Desk concurrently.
+    # Give short-lived writers time to finish instead of surfacing transient 500s.
+    db = sqlite3.connect(DB_PATH, timeout=30.0)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
+    db.execute("PRAGMA busy_timeout = 30000")
+    db.execute("PRAGMA journal_mode = WAL")
+    db.execute("PRAGMA synchronous = NORMAL")
     return db
 
 
@@ -220,6 +225,9 @@ PRAGMA user_version = 5;
 def init_db() -> None:
     conn = connect()
     try:
+        # Initialise WAL once so readers do not block the publisher and Sales Desk writers.
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 30000")
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version < 1:
             conn.executescript(SCHEMA_V1)
