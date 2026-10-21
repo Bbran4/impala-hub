@@ -53,7 +53,6 @@ export default function Buyouts({ token, setNotice, setError }: Props) {
     <label className="editor-field"><span>{label}</span><input type={type} value={form[name] ?? ''} onChange={e => setForm({ ...form, [name]: e.target.value })} /></label>
   )
   return <section className="rfq-workspace">
-    <div className="apps-intro"><span className="eyebrow">SMART STOCK CONTROL</span><h2>Buyouts</h2><p>Manage buyout requests and supplier quotes.</p></div>
     <div className="sd-session-bar">
       <span>Smart Stock Control workspace</span>
       <div className="sd-view-tabs">
