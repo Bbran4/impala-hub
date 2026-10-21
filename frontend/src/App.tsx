@@ -520,7 +520,7 @@ export default function App() {
               <h2>Welcome to Impala Hub</h2>
               <p>Choose an application to get started. More tools will appear here as they become available.</p>
             </div>
-            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>3 available</span></div>
+            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>4 available</span></div>
             <div className="app-cards">
               <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
                 <div className="app-card-icon"><Megaphone size={25} /></div>
