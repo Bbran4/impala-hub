@@ -47,4 +47,4 @@ class InstagramClient:
         return self._request("POST", f"/{self.account_id}/media_publish", params={"creation_id": creation_id})
 
     def media(self, limit: int = 100) -> dict:
-        return self._request("GET", f"/{self.account_id}/media", params={"fields": "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count,insights.metric(impressions,reach,saved)", "limit": limit})
+        return self._request("GET", f"/{self.account_id}/media", params={"fields": "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count,insights.metric(reach,saved)", "limit": limit})
