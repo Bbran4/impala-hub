@@ -290,6 +290,8 @@ def init_db() -> None:
         conn.executescript(SCHEMA_PARTS_QUERIES)
         if not any(r["name"] == "sales_code_id" for r in conn.execute("PRAGMA table_info(parts_queries)")):
             conn.execute("ALTER TABLE parts_queries ADD COLUMN sales_code_id TEXT")
+        if not any(r["name"] == "qty" for r in conn.execute("PRAGMA table_info(parts_query_suppliers)")):
+            conn.execute("ALTER TABLE parts_query_suppliers ADD COLUMN qty INTEGER NOT NULL DEFAULT 1 CHECK(qty > 0)")
         conn.executemany("INSERT OR IGNORE INTO development_statuses(name) VALUES(?)", [("New",), ("Under Review",), ("Approved",), ("Rejected",)])
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
@@ -622,7 +624,8 @@ def create_supplier_quote(payload: SupplierQuoteIn) -> dict:
 
 
 class SupplierQuoteIn(BaseModel):
-    supplier: str = Field(min_length=1, max_length=160)
+    supplier: str = Field(default='', max_length=160)
+    qty: int = Field(default=1, gt=0, le=1000000)
     cost: Optional[float] = Field(default=None, ge=0)
     msrp: Optional[float] = Field(default=None, ge=0)
     notes: str = Field(default='', max_length=2000)
@@ -631,7 +634,7 @@ class SupplierQuoteIn(BaseModel):
 class PartsQueryIn(BaseModel):
     part_number: str = Field(min_length=1, max_length=120)
     description: str = Field(min_length=1, max_length=1000)
-    qty: int = Field(gt=0, le=1000000)
+    qty: int = Field(default=1, gt=0, le=1000000)
     sales_code_id: Optional[str] = None
     suppliers: list[SupplierQuoteIn] = Field(default_factory=list, max_length=100)
     development_status: str = Field(min_length=1, max_length=120)
@@ -681,7 +684,7 @@ def create_development_status(payload: dict) -> dict:
 
 def parts_query_row(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
     item = dict(row)
-    item["suppliers"] = [dict(r) for r in db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE query_id=? ORDER BY rowid", (item["id"],))]
+    item["suppliers"] = [dict(r) for r in db.execute("SELECT id,supplier,qty,cost,msrp,notes FROM parts_query_suppliers WHERE query_id=? ORDER BY rowid", (item["id"],))]
     return item
 
 
@@ -712,7 +715,7 @@ def create_parts_query(payload: PartsQueryIn) -> dict:
             (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, '', None, None, payload.development_status.strip(), payload.status, payload.sales_code_id),
         )
         for quote in payload.suppliers:
-            db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
+            db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,qty,cost,msrp,notes) VALUES(?,?,?,?,?,?,?)",
                        (uuid.uuid4().hex, record_id, quote.supplier.strip(), quote.cost, quote.msrp, quote.notes.strip()))
         audit(db, "created", "parts_query", record_id, payload.model_dump())
         return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
@@ -724,6 +727,8 @@ class SupplierQuotePatch(SupplierQuoteIn):
 
 class PartsQueryPatch(BaseModel):
     status: Optional[Literal['In Progress', 'Submitted', 'Cancelled']] = None
+    part_number: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, min_length=1, max_length=1000)
     development_status: Optional[str] = Field(default=None, min_length=1, max_length=120)
     sales_code_id: Optional[str] = None
     suppliers: Optional[list[SupplierQuotePatch]] = None
@@ -743,8 +748,8 @@ def update_parts_query(query_id: str, patch: PartsQueryPatch) -> dict:
                     db.execute("INSERT OR IGNORE INTO development_statuses(name) VALUES(?)", (development_status,))
                 if patch.sales_code_id is not None and sales_code_id and not db.execute("SELECT 1 FROM sd_sales_codes WHERE id=? AND is_active=1", (sales_code_id,)).fetchone():
                     raise HTTPException(422, "Choose an active Sales Code")
-                db.execute("UPDATE parts_queries SET status=?,development_status=?,sales_code_id=? WHERE id=?",
-                           (patch.status or current["status"], development_status, sales_code_id, query_id))
+                db.execute("UPDATE parts_queries SET part_number=?,description=?,status=?,development_status=?,sales_code_id=? WHERE id=?",
+                           (patch.part_number.strip() if patch.part_number is not None else current["part_number"], patch.description.strip() if patch.description is not None else current["description"], patch.status or current["status"], development_status, sales_code_id, query_id))
                 if patch.suppliers is not None:
                     submitted_ids = [quote.id for quote in patch.suppliers if quote.id]
                     if submitted_ids:
@@ -755,13 +760,13 @@ def update_parts_query(query_id: str, patch: PartsQueryPatch) -> dict:
                     for quote in patch.suppliers:
                         values = (quote.supplier.strip(), quote.cost, quote.msrp, quote.notes.strip())
                         if quote.id:
-                            updated = db.execute("UPDATE parts_query_suppliers SET supplier=?,cost=?,msrp=?,notes=? WHERE id=? AND query_id=?",
+                            updated = db.execute("UPDATE parts_query_suppliers SET supplier=?,qty=?,cost=?,msrp=?,notes=? WHERE id=? AND query_id=?",
                                                  (*values, quote.id, query_id))
                             if updated.rowcount != 1:
                                 raise HTTPException(404, "Supplier quote not found")
                         else:
                             db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
-                                       (uuid.uuid4().hex, query_id, *values))
+                                       (uuid.uuid4().hex, query_id, values[0], quote.qty, values[1], values[2], values[3]))
                 audit(db, "updated", "parts_query", query_id, patch.model_dump(exclude_none=True))
                 return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (query_id,)).fetchone())
         except sqlite3.OperationalError as exc:
@@ -780,7 +785,7 @@ def add_parts_query_supplier(query_id: str, payload: SupplierQuoteIn) -> dict:
                 if not db.execute("SELECT 1 FROM parts_queries WHERE id=?", (query_id,)).fetchone():
                     raise HTTPException(404, "Parts Query not found")
                 db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
-                           (supplier_id, query_id, payload.supplier.strip(), payload.cost, payload.msrp, payload.notes.strip()))
+                           (supplier_id, query_id, payload.supplier.strip(), payload.qty, payload.cost, payload.msrp, payload.notes.strip()))
                 audit(db, "supplier_added", "parts_query", query_id, payload.model_dump())
                 return dict(db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
         except sqlite3.OperationalError as exc:
@@ -799,7 +804,7 @@ def update_parts_query_supplier(query_id: str, supplier_id: str, payload: Suppli
             with db_session() as db:
                 updated = db.execute(
                     "UPDATE parts_query_suppliers SET supplier=?,cost=?,msrp=?,notes=? WHERE id=? AND query_id=?",
-                    (payload.supplier.strip(), payload.cost, payload.msrp, payload.notes.strip(), supplier_id, query_id),
+                    (payload.supplier.strip(), payload.qty, payload.cost, payload.msrp, payload.notes.strip(), supplier_id, query_id),
                 )
                 if updated.rowcount != 1:
                     raise HTTPException(404, "Supplier quote not found")
