@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS facebook_connection (
     data_access_expires_at INTEGER,
     updated_at TEXT NOT NULL
 );
-"""
+CREATE TABLE IF NOT EXISTS integration_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);\n"""
 
 
 SCHEMA_V1 = """
@@ -275,10 +275,30 @@ def _stored_facebook_connection() -> Optional[dict]:
     return {**dict(row), "token": token}
 
 
+FB_ENV_DISABLED = "facebook_env_token_disabled"
+
+def _flag(name: str) -> bool:
+    with db_session() as db:
+        return db.execute("SELECT 1 FROM integration_flags WHERE name=?", (name,)).fetchone() is not None
+
+def _set_flag(db: sqlite3.Connection, name: str, on: bool) -> None:
+    if on:
+        db.execute("INSERT OR REPLACE INTO integration_flags(name,value) VALUES(?, '1')", (name,))
+    else:
+        db.execute("DELETE FROM integration_flags WHERE name=?", (name,))
+
+def _remove_network_posts(db: sqlite3.Connection, provider: str) -> int:
+    rows = db.execute("SELECT id, provider_ids_json FROM posts WHERE status='published'").fetchall()
+    ids = [r["id"] for r in rows if json.loads(r["provider_ids_json"] or "{}").get(provider)]
+    db.executemany("DELETE FROM posts WHERE id=?", [(i,) for i in ids])
+    return len(ids)
+
 def facebook_client():
     stored = _stored_facebook_connection()
     if stored:
         return client_from_settings(stored["page_id"], stored["token"], settings.facebook_api_version)
+    if _flag(FB_ENV_DISABLED):
+        return None
     return client_from_settings(settings.facebook_page_id, settings.facebook_page_token, settings.facebook_api_version)
 
 
@@ -965,10 +985,10 @@ def disconnect_facebook() -> dict:
         row = db.execute("SELECT page_id FROM facebook_connection WHERE id=1").fetchone()
         db.execute("DELETE FROM facebook_connection WHERE id=1")
         db.execute("DELETE FROM facebook_pending_pages")
-        if row:
-            audit(db, "disconnected", "integration", "facebook", {"page_id": row["page_id"]})
-    return {"disconnected": True, "using_environment_fallback": bool(settings.facebook_page_id and settings.facebook_page_token)}
-
+        _set_flag(db, FB_ENV_DISABLED, True)
+        removed = _remove_network_posts(db, "facebook")
+        audit(db, "disconnected", "integration", "facebook", {"page_id": row["page_id"] if row else (settings.facebook_page_id or None), "posts_removed_from_feed": removed})
+    return {"disconnected": True, "posts_removed": removed, "environment_token_ignored": bool(settings.facebook_page_id and settings.facebook_page_token)}
 
 @app.post("/api/integrations/facebook/check", dependencies=[Depends(require_api_key)])
 def check_facebook_connection() -> dict:
