@@ -718,6 +718,26 @@ def create_parts_query(payload: PartsQueryIn) -> dict:
         return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
 
 
+class PartsQueryPatch(BaseModel):
+    status: Optional[Literal['In Progress', 'Submitted', 'Cancelled']] = None
+    development_status: Optional[str] = Field(default=None, min_length=1, max_length=120)
+
+
+@app.patch("/api/parts-queries/{query_id}", dependencies=[Depends(require_api_key)])
+def update_parts_query(query_id: str, patch: PartsQueryPatch) -> dict:
+    with db_session() as db:
+        current = db.execute("SELECT * FROM parts_queries WHERE id=?", (query_id,)).fetchone()
+        if not current:
+            raise HTTPException(404, "Parts Query not found")
+        development_status = patch.development_status.strip() if patch.development_status is not None else current["development_status"]
+        if patch.development_status is not None:
+            db.execute("INSERT OR IGNORE INTO development_statuses(name) VALUES(?)", (development_status,))
+        db.execute("UPDATE parts_queries SET status=?,development_status=? WHERE id=?",
+                   (patch.status or current["status"], development_status, query_id))
+        audit(db, "updated", "parts_query", query_id, patch.model_dump(exclude_none=True))
+        return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (query_id,)).fetchone())
+
+
 @app.post("/api/parts-queries/{query_id}/suppliers", dependencies=[Depends(require_api_key)], status_code=201)
 def add_parts_query_supplier(query_id: str, payload: SupplierQuoteIn) -> dict:
     supplier_id = uuid.uuid4().hex
