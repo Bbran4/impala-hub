@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS returns_claims (
  id TEXT PRIMARY KEY, date TEXT NOT NULL, company TEXT NOT NULL, rfc_book_number TEXT NOT NULL,
  customer TEXT NOT NULL, contact_person TEXT NOT NULL, contact_number TEXT NOT NULL, invoice_number TEXT NOT NULL,
  invoice_date TEXT NOT NULL, reason TEXT NOT NULL, part_number TEXT NOT NULL, description TEXT NOT NULL,
- qty INTEGER NOT NULL CHECK(qty > 0), outcome_request TEXT NOT NULL, returned_by TEXT NOT NULL, received_by TEXT NOT NULL,
+ qty INTEGER NOT NULL CHECK(qty > 0), outcome_request TEXT, returned_by TEXT NOT NULL, received_by TEXT NOT NULL,
  supplier_received TEXT NOT NULL DEFAULT 'No', comments TEXT NOT NULL DEFAULT '', attachments_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
@@ -302,6 +302,24 @@ def init_db() -> None:
         columns = {r['name'] for r in conn.execute('PRAGMA table_info(returns_claims)')}
         if 'attachments_json' not in columns:
             conn.execute("ALTER TABLE returns_claims ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'")
+        if columns.get('outcome_request') and columns['outcome_request']['notnull']:
+            conn.executescript("""
+                ALTER TABLE returns_claims RENAME TO returns_claims_legacy;
+                CREATE TABLE returns_claims (
+                    id TEXT PRIMARY KEY, date TEXT NOT NULL, company TEXT NOT NULL, rfc_book_number TEXT NOT NULL,
+                    customer TEXT NOT NULL, contact_person TEXT NOT NULL, contact_number TEXT NOT NULL, invoice_number TEXT NOT NULL,
+                    invoice_date TEXT NOT NULL, reason TEXT NOT NULL, part_number TEXT NOT NULL, description TEXT NOT NULL,
+                    qty INTEGER NOT NULL CHECK(qty > 0), outcome_request TEXT, returned_by TEXT NOT NULL, received_by TEXT NOT NULL,
+                    supplier_received TEXT NOT NULL DEFAULT 'No', comments TEXT NOT NULL DEFAULT '',
+                    attachments_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                );
+                INSERT INTO returns_claims SELECT id,date,company,rfc_book_number,customer,contact_person,contact_number,
+                    invoice_number,invoice_date,reason,part_number,description,qty,outcome_request,returned_by,received_by,
+                    supplier_received,comments,attachments_json,status,created_at,updated_at
+                    FROM returns_claims_legacy;
+                DROP TABLE returns_claims_legacy;
+            """)
         if not any(r["name"] == "sales_code_id" for r in conn.execute("PRAGMA table_info(parts_queries)")):
             conn.execute("ALTER TABLE parts_queries ADD COLUMN sales_code_id TEXT")
         if not any(r["name"] == "qty" for r in conn.execute("PRAGMA table_info(parts_query_suppliers)")):
