@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
-  LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X,
+  LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
@@ -36,6 +36,37 @@ const OAUTH_REASONS: Record<string, string> = {
   meta_request_failed: 'A request to Meta failed. Check META_APP_ID and META_APP_SECRET in backend/.env.',
 }
 
+const ROADMAP_ROWS = [
+  ['Sign-in', 'Odoo authentication', 'Impala Hub session login', 'Implemented'],
+  ['Persistent session', 'Yes', 'Persistent session with retry protection', 'Implemented'],
+  ['Logout', 'Yes', 'Yes', 'Implemented'],
+  ['Facebook connection', 'Social account configuration', 'Meta OAuth, Page selection, diagnostics, disconnect', 'Implemented'],
+  ['Instagram connection', 'Social account configuration', 'Meta OAuth for professional accounts', 'Implemented; live connection working'],
+  ['WhatsApp', 'Not central', 'Deferred', 'Correctly deferred'],
+  ['Feed', 'Account feeds, streams, metrics', 'Network columns, 25 newest posts, metrics', 'Partial'],
+  ['Create post', 'New Post workflow', 'Create Post editor', 'Implemented'],
+  ['Edit draft posts', 'Yes', 'Yes', 'Implemented'],
+  ['Schedule posts', 'Yes', 'Yes', 'Implemented'],
+  ['Publish now', 'Yes', 'Facebook workflow', 'Partial'],
+  ['Facebook publishing', 'Yes', 'OAuth/Page publishing', 'Implemented'],
+  ['Instagram publishing', 'Yes', 'OAuth/API foundation', 'Partial; live publishing verification required'],
+  ['Likes, comments, shares', 'Yes', 'Stored/displayed where synced', 'Partial'],
+  ['Views, reach, impressions', 'Odoo insights', 'Provider fields and fallbacks', 'Partial; Facebook Views unresolved'],
+  ['Clicks', 'Yes', 'Post model and provider paths', 'Partial'],
+  ['Post analytics detail', 'Post cards and insights', 'Post details and metrics', 'Partial'],
+  ['Campaign creation', 'Yes', 'Yes', 'Implemented'],
+  ['Campaign editing', 'Yes', 'Title/objective editing', 'Implemented'],
+  ['Campaign deletion', 'Record actions', 'Not exposed as a complete workflow', 'Incomplete'],
+  ['Campaign Kanban stages', 'New/In Progress/Done', 'Drag-and-drop Kanban', 'Implemented'],
+  ['Post Kanban', 'Yes', 'Board view', 'Implemented'],
+  ['Post calendar', 'Yes', 'Calendar view', 'Implemented'],
+  ['Post list', 'Yes', 'List view', 'Implemented'],
+  ['Post pivot reporting', 'Yes', 'Grouped Pivot-style insights table', 'Implemented'],
+  ['Search/filtering', 'Extensive search panels', 'Basic search and filters', 'Partial'],
+  ['Social conversations', 'Channels and chats', 'Not implemented', 'Missing'],
+  ['Sentiment analysis', 'Visible in Channels', 'Not implemented', 'Missing'],
+  ['Notifications', 'Odoo activities/messages', 'Not implemented', 'Missing'],
+]
 export default function App() {
   const [key, setKey] = useState(getKey())
   const [keyEntry, setKeyEntry] = useState('')
@@ -396,7 +427,7 @@ export default function App() {
             <div className="nav-label">WORKSPACE</div>
             {(isSalesDeskPage
               ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings]] as const)
-              : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Configuration', Settings]] as const)
+              : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
             ).map(([label, Icon]) => (
               <button
                 key={label}
@@ -489,6 +520,23 @@ export default function App() {
         )}
 
         {isSalesDeskPage && <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} />}
+
+        {key && page === 'Roadmap' && (
+          <section className="roadmap-page">
+            <div className="section-head">
+              <div><span className="pill">MARKETING ROADMAP</span><h2>Odoo parity workspace</h2><p>Current feature coverage, gaps, and next implementation priorities.</p></div>
+            </div>
+            <div className="roadmap-priorities">
+              <strong>Next priorities</strong>
+              <span>Facebook Views and boosted metrics</span><span>Instagram boosted metrics and publishing verification</span><span>Campaign deletion</span><span>Notifications and social conversations</span>
+            </div>
+            <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Odoo</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
+              {ROADMAP_ROWS.map(([capability, odoo, impala, status]) => <tr key={capability}><td>{capability}</td><td>{odoo}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') || status.startsWith('Incomplete') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
+            </tbody></table></div>
+          </section>
+        )}
+
+
 
         {key && page === 'Feed' && (
           <>
