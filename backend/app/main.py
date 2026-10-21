@@ -111,7 +111,8 @@ CREATE TABLE IF NOT EXISTS facebook_connection (
     data_access_expires_at INTEGER,
     updated_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS integration_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);\n"""
+CREATE TABLE IF NOT EXISTS integration_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+"""
 
 
 SCHEMA_V1 = """
