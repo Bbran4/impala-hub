@@ -168,6 +168,17 @@ CREATE TABLE IF NOT EXISTS parts_queries (
     status TEXT NOT NULL CHECK(status IN ('In Progress','Submitted','Cancelled'))
 );
 """
+
+SCHEMA_RETURNS_CLAIMS = """
+CREATE TABLE IF NOT EXISTS returns_claims (
+ id TEXT PRIMARY KEY, date TEXT NOT NULL, company TEXT NOT NULL, rfc_book_number TEXT NOT NULL,
+ customer TEXT NOT NULL, contact_person TEXT NOT NULL, contact_number TEXT NOT NULL, invoice_number TEXT NOT NULL,
+ invoice_date TEXT NOT NULL, reason TEXT NOT NULL, part_number TEXT NOT NULL, description TEXT NOT NULL,
+ qty INTEGER NOT NULL CHECK(qty > 0), outcome_request TEXT NOT NULL, returned_by TEXT NOT NULL, received_by TEXT NOT NULL,
+ supplier_received TEXT NOT NULL DEFAULT 'No', comments TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+"""
 SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
@@ -288,6 +299,7 @@ def init_db() -> None:
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
+        conn.executescript(SCHEMA_RETURNS_CLAIMS)
         if not any(r["name"] == "sales_code_id" for r in conn.execute("PRAGMA table_info(parts_queries)")):
             conn.execute("ALTER TABLE parts_queries ADD COLUMN sales_code_id TEXT")
         if not any(r["name"] == "qty" for r in conn.execute("PRAGMA table_info(parts_query_suppliers)")):
@@ -631,6 +643,31 @@ class SupplierQuoteIn(BaseModel):
     notes: str = Field(default='', max_length=2000)
 
 
+class ReturnClaimIn(BaseModel):
+    date: str
+    company: Literal['Warehouse', 'Eastrand', 'Pretoria']
+    rfc_book_number: str = Field(min_length=1, max_length=120)
+    customer: str = Field(min_length=1, max_length=200)
+    contact_person: str = Field(min_length=1, max_length=160)
+    contact_number: str = Field(min_length=1, max_length=80)
+    invoice_number: str = Field(min_length=1, max_length=120)
+    invoice_date: str
+    reason: Literal['Core', 'Goods Damaged', 'Incorrect Goods Supplied', 'Claim']
+    part_number: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=1000)
+    qty: int = Field(gt=0, le=1000000)
+    outcome_request: Literal['Credit', 'Replacement Part']
+    returned_by: str = Field(min_length=1, max_length=160)
+    received_by: str = Field(min_length=1, max_length=160)
+    supplier_received: Literal['Yes', 'No'] = 'No'
+    comments: str = Field(default='', max_length=5000)
+    status: Literal['Waiting for Info from Customer', 'Waiting for Reply from Supplier', 'In Progress', 'Completed', 'Awaiting Pickup/dropoff at supplier', 'Rejected'] = 'In Progress'
+
+
+class ReturnClaimPatch(ReturnClaimIn):
+    pass
+
+
 class PartsSupplierIn(BaseModel):
     id: Optional[str] = None
     supplier: str = Field(default='', max_length=160)
@@ -846,6 +883,48 @@ def delete_parts_query(query_id: str) -> dict:
             raise HTTPException(404, "Parts Query not found")
         audit(db, "deleted", "parts_query", query_id, {})
     return {"deleted": True, "id": query_id}
+
+
+@app.get("/api/returns-claims", dependencies=[Depends(require_api_key)])
+def list_returns_claims() -> list[dict]:
+    with db_session() as db:
+        return [dict(r) for r in db.execute("SELECT * FROM returns_claims ORDER BY date DESC, created_at DESC")]
+
+
+@app.post("/api/returns-claims", dependencies=[Depends(require_api_key)], status_code=201)
+def create_returns_claim(payload: ReturnClaimIn) -> dict:
+    record_id, stamp = buyout_id("RFC"), now_iso()
+    values = payload.model_dump()
+    with db_session() as db:
+        columns = "id,date,company,rfc_book_number,customer,contact_person,contact_number,invoice_number,invoice_date,reason,part_number,description,qty,outcome_request,returned_by,received_by,supplier_received,comments,status,created_at,updated_at"
+        db.execute(f"INSERT INTO returns_claims({columns}) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (record_id, values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"], values["returned_by"], values["received_by"], values["supplier_received"], values["comments"], values["status"], stamp, stamp))
+        audit(db, "created", "returns_claim", record_id, values)
+        return dict(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
+
+
+@app.patch("/api/returns-claims/{record_id}", dependencies=[Depends(require_api_key)])
+def update_returns_claim(record_id: str, payload: ReturnClaimPatch) -> dict:
+    values = payload.model_dump()
+    with db_session() as db:
+        if not db.execute("SELECT 1 FROM returns_claims WHERE id=?", (record_id,)).fetchone():
+            raise HTTPException(404, "Returns & Claims record not found")
+        db.execute("""UPDATE returns_claims SET date=?,company=?,rfc_book_number=?,customer=?,contact_person=?,contact_number=?,
+            invoice_number=?,invoice_date=?,reason=?,part_number=?,description=?,qty=?,outcome_request=?,returned_by=?,received_by=?,
+            supplier_received=?,comments=?,status=?,updated_at=? WHERE id=?""",
+            (values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"], values["returned_by"], values["received_by"], values["supplier_received"], values["comments"], values["status"], now_iso(), record_id))
+        audit(db, "updated", "returns_claim", record_id, values)
+        return dict(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
+
+
+@app.delete("/api/returns-claims/{record_id}", dependencies=[Depends(require_api_key)])
+def delete_returns_claim(record_id: str) -> dict:
+    with db_session() as db:
+        deleted = db.execute("DELETE FROM returns_claims WHERE id=?", (record_id,))
+        if deleted.rowcount != 1:
+            raise HTTPException(404, "Returns & Claims record not found")
+        audit(db, "deleted", "returns_claim", record_id, {})
+    return {"deleted": True, "id": record_id}
 
 
 @app.get("/api/campaigns", dependencies=[Depends(require_api_key)])
