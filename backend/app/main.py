@@ -1061,7 +1061,7 @@ def _instagram_integration_status() -> dict:
     return {"provider": "instagram", "label": "Instagram Professional", "status": "connected", "account_id": row["account_id"], "account_name": row["account_name"], "username": row["username"], "followers_count": followers_count, "last_checked_at": row["last_checked_at"] or row["updated_at"], "last_success_at": row["last_checked_at"] or row["updated_at"], "token_type": "page", "expires_at": row["token_expires_at"], "data_access_expires_at": row["data_access_expires_at"], "granted_permissions": json.loads(row["granted_permissions_json"] or "[]"), "connection_source": row["connection_source"], "capabilities": ["image_posts", "carousel_posts", "insights"]}
 
 # --------------------------------------------------------------------------- Instagram OAuth / account connection
-INSTAGRAM_OAUTH_SCOPES = "instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,business_management"
+INSTAGRAM_OAUTH_SCOPES = "instagram_basic,instagram_manage_insights,instagram_content_publish,instagram_manage_comments,pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content"
 
 def _ensure_instagram_tables() -> None:
     with db_session() as db:
