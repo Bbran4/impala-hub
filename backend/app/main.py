@@ -704,34 +704,28 @@ def list_parts_queries(development_status: Optional[str] = None, status: Optiona
 
 @app.post("/api/parts-queries", dependencies=[Depends(require_api_key)], status_code=201)
 def create_parts_query(payload: PartsQueryIn) -> dict:
-    record_id, stamp = buyout_id("PQ"), now_iso()
-    with db_session() as db:
-        if payload.sales_code_id and not db.execute("SELECT 1 FROM sd_sales_codes WHERE id=? AND is_active=1", (payload.sales_code_id,)).fetchone():
-            raise HTTPException(422, "Choose an active Sales Code")
-        if not db.execute("SELECT 1 FROM development_statuses WHERE name=?", (payload.development_status.strip(),)).fetchone():
-            db.execute("INSERT INTO development_statuses(name) VALUES(?)", (payload.development_status.strip(),))
-        db.execute(
-            "INSERT INTO parts_queries(id,created_at,part_number,description,qty,supplier,cost,msrp,development_status,status,sales_code_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, '', None, None, payload.development_status.strip(), payload.status, payload.sales_code_id),
-        )
-        for quote in payload.suppliers:
-            db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,qty,cost,msrp,notes) VALUES(?,?,?,?,?,?,?)",
-                       (uuid.uuid4().hex, record_id, quote.supplier.strip(), quote.cost, quote.msrp, quote.notes.strip()))
-        audit(db, "created", "parts_query", record_id, payload.model_dump())
-        return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
-
-
-class SupplierQuotePatch(SupplierQuoteIn):
-    id: Optional[str] = None
-
-
-class PartsQueryPatch(BaseModel):
-    status: Optional[Literal['In Progress', 'Submitted', 'Cancelled']] = None
-    part_number: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    description: Optional[str] = Field(default=None, min_length=1, max_length=1000)
-    development_status: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    sales_code_id: Optional[str] = None
-    suppliers: Optional[list[SupplierQuotePatch]] = None
+    for attempt in range(6):
+        try:
+            record_id, stamp = buyout_id("PQ"), now_iso()
+            with db_session() as db:
+                if payload.sales_code_id and not db.execute("SELECT 1 FROM sd_sales_codes WHERE id=? AND is_active=1", (payload.sales_code_id,)).fetchone():
+                    raise HTTPException(422, "Choose an active Sales Code")
+                if not db.execute("SELECT 1 FROM development_statuses WHERE name=?", (payload.development_status.strip(),)).fetchone():
+                    db.execute("INSERT INTO development_statuses(name) VALUES(?)", (payload.development_status.strip(),))
+                db.execute(
+                    "INSERT INTO parts_queries(id,created_at,part_number,description,qty,supplier,cost,msrp,development_status,status,sales_code_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, '', None, None, payload.development_status.strip(), payload.status, payload.sales_code_id),
+                )
+                for quote in payload.suppliers:
+                    db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,qty,cost,msrp,notes) VALUES(?,?,?,?,?,?,?)",
+                               (uuid.uuid4().hex, record_id, quote.supplier.strip(), quote.qty, quote.cost, quote.msrp, quote.notes.strip()))
+                audit(db, "created", "parts_query", record_id, payload.model_dump())
+                return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == 5:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+    raise HTTPException(503, "Database is busy. Please retry creating the Parts Query.")
 
 
 @app.patch("/api/parts-queries/{query_id}", dependencies=[Depends(require_api_key)])
