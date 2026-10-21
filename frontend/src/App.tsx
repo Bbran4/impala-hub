@@ -237,8 +237,8 @@ export default function App() {
     if (!window.confirm('Disconnect the Instagram account saved through Connect Instagram?')) return
     setBusy(true); setError('')
     try {
-      await api('/api/integrations/instagram/disconnect', { method: 'POST' })
-      setNotice('Instagram connection removed.')
+      const r = await api('/api/integrations/instagram/disconnect', { method: 'POST' })
+      setNotice(`Instagram disconnected. ${r.posts_removed || 0} post(s) removed from the feed.`)
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
   }
@@ -711,7 +711,7 @@ export default function App() {
                     ? <div className="integration-actions">
                         <button className="primary" disabled={busy} onClick={() => void connectFacebook()}>{busy ? 'Working...' : (i.status === 'connected' ? 'Reconnect Facebook' : 'Connect Facebook')}</button>
                         <button className="secondary" disabled={busy || i.status === 'not_connected'} onClick={() => void checkFacebookConnection()}>{busy ? 'Checking...' : 'Check connection'}</button>
-                        {i.connection_source === 'oauth' && <button className="secondary" disabled={busy} onClick={() => void disconnectFacebook()}>Disconnect</button>}
+                        {i.status !== 'not_connected' && <button className="secondary" disabled={busy} onClick={() => void disconnectFacebook()}>Disconnect</button>}
                         {facebookPages.length > 0 && <div className="facebook-page-picker">
                           <label htmlFor="facebook-page-select">Choose a Facebook Page</label>
                           <select id="facebook-page-select" value={selectedFacebookPage} onChange={(e) => setSelectedFacebookPage(e.target.value)}>
