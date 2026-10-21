@@ -99,7 +99,7 @@ class FacebookClient:
     # ------------------------------------------------------------------ public API
     def check(self) -> dict:
         """Confirm the token is a Page token for FACEBOOK_PAGE_ID. Returns {"id", "name"}."""
-        body = self._request("GET", "/me", params={"fields": "id,name", "metadata": 1, "access_token": self._token})
+        body = self._request("GET", "/me", params={"fields": "id,name,followers_count", "metadata": 1, "access_token": self._token})
         kind = (body.get("metadata") or {}).get("type")
         if kind == "user" or (kind is None and str(body.get("id")) != self.page_id):
             raise FacebookError(
@@ -119,6 +119,7 @@ class FacebookClient:
         result = {
             "page_id": str(page.get("id", self.page_id)),
             "page_name": page.get("name", ""),
+            "followers_count": page.get("followers_count"),
             "token_valid": True,
             "token_type": "page",
             "expires_at": None,
