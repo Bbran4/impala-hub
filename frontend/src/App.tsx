@@ -435,9 +435,12 @@ export default function App() {
   const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
-  const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
-  const isStockControlPage = page === 'Parts Query'
-  const isReturnsClaimsPage = page === 'Returns & Claims'
+  const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims','Implemented'],['Outcome handling','Unknown until decided','Optional outcome request','Implemented'],['Attachments','Evidence files','Saved record attachments','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response workflow','Planned'],['Ageing and SLA','Claim ageing reports','Overdue claim visibility','Planned'],['Exports and audit','Traceable reporting','Exports and history','Planned']]
+const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Part details and supplier quotes','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Stock checks','Availability and inventory','Stock-aware decisions','Planned'],['Reporting','Cost and savings analysis','Exports and response reporting','Planned']]
+
+const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
+  const isStockControlPage = page === 'Parts Query' || page === 'Stock Control Roadmap'
+  const isReturnsClaimsPage = page === 'Returns & Claims' || page === 'Returns & Claims Roadmap'
 
   return (
     <div className="shell">
@@ -453,9 +456,9 @@ export default function App() {
             {(isSalesDeskPage
               ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
-                ? ([['Parts Query', ClipboardList]] as const)
+                ? ([['Parts Query', ClipboardList], ['Stock Control Roadmap', Map]] as const)
                 : isReturnsClaimsPage
-                  ? ([['Returns & Claims', ClipboardList]] as const)
+                  ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
             ).map(([label, Icon]) => (
               <button
@@ -566,7 +569,14 @@ export default function App() {
               {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
-        ) : isReturnsClaimsPage ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
+        ) : page === 'Returns & Claims Roadmap' || page === 'Stock Control Roadmap' ? (
+          <section className="roadmap-page">
+            <div className="section-head"><div><h2>{page === 'Returns & Claims Roadmap' ? 'Returns & Claims roadmap' : 'Smart Stock Control roadmap'}</h2><p>Current workspace coverage, known gaps, and implementation priorities.</p></div></div>
+            <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
+              {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
+            </tbody></table></div>
+          </section>
+        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">
