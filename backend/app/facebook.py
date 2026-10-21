@@ -218,8 +218,8 @@ class FacebookClient:
     def post_insights(self, post_id: str) -> dict:
         """Return total Page-post performance with compatibility fallbacks across Graph versions."""
         metric_sets = [
+            "post_media_view,post_total_media_view_unique,post_clicks",
             "post_impressions,post_impressions_unique,post_clicks",
-            "post_media_view,post_impressions,post_impressions_unique",
         ]
         body = None
         for metrics in metric_sets:
@@ -232,7 +232,7 @@ class FacebookClient:
                     break
             except FacebookError:
                 continue
-        values: dict[str, Optional[int]] = {"impressions": None, "reach": None, "clicks": None}
+        values: dict[str, Optional[int]] = {"impressions": None, "reach": None, "views": None, "clicks": None}
         for item in (body or {}).get("data", []):
             points = item.get("values") or []
             if not points:
@@ -241,7 +241,11 @@ class FacebookClient:
             if not isinstance(value, (int, float)):
                 continue
             name = item.get("name")
-            if name in {"post_impressions", "post_media_view"}:
+            if name == "post_media_view":
+                values["views"] = int(value)
+            elif name == "post_total_media_view_unique":
+                values["reach"] = int(value)
+            elif name == "post_impressions":
                 values["impressions"] = int(value)
             elif name == "post_impressions_unique":
                 values["reach"] = int(value)
