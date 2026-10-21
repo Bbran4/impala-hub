@@ -695,7 +695,7 @@ def create_parts_query(payload: PartsQueryIn) -> dict:
             db.execute("INSERT INTO development_statuses(name) VALUES(?)", (payload.development_status.strip(),))
         db.execute(
             "INSERT INTO parts_queries(id,created_at,part_number,description,qty,supplier,cost,msrp,development_status,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, payload.supplier.strip(), payload.cost, payload.msrp, payload.development_status.strip(), payload.status),
+            (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, '', None, None, payload.development_status.strip(), payload.status),
         )
         for quote in payload.suppliers:
             db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
