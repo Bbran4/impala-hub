@@ -25,8 +25,12 @@ export default function Buyouts({ token, setNotice, setError }: Props) {
     setBusy(true)
     try {
       for (const supplier of (form.suppliers || [])) {
-        if (!supplier.id) continue
-        await request(token, `/api/parts-queries/${form.id}/suppliers/${supplier.id}`, { method: 'PATCH', body: JSON.stringify({ supplier: supplier.supplier, cost: supplier.cost === '' ? null : Number(supplier.cost), msrp: supplier.msrp === '' ? null : Number(supplier.msrp), notes: supplier.notes || '' }) })
+        const body = JSON.stringify({ supplier: supplier.supplier, cost: supplier.cost === '' ? null : Number(supplier.cost), msrp: supplier.msrp === '' ? null : Number(supplier.msrp), notes: supplier.notes || '' })
+        if (supplier.id) {
+          await request(token, `/api/parts-queries/${form.id}/suppliers/${supplier.id}`, { method: 'PATCH', body })
+        } else if (supplier.supplier.trim()) {
+          await request(token, `/api/parts-queries/${form.id}/suppliers`, { method: 'POST', body })
+        }
       }
       setPanel(false); setSupplierEdit(false); setNotice('Supplier quotes updated.'); await load()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
