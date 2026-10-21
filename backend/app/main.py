@@ -1081,11 +1081,14 @@ def instagram_oauth_url() -> dict:
     return {"url": "https://www.facebook.com/" + settings.facebook_api_version + "/dialog/oauth?" + urlencode(params)}
 
 @app.get("/api/integrations/instagram/callback")
-def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None, error_reason: Optional[str] = None, error_code: Optional[str] = None):
     _ensure_instagram_tables()
     frontend = settings.facebook_frontend_url.rstrip("/")
-    if error or not code or not state:
-        return RedirectResponse(frontend + "/?instagram_oauth=error")
+    if error:
+        reason = "authorization_cancelled" if error_reason == "user_denied" else "meta_denied"
+        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=" + reason)
+    if not code or not state:
+        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=missing_code")
     with db_session() as db:
         valid = db.execute("SELECT state FROM instagram_oauth_states WHERE state=? AND created_at>=?", (state, time.time() - 900)).fetchone()
         db.execute("DELETE FROM instagram_oauth_states WHERE state=?", (state,))
