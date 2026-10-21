@@ -60,7 +60,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [view, setView] = useState<'list' | 'board' | 'calendar'>('list')
+  const [view, setView] = useState<'list' | 'board' | 'calendar' | 'pivot'>('list')
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
@@ -508,7 +508,7 @@ export default function App() {
                 <input aria-label="Search posts" placeholder="Search titles and captions" value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
               <div className="view-toggle" role="group" aria-label="View">
-                {(['list', 'board', 'calendar'] as const).map((v) => (
+                {(['list', 'board', 'calendar', 'pivot'] as const).map((v) => (
                   <button key={v} className={`secondary ${view === v ? 'active' : ''}`} aria-pressed={view === v} onClick={() => setView(v)}>
                     {v[0].toUpperCase() + v.slice(1)}
                   </button>
@@ -539,6 +539,7 @@ export default function App() {
               count={
                 view === 'list' ? visiblePosts.length
                 : view === 'board' ? monthPosts.length
+                : view === 'pivot' ? filteredPosts.length
                 : filteredPosts.filter((p) => (p.published_at || p.publish_at) && inMonth(p, month ?? startOfMonth())).length
               }
             />
@@ -550,6 +551,9 @@ export default function App() {
                 posts={monthPosts} campaigns={campaigns} onOpen={openPost} onError={setError}
                 onMove={(id, status) => void patchPost(id, { status }, `Post moved to ${status.replace(/_/g, ' ')}.`)}
               />
+            )}
+            {view === 'pivot' && (
+              <PostPivot posts={filteredPosts} campaigns={campaigns} />
             )}
             {view === 'calendar' && (
               <PostCalendar
@@ -567,8 +571,16 @@ export default function App() {
               <div><h2>Campaigns</h2><p>Group related posts under a shared marketing objective.</p></div>
               <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage('new'); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>
             </div>
-            <div className="campaign-grid">
-              {campaigns.map((c) => (
+            <div className="campaign-board">
+              {([
+                ['new', 'New'],
+                ['in_progress', 'In Progress'],
+                ['done', 'Done'],
+              ] as const).map(([stage, label]) => (
+                <section className="campaign-column" key={stage}>
+                  <header className="campaign-column-head"><h3>{label}</h3><span>{campaigns.filter((c) => (c.stage || 'new') === stage).length}</span></header>
+                  <button className="campaign-quick-add" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage(stage); setCampaignModal(true) }}><Plus size={14} /> Quick add</button>
+                  {campaigns.filter((c) => (c.stage || 'new') === stage).map((c) => (
                 <div className="campaign-card" key={c.id}>
                   <div className="campaign-icon"><Megaphone size={20} /></div>
                   <div className="campaign-card-heading"><h3>{c.name}</h3><select aria-label={'Stage for ' + c.name} value={c.stage || 'new'} onChange={(e) => void api('/api/campaigns/' + c.id, { method: 'PATCH', body: JSON.stringify({ stage: e.target.value }) }).then(load).catch(handleError)}><option value="new">New</option><option value="in_progress">In Progress</option><option value="done">Done</option></select></div>
@@ -582,6 +594,8 @@ export default function App() {
                     <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
                   </div>
                 </div>
+                  ))}
+                </section>
               ))}
               {campaigns.length === 0 && (
                 <div className="empty">
