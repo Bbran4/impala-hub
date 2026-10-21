@@ -52,3 +52,5 @@
 .supplier-row label span { font-size: 0.78rem; font-weight: 600; color: var(--muted, #667085); }
 .cheapest-supplier input, .cheapest-supplier label span { font-weight: 700; }
 @media (max-width: 700px) { .supplier-row { grid-template-columns: 1fr 1fr; } }
+
+.required-mark { color: #c62828; font-weight: 800; }
