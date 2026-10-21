@@ -718,10 +718,15 @@ def create_parts_query(payload: PartsQueryIn) -> dict:
         return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (record_id,)).fetchone())
 
 
+class SupplierQuotePatch(SupplierQuoteIn):
+    id: Optional[str] = None
+
+
 class PartsQueryPatch(BaseModel):
     status: Optional[Literal['In Progress', 'Submitted', 'Cancelled']] = None
     development_status: Optional[str] = Field(default=None, min_length=1, max_length=120)
     sales_code_id: Optional[str] = None
+    suppliers: Optional[list[SupplierQuotePatch]] = None
 
 
 @app.patch("/api/parts-queries/{query_id}", dependencies=[Depends(require_api_key)])
@@ -740,6 +745,23 @@ def update_parts_query(query_id: str, patch: PartsQueryPatch) -> dict:
                     raise HTTPException(422, "Choose an active Sales Code")
                 db.execute("UPDATE parts_queries SET status=?,development_status=?,sales_code_id=? WHERE id=?",
                            (patch.status or current["status"], development_status, sales_code_id, query_id))
+                if patch.suppliers is not None:
+                    submitted_ids = [quote.id for quote in patch.suppliers if quote.id]
+                    if submitted_ids:
+                        marks = ",".join("?" for _ in submitted_ids)
+                        db.execute(f"DELETE FROM parts_query_suppliers WHERE query_id=? AND id NOT IN ({marks})", [query_id, *submitted_ids])
+                    else:
+                        db.execute("DELETE FROM parts_query_suppliers WHERE query_id=?", (query_id,))
+                    for quote in patch.suppliers:
+                        values = (quote.supplier.strip(), quote.cost, quote.msrp, quote.notes.strip())
+                        if quote.id:
+                            updated = db.execute("UPDATE parts_query_suppliers SET supplier=?,cost=?,msrp=?,notes=? WHERE id=? AND query_id=?",
+                                                 (*values, quote.id, query_id))
+                            if updated.rowcount != 1:
+                                raise HTTPException(404, "Supplier quote not found")
+                        else:
+                            db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
+                                       (uuid.uuid4().hex, query_id, *values))
                 audit(db, "updated", "parts_query", query_id, patch.model_dump(exclude_none=True))
                 return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (query_id,)).fetchone())
         except sqlite3.OperationalError as exc:
