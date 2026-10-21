@@ -656,9 +656,9 @@ class ReturnClaimIn(BaseModel):
     part_number: str = Field(min_length=1, max_length=120)
     description: str = Field(min_length=1, max_length=1000)
     qty: int = Field(gt=0, le=1000000)
-    outcome_request: Literal['Credit', 'Replacement Part']
-    returned_by: str = Field(min_length=1, max_length=160)
-    received_by: str = Field(min_length=1, max_length=160)
+    outcome_request: Optional[Literal['Credit', 'Replacement Part']] = None
+    returned_by: str = Field(default='', max_length=160)
+    received_by: str = Field(default='', max_length=160)
     supplier_received: Literal['Yes', 'No'] = 'No'
     comments: str = Field(default='', max_length=5000)
     status: Literal['Waiting for Info from Customer', 'Waiting for Reply from Supplier', 'In Progress', 'Completed', 'Awaiting Pickup/dropoff at supplier', 'Rejected'] = 'In Progress'
