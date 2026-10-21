@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS returns_claims (
  customer TEXT NOT NULL, contact_person TEXT NOT NULL, contact_number TEXT NOT NULL, invoice_number TEXT NOT NULL,
  invoice_date TEXT NOT NULL, reason TEXT NOT NULL, part_number TEXT NOT NULL, description TEXT NOT NULL,
  qty INTEGER NOT NULL CHECK(qty > 0), outcome_request TEXT NOT NULL, returned_by TEXT NOT NULL, received_by TEXT NOT NULL,
- supplier_received TEXT NOT NULL DEFAULT 'No', comments TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
+ supplier_received TEXT NOT NULL DEFAULT 'No', comments TEXT NOT NULL DEFAULT '', attachments_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 """
@@ -300,6 +300,9 @@ def init_db() -> None:
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
         conn.executescript(SCHEMA_RETURNS_CLAIMS)
+        columns = {r['name'] for r in conn.execute('PRAGMA table_info(returns_claims)')}
+        if 'attachments_json' not in columns:
+            conn.execute("ALTER TABLE returns_claims ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'")
         if not any(r["name"] == "sales_code_id" for r in conn.execute("PRAGMA table_info(parts_queries)")):
             conn.execute("ALTER TABLE parts_queries ADD COLUMN sales_code_id TEXT")
         if not any(r["name"] == "qty" for r in conn.execute("PRAGMA table_info(parts_query_suppliers)")):
@@ -661,6 +664,7 @@ class ReturnClaimIn(BaseModel):
     received_by: str = Field(default='', max_length=160)
     supplier_received: Literal['Yes', 'No'] = 'No'
     comments: str = Field(default='', max_length=5000)
+    attachments: list[dict] = Field(default_factory=list, max_length=10)
     status: Literal['Waiting for Info from Customer', 'Waiting for Reply from Supplier', 'In Progress', 'Completed', 'Awaiting Pickup/dropoff at supplier', 'Rejected'] = 'In Progress'
 
 
@@ -886,9 +890,15 @@ def delete_parts_query(query_id: str) -> dict:
 
 
 @app.get("/api/returns-claims", dependencies=[Depends(require_api_key)])
+def returns_claim_row(row: sqlite3.Row) -> dict:
+    item = dict(row)
+    item['attachments'] = json.loads(item.pop('attachments_json', '[]') or '[]')
+    return item
+
+
 def list_returns_claims() -> list[dict]:
     with db_session() as db:
-        return [dict(r) for r in db.execute("SELECT * FROM returns_claims ORDER BY date DESC, created_at DESC")]
+        return [returns_claim_row(r) for r in db.execute("SELECT * FROM returns_claims ORDER BY date DESC, created_at DESC")]
 
 
 @app.post("/api/returns-claims", dependencies=[Depends(require_api_key)], status_code=201)
@@ -896,11 +906,11 @@ def create_returns_claim(payload: ReturnClaimIn) -> dict:
     record_id, stamp = buyout_id("RFC"), now_iso()
     values = payload.model_dump()
     with db_session() as db:
-        columns = "id,date,company,rfc_book_number,customer,contact_person,contact_number,invoice_number,invoice_date,reason,part_number,description,qty,outcome_request,returned_by,received_by,supplier_received,comments,status,created_at,updated_at"
+        columns = "id,date,company,rfc_book_number,customer,contact_person,contact_number,invoice_number,invoice_date,reason,part_number,description,qty,outcome_request,returned_by,received_by,supplier_received,comments,attachments_json,status,created_at,updated_at"
         db.execute(f"INSERT INTO returns_claims({columns}) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                   (record_id, values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"], values["returned_by"], values["received_by"], values["supplier_received"], values["comments"], values["status"], stamp, stamp))
+                   (record_id, values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"], values["returned_by"], values["received_by"], values["supplier_received"], json.dumps(values["attachments"]), values["status"], stamp, stamp))
         audit(db, "created", "returns_claim", record_id, values)
-        return dict(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
+        return returns_claim_row(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
 
 
 @app.patch("/api/returns-claims/{record_id}", dependencies=[Depends(require_api_key)])
@@ -911,8 +921,8 @@ def update_returns_claim(record_id: str, payload: ReturnClaimPatch) -> dict:
             raise HTTPException(404, "Returns & Claims record not found")
         db.execute("""UPDATE returns_claims SET date=?,company=?,rfc_book_number=?,customer=?,contact_person=?,contact_number=?,
             invoice_number=?,invoice_date=?,reason=?,part_number=?,description=?,qty=?,outcome_request=?,returned_by=?,received_by=?,
-            supplier_received=?,comments=?,status=?,updated_at=? WHERE id=?""",
-            (values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"], values["returned_by"], values["received_by"], values["supplier_received"], values["comments"], values["status"], now_iso(), record_id))
+            supplier_received=?,comments=?,attachments_json=?,status=?,updated_at=? WHERE id=?""",
+            (values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"], values["returned_by"], values["received_by"], values["supplier_received"], values["comments"], json.dumps(values["attachments"]), values["status"], now_iso(), record_id))
         audit(db, "updated", "returns_claim", record_id, values)
         return dict(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
 
