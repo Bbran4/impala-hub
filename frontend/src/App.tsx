@@ -8,6 +8,7 @@ import PostBoard from './PostBoard'
 import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
 import SalesDesk from './SalesDesk'
+import Buyouts from './Buyouts'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -434,13 +435,14 @@ export default function App() {
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
   const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
+  const isStockControlPage = page === 'Buyouts'
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">I</div>
-          <div><b>IMPALA HUB</b><small>{isSalesDeskPage ? 'Sales Desk workspace' : 'Marketing workspace'}</small></div>
+          <div><b>IMPALA HUB</b><small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : 'Marketing workspace'}</small></div>
         </div>
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
         {page !== 'Apps' && (
@@ -448,7 +450,9 @@ export default function App() {
             <div className="nav-label">WORKSPACE</div>
             {(isSalesDeskPage
               ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
-              : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
+              : isStockControlPage
+                ? ([['Buyouts', ClipboardList]] as const)
+                : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
             ).map(([label, Icon]) => (
               <button
                 key={label}
@@ -536,6 +540,11 @@ export default function App() {
                   <div className="app-card-footer"><span className="app-status-dot app-status-planned" /> Planned <span className="app-card-lock">Coming later</span></div>
                 </div>
               ))}
+              <button className="app-card app-card-available" onClick={() => { setPage('Buyouts'); setError(''); setNotice('') }}>
+                <div className="app-card-icon"><ClipboardList size={25} /></div>
+                <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Buyout requests and supplier quotes.</p></div>
+                <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
+              </button>
             </div>
           </section>
         )}
@@ -550,7 +559,7 @@ export default function App() {
               {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
-        ) : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
+        ) : isStockControlPage ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">
