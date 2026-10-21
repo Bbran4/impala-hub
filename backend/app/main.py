@@ -889,13 +889,13 @@ def delete_parts_query(query_id: str) -> dict:
     return {"deleted": True, "id": query_id}
 
 
-@app.get("/api/returns-claims", dependencies=[Depends(require_api_key)])
 def returns_claim_row(row: sqlite3.Row) -> dict:
     item = dict(row)
     item['attachments'] = json.loads(item.pop('attachments_json', '[]') or '[]')
     return item
 
 
+@app.get("/api/returns-claims", dependencies=[Depends(require_api_key)])
 def list_returns_claims() -> list[dict]:
     with db_session() as db:
         return [returns_claim_row(r) for r in db.execute("SELECT * FROM returns_claims ORDER BY date DESC, created_at DESC")]
