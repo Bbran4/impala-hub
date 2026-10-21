@@ -211,6 +211,25 @@ export default function App() {
     } catch (e) { handleError(e); setBusy(false) }
   }
 
+  async function checkInstagramConnection() {
+    setBusy(true); setError('')
+    try {
+      const r = await api('/api/integrations/instagram/check', { method: 'POST' })
+      setNotice(`Instagram connection verified for ${r.username ? '@' + r.username : r.account_id}.`)
+      await load()
+    } catch (e) { handleError(e) } finally { setBusy(false) }
+  }
+
+  async function disconnectInstagram() {
+    if (!window.confirm('Disconnect the Instagram account saved through Connect Instagram?')) return
+    setBusy(true); setError('')
+    try {
+      await api('/api/integrations/instagram/disconnect', { method: 'POST' })
+      setNotice('Instagram connection removed.')
+      await load()
+    } catch (e) { handleError(e) } finally { setBusy(false) }
+  }
+
   async function connectFacebook() {
     setBusy(true); setError('')
     try {
@@ -690,7 +709,8 @@ export default function App() {
                       </div>
                     : <div className="integration-actions">
                          <button className="primary" disabled={busy} onClick={() => void connectInstagram()}>{busy ? 'Working...' : (i.status === 'connected' ? 'Reconnect Instagram' : 'Connect Instagram')}</button>
-                         <button className="secondary" disabled={busy || i.status !== 'connected'} onClick={() => void api('/api/integrations/instagram/check', { method: 'POST' }).then(() => load()).catch(handleError)}>Check connection</button>
+                         <button className="secondary" disabled={busy || i.status !== 'connected'} onClick={() => void checkInstagramConnection()}>{busy ? 'Checking...' : 'Check connection'}</button>
+                         {i.status === 'connected' && <button className="secondary" disabled={busy} onClick={() => void disconnectInstagram()}>Disconnect</button>}
                        </div>}
                 </div>
               ))}
