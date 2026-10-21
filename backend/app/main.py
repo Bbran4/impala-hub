@@ -288,6 +288,8 @@ def init_db() -> None:
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
+        if not any(r["name"] == "sales_code_id" for r in conn.execute("PRAGMA table_info(parts_queries)")):
+            conn.execute("ALTER TABLE parts_queries ADD COLUMN sales_code_id TEXT")
         conn.executemany("INSERT OR IGNORE INTO development_statuses(name) VALUES(?)", [("New",), ("Under Review",), ("Approved",), ("Rejected",)])
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
@@ -630,6 +632,7 @@ class PartsQueryIn(BaseModel):
     part_number: str = Field(min_length=1, max_length=120)
     description: str = Field(min_length=1, max_length=1000)
     qty: int = Field(gt=0, le=1000000)
+    sales_code_id: Optional[str] = None
     suppliers: list[SupplierQuoteIn] = Field(default_factory=list, max_length=100)
     development_status: str = Field(min_length=1, max_length=120)
     status: Literal['In Progress', 'Submitted', 'Cancelled'] = 'In Progress'
@@ -684,7 +687,7 @@ def parts_query_row(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
 
 @app.get("/api/parts-queries", dependencies=[Depends(require_api_key)])
 def list_parts_queries(development_status: Optional[str] = None, status: Optional[str] = None) -> list[dict]:
-    query, args = "SELECT * FROM parts_queries", []
+    query, args = "SELECT p.*, sc.code AS sales_code FROM parts_queries p LEFT JOIN sd_sales_codes sc ON sc.id=p.sales_code_id", []
     filters = []
     if development_status:
         filters.append("development_status=?"); args.append(development_status)
@@ -700,11 +703,13 @@ def list_parts_queries(development_status: Optional[str] = None, status: Optiona
 def create_parts_query(payload: PartsQueryIn) -> dict:
     record_id, stamp = buyout_id("PQ"), now_iso()
     with db_session() as db:
+        if payload.sales_code_id and not db.execute("SELECT 1 FROM sd_sales_codes WHERE id=? AND is_active=1", (payload.sales_code_id,)).fetchone():
+            raise HTTPException(422, "Choose an active Sales Code")
         if not db.execute("SELECT 1 FROM development_statuses WHERE name=?", (payload.development_status.strip(),)).fetchone():
             db.execute("INSERT INTO development_statuses(name) VALUES(?)", (payload.development_status.strip(),))
         db.execute(
-            "INSERT INTO parts_queries(id,created_at,part_number,description,qty,supplier,cost,msrp,development_status,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, '', None, None, payload.development_status.strip(), payload.status),
+            "INSERT INTO parts_queries(id,created_at,part_number,description,qty,supplier,cost,msrp,development_status,status,sales_code_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (record_id, stamp, payload.part_number.strip(), payload.description.strip(), payload.qty, '', None, None, payload.development_status.strip(), payload.status, payload.sales_code_id),
         )
         for quote in payload.suppliers:
             db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
