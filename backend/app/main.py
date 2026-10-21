@@ -723,7 +723,7 @@ def facebook_integration() -> dict:
         FACEBOOK_LAST_CHECKED_AT = now_iso()
         FACEBOOK_LAST_SUCCESS_AT = FACEBOOK_LAST_CHECKED_AT
         return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": status, "account_name": details["page_name"],
-                "page_id": details["page_id"], "token_type": details["token_type"], "connection_source": "oauth" if stored else "environment", "oauth_configured": oauth_ready,
+                "page_id": details["page_id"], "followers_count": details.get("followers_count"), "token_type": details["token_type"], "connection_source": "oauth" if stored else "environment", "oauth_configured": oauth_ready,
                 "token_valid": details["token_valid"], "expires_at": details["expires_at"],
                 "data_access_expires_at": details["data_access_expires_at"], "token_warning": _token_expiry_warning(details.get("expires_at"), details.get("data_access_expires_at")),
                 "granted_permissions": details["granted_permissions"],
@@ -733,7 +733,7 @@ def facebook_integration() -> dict:
     except FacebookError as exc:
         FACEBOOK_LAST_CHECKED_AT = now_iso()
         return {**base, "last_checked_at": FACEBOOK_LAST_CHECKED_AT, "last_success_at": FACEBOOK_LAST_SUCCESS_AT, "status": "error", "page_id": settings.facebook_page_id or None,
-                "oauth_configured": oauth_ready, "connection_source": "oauth" if stored else "environment",
+                "oauth_configured": oauth_ready, "followers_count": None, "connection_source": "oauth" if stored else "environment",
                 "note": f"Facebook connection check failed: {exc}"}
 
 
@@ -1027,7 +1027,15 @@ def _instagram_integration_status() -> dict:
         row = db.execute("SELECT * FROM instagram_connection WHERE id=1").fetchone()
     if not row:
         return {"provider": "instagram", "label": "Instagram Professional", "status": "not_connected", "capabilities": ["image_posts", "carousel_posts", "insights"]}
-    return {"provider": "instagram", "label": "Instagram Professional", "status": "connected", "account_id": row["account_id"], "account_name": row["account_name"], "username": row["username"], "last_checked_at": row["last_checked_at"] or row["updated_at"], "last_success_at": row["last_checked_at"] or row["updated_at"], "token_type": "page", "expires_at": row["token_expires_at"], "data_access_expires_at": row["data_access_expires_at"], "granted_permissions": json.loads(row["granted_permissions_json"] or "[]"), "connection_source": row["connection_source"], "capabilities": ["image_posts", "carousel_posts", "insights"]}
+    followers_count = None
+    try:
+        from .instagram import InstagramClient
+        token = _fernet().decrypt(row["encrypted_token"].encode()).decode()
+        profile = InstagramClient(row["account_id"], token, settings.facebook_api_version).check()
+        followers_count = profile.get("followers_count")
+    except Exception:
+        pass
+    return {"provider": "instagram", "label": "Instagram Professional", "status": "connected", "account_id": row["account_id"], "account_name": row["account_name"], "username": row["username"], "followers_count": followers_count, "last_checked_at": row["last_checked_at"] or row["updated_at"], "last_success_at": row["last_checked_at"] or row["updated_at"], "token_type": "page", "expires_at": row["token_expires_at"], "data_access_expires_at": row["data_access_expires_at"], "granted_permissions": json.loads(row["granted_permissions_json"] or "[]"), "connection_source": row["connection_source"], "capabilities": ["image_posts", "carousel_posts", "insights"]}
 
 # --------------------------------------------------------------------------- Instagram OAuth / account connection
 INSTAGRAM_OAUTH_SCOPES = "instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,business_management"
