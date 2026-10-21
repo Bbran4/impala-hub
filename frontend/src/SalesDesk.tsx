@@ -593,9 +593,9 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
           )}
       </>
 
-      {panel && token && user && (
+      {panel && token && (
         <RfqPanel
-          key={`${panel.mode}-${panel.id || 'new'}`} mode={panel.mode} rfqId={panel.id} config={config} user={user}
+          key={`${panel.mode}-${panel.id || 'new'}`} mode={panel.mode} rfqId={panel.id} config={config} user={user || { role: 'salesperson' }}
           token={token} request={request} onClose={closePanel} onChanged={load} setNotice={setNotice} setError={setError}
         />
       )}
