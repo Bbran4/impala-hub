@@ -729,6 +729,15 @@ def update_parts_query_supplier(query_id: str, supplier_id: str, payload: Suppli
         return dict(db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
 
 
+@app.delete("/api/parts-queries/{query_id}/suppliers/{supplier_id}", dependencies=[Depends(require_api_key)])
+def delete_parts_query_supplier(query_id: str, supplier_id: str) -> None:
+    with db_session() as db:
+        deleted = db.execute("DELETE FROM parts_query_suppliers WHERE id=? AND query_id=?", (supplier_id, query_id))
+        if deleted.rowcount != 1:
+            raise HTTPException(404, "Supplier quote not found")
+        audit(db, "supplier_deleted", "parts_query", query_id, {"supplier_id": supplier_id})
+
+
 @app.delete("/api/parts-queries/{query_id}", dependencies=[Depends(require_api_key)])
 def delete_parts_query(query_id: str) -> dict:
     with db_session() as db:
