@@ -706,14 +706,21 @@ def create_parts_query(payload: PartsQueryIn) -> dict:
 
 @app.post("/api/parts-queries/{query_id}/suppliers", dependencies=[Depends(require_api_key)], status_code=201)
 def add_parts_query_supplier(query_id: str, payload: SupplierQuoteIn) -> dict:
-    with db_session() as db:
-        if not db.execute("SELECT 1 FROM parts_queries WHERE id=?", (query_id,)).fetchone():
-            raise HTTPException(404, "Parts Query not found")
-        supplier_id = uuid.uuid4().hex
-        db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
-                   (supplier_id, query_id, payload.supplier.strip(), payload.cost, payload.msrp, payload.notes.strip()))
-        audit(db, "supplier_added", "parts_query", query_id, payload.model_dump())
-        return dict(db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
+    supplier_id = uuid.uuid4().hex
+    for attempt in range(6):
+        try:
+            with db_session() as db:
+                if not db.execute("SELECT 1 FROM parts_queries WHERE id=?", (query_id,)).fetchone():
+                    raise HTTPException(404, "Parts Query not found")
+                db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
+                           (supplier_id, query_id, payload.supplier.strip(), payload.cost, payload.msrp, payload.notes.strip()))
+                audit(db, "supplier_added", "parts_query", query_id, payload.model_dump())
+                return dict(db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == 5:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+    raise HTTPException(503, "Database is busy. Please retry adding the supplier.")
 
 
 @app.patch("/api/parts-queries/{query_id}/suppliers/{supplier_id}", dependencies=[Depends(require_api_key)])
