@@ -452,14 +452,6 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
 
   return (
     <section className="rfq-workspace">
-      <div className="apps-intro">
-        <span className="eyebrow">SALES DESK</span>
-        <h2>{page === 'RFQ Configuration' ? 'RFQ Configuration' : 'RFQs'}</h2>
-        <p>{page === 'RFQ Configuration'
-          ? 'Manage media platforms, statuses, sales codes and team accounts.'
-          : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>
-      </div>
-
       <>
           <div className="sd-session-bar">
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
