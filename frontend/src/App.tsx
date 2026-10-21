@@ -55,6 +55,7 @@ export default function App() {
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null)
   const [campaignName, setCampaignName] = useState('')
   const [campaignObjective, setCampaignObjective] = useState('')
+  const [campaignStage, setCampaignStage] = useState<'new' | 'in_progress' | 'done'>('new')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -309,14 +310,14 @@ export default function App() {
   async function createCampaign() {
     if (!campaignName.trim()) return
     try {
-      const payload = { name: campaignName, objective: campaignObjective }
+      const payload = { name: campaignName, objective: campaignObjective, stage: campaignStage }
       await api(editingCampaignId ? `/api/campaigns/${editingCampaignId}` : '/api/campaigns', { method: editingCampaignId ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       setCampaignName(''); setCampaignObjective(''); setEditingCampaignId(null); setCampaignModal(false); setNotice(editingCampaignId ? 'Campaign updated.' : 'Campaign created.')
       await load()
     } catch (e) { handleError(e) }
   }
   function openCampaignEditor(c: Campaign) {
-    setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignModal(true)
+    setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignStage(c.stage || 'new'); setCampaignModal(true)
   }
 
   async function removePost(id: string) {
@@ -564,13 +565,13 @@ export default function App() {
           <>
             <div className="section-head">
               <div><h2>Campaigns</h2><p>Group related posts under a shared marketing objective.</p></div>
-              <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>
+              <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage('new'); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>
             </div>
             <div className="campaign-grid">
               {campaigns.map((c) => (
                 <div className="campaign-card" key={c.id}>
                   <div className="campaign-icon"><Megaphone size={20} /></div>
-                  <div className="campaign-card-heading"><h3>{c.name}</h3><span className="status-badge">New</span></div>
+                  <div className="campaign-card-heading"><h3>{c.name}</h3><select aria-label={'Stage for ' + c.name} value={c.stage || 'new'} onChange={(e) => void api('/api/campaigns/' + c.id, { method: 'PATCH', body: JSON.stringify({ stage: e.target.value }) }).then(load).catch(handleError)}><option value="new">New</option><option value="in_progress">In Progress</option><option value="done">Done</option></select></div>
                   <p>{c.objective || 'No objective added yet.'}</p>
                   <div className="campaign-metrics">
                     <span>{posts.filter((p) => p.campaign_id === c.id).length} Posts</span>
