@@ -498,7 +498,6 @@ export default function App() {
                   </div>
                 )
               })}
-              <button className="feed-add-stream" onClick={() => setPage('Configuration')}><Plus size={17} /> Add account</button>
             </div>
             <div className="feed-summary">
               <div><span>Posts in feed</span><strong>{posts.length}</strong></div>
