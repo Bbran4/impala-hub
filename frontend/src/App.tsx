@@ -486,15 +486,15 @@ export default function App() {
             <div className="feed-streams">
               {integrations.filter((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected').map((i) => {
                 const providerPosts = posts.filter((p) => p.channels.includes(i.provider)).sort((a, b) => new Date(b.published_at || b.publish_at || b.created_at || 0).getTime() - new Date(a.published_at || a.publish_at || a.created_at || 0).getTime())
-                const engagement = providerPosts.reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
+                const engagement = providerPosts.reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.clicks ?? 0), 0)
                 const recent = providerPosts.slice(0, Math.max(1, Math.ceil(providerPosts.length / 2))).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
                 const older = providerPosts.slice(Math.max(1, Math.ceil(providerPosts.length / 2))).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
                 const change = older ? ((recent - older) / older) * 100 : 0
                 return (
                   <div className="feed-stream-card feed-network-column" key={i.provider}>
                     <div className="feed-network-head"><div className={`feed-provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : '◎'}</div><div><strong>{i.account_name || i.page_name || i.label}</strong><small>{i.provider === 'facebook' ? 'Facebook Page' : 'Instagram Professional'} · {providerPosts.length} posts</small></div><span className={`status-badge ${i.status}`}>Live</span></div>
-                    <div className="feed-network-metrics"><span><b>Followers</b>{i.followers_count ?? '—'}</span><span><b>Engagement</b>{engagement}</span><span className={change >= 0 ? 'metric-up' : 'metric-down'}><b>Change</b>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</span></div>
-                    <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
+                    <div className="feed-network-metrics"><span title="Audience Number of followers of your channel"><b>Followers</b>{i.followers_count ?? '—'}</span><span title="Engagement Number of times people engaged with your posts (likes, comments, shares, clicks, and other reported interactions)"><b>Engagement</b>{engagement}</span><span title="Percentage change compares the newest half of posts with the older half." className={change >= 0 ? 'metric-up' : 'metric-down'}><b>Change</b>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</span></div>
+                    <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} card />
                   </div>
                 )
               })}
@@ -600,11 +600,7 @@ export default function App() {
                   <div className="campaign-icon"><Megaphone size={20} /></div>
                   <div className="campaign-card-heading"><h3>{c.name}</h3><span className="status-badge">{(c.stage || 'new').replace('_', ' ')}</span></div>
                   <p>{c.objective || 'No objective added yet.'}</p>
-                  <div className="campaign-metrics">
-                    <span>{posts.filter((p) => p.campaign_id === c.id).length} Posts</span>
-                    <span>Engagements {posts.filter((p) => p.campaign_id === c.id).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)}</span>
-                  </div>
-                  <div className="campaign-footer">
+                                    <div className="campaign-footer">
                     <button className="text-button" onClick={() => openCampaignEditor(c)}>Edit</button>
                     <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
                   </div>
@@ -815,12 +811,13 @@ function PostPivot({ posts, campaigns }: { posts: Post[]; campaigns: Campaign[] 
   )
 }
 
-function PostList({ posts, campaigns, onEdit, onOpen, onDelete }: {
+function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false }: {
   posts: Post[]
   campaigns: Campaign[]
   onEdit: (p: Post) => void
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  card?: boolean
 }) {
   if (!posts.length) {
     return (
@@ -831,11 +828,11 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete }: {
     )
   }
   return (
-    <div className="post-list">
+    <div className={card ? "post-list feed-post-cards" : "post-list"}>
       {posts.map((p) => {
         const heading = p.title?.trim() || p.caption?.trim().slice(0, 110) || 'Untitled post'
         return (
-          <article className="post-row" key={p.id}>
+          <article className={card ? "post-row feed-post-card" : "post-row"} key={p.id}>
             <div className="post-preview" style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
               {p.media?.[0] ? <img src={mediaSrc(p.media[0])} alt="" /> : <ImagePlus size={22} />}
             </div>
