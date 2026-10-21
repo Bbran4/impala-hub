@@ -543,7 +543,7 @@ export default function App() {
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               {integrations.some((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected') && (
-                <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Sync</button>
+                <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
               )}
               <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>
             </div>
