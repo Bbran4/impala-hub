@@ -50,5 +50,5 @@
 .supplier-row { display: grid; grid-template-columns: minmax(140px, 1.4fr) minmax(100px, 1fr) minmax(100px, 1fr) auto; gap: 10px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--line, #e5e7eb); }
 .supplier-row label { display: grid; gap: 5px; }
 .supplier-row label span { font-size: 0.78rem; font-weight: 600; color: var(--muted, #667085); }
-.cheapest-supplier label:nth-child(2) span, .cheapest-supplier label:nth-child(2) input { color: #18864b; border-color: #48b879; font-weight: 700; }
+.cheapest-supplier input, .cheapest-supplier label span { font-weight: 700; }
 @media (max-width: 700px) { .supplier-row { grid-template-columns: 1fr 1fr; } }
