@@ -216,16 +216,24 @@ class FacebookClient:
             body = self._request("GET", next_url)
 
     def post_insights(self, post_id: str) -> dict:
-        """Return total Page-post performance, including paid/boosted delivery when available."""
-        body = self._request(
-            "GET", f"/{post_id}/insights",
-            params={
-                "metric": "post_impressions,post_impressions_unique,post_impressions_paid,post_impressions_paid_unique,post_clicks",
-                "access_token": self._token,
-            },
-        )
+        """Return total Page-post performance with compatibility fallbacks across Graph versions."""
+        metric_sets = [
+            "post_impressions,post_impressions_unique,post_clicks",
+            "post_media_view,post_impressions,post_impressions_unique",
+        ]
+        body = None
+        for metrics in metric_sets:
+            try:
+                body = self._request(
+                    "GET", f"/{post_id}/insights",
+                    params={"metric": metrics, "access_token": self._token},
+                )
+                if body.get("data"):
+                    break
+            except FacebookError:
+                continue
         values: dict[str, Optional[int]] = {"impressions": None, "reach": None, "clicks": None}
-        for item in body.get("data", []):
+        for item in (body or {}).get("data", []):
             points = item.get("values") or []
             if not points:
                 continue
@@ -233,16 +241,12 @@ class FacebookClient:
             if not isinstance(value, (int, float)):
                 continue
             name = item.get("name")
-            if name == "post_impressions":
+            if name in {"post_impressions", "post_media_view"}:
                 values["impressions"] = int(value)
             elif name == "post_impressions_unique":
                 values["reach"] = int(value)
             elif name == "post_clicks":
                 values["clicks"] = int(value)
-            elif name == "post_impressions_paid" and values["impressions"] is not None:
-                values["impressions"] += int(value)
-            elif name == "post_impressions_paid_unique" and values["reach"] is not None:
-                values["reach"] += int(value)
         return values
 
     def publish(self, caption: str, images: list[Path]) -> str:
