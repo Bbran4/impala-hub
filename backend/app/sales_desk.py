@@ -30,10 +30,14 @@ MAX_ATTACHMENTS_PER_RFQ = 30
 
 
 def _connect() -> sqlite3.Connection:
-    db = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
+    # Match the API connection settings so concurrent Sales Desk writes wait briefly
+    # for the publisher or another request instead of failing immediately.
+    db = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
-    db.execute("PRAGMA busy_timeout=15000")
+    db.execute("PRAGMA busy_timeout=30000")
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA synchronous=NORMAL")
     return db
 
 
