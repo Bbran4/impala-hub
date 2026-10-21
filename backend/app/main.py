@@ -1122,6 +1122,8 @@ def instagram_oauth_callback(code: Optional[str] = None, state: Optional[str] = 
         return RedirectResponse(frontend + "/?instagram_oauth=connected")
     except HTTPException:
         return RedirectResponse(frontend + "/?instagram_oauth=error&reason=meta_request_failed")
+    except Exception:
+        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=callback_failed")
 
 @app.post("/api/integrations/instagram/disconnect", dependencies=[Depends(require_api_key)])
 def disconnect_instagram() -> dict:
