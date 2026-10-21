@@ -9,6 +9,7 @@ import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
 import SalesDesk from './SalesDesk'
 import Buyouts from './Buyouts'
+import ReturnsClaims from './ReturnsClaims'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -436,13 +437,14 @@ export default function App() {
   const canSchedule = isFuture(editor?.publish_at)
   const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
   const isStockControlPage = page === 'Parts Query'
+  const isReturnsClaimsPage = page === 'Returns & Claims'
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">I</div>
-          <div><b>IMPALA HUB</b><small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : 'Marketing workspace'}</small></div>
+          <div><b>IMPALA HUB</b><small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : 'Marketing workspace'}</small></div>
         </div>
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
         {page !== 'Apps' && (
@@ -452,6 +454,8 @@ export default function App() {
               ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
                 ? ([['Parts Query', ClipboardList]] as const)
+                : isReturnsClaimsPage
+                  ? ([['Returns & Claims', ClipboardList]] as const)
                 : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
             ).map(([label, Icon]) => (
               <button
@@ -473,8 +477,8 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{isStockControlPage && <p className="topbar-subtitle">Manage buyout requests and supplier quotes.</p>}</div>
-          {!isSalesDeskPage && !isStockControlPage && page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
+          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{isStockControlPage && <p className="topbar-subtitle">Manage buyout requests and supplier quotes.</p>}</div>
+          {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
         </header>
@@ -539,6 +543,11 @@ export default function App() {
                   <div className="app-card-footer"><span className="app-status-dot app-status-planned" /> Planned <span className="app-card-lock">Coming later</span></div>
                 </div>
               ))}
+              <button className="app-card app-card-available" onClick={() => { setPage('Returns & Claims'); setError(''); setNotice('') }}>
+                <div className="app-card-icon"><ClipboardList size={25} /></div>
+                <div className="app-card-copy"><h3>Returns &amp; Claims</h3><p>Track returns, damage claims, and supplier outcomes.</p></div>
+                <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
+              </button>
               <button className="app-card app-card-available" onClick={() => { setPage('Parts Query'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Buyout requests and supplier quotes.</p></div>
@@ -558,7 +567,7 @@ export default function App() {
               {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
-        ) : isStockControlPage ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
+        ) : isReturnsClaimsPage ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">
