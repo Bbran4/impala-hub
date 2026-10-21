@@ -638,7 +638,16 @@ class PartsQueryIn(BaseModel):
 @app.get("/api/parts-queries/development-statuses", dependencies=[Depends(require_api_key)])
 def list_development_statuses() -> list[str]:
     with db_session() as db:
-        return [r["name"] for r in db.execute("SELECT name FROM development_statuses ORDER BY name COLLATE NOCASE")]
+        return [r["name"] for r in db.execute("""
+            SELECT name FROM development_statuses
+            ORDER BY CASE name
+                WHEN 'New' THEN 1
+                WHEN 'Under Review' THEN 2
+                WHEN 'Approved' THEN 3
+                WHEN 'Rejected' THEN 4
+                ELSE 5
+            END, name COLLATE NOCASE
+        """)]
 
 
 @app.post("/api/parts-queries/development-statuses", dependencies=[Depends(require_api_key)], status_code=201)
