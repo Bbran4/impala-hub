@@ -53,8 +53,8 @@ export default function Buyouts({ token, setNotice, setError }: Props) {
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
   const query = search.trim().toLowerCase()
-  const visibleRequests = requests.filter(r => !query || [r.id, r.part_number, r.part_description].join(' ').toLowerCase().includes(query) && (!filter || r.part_number === filter))
-  const visibleQuotes = quotes.filter(q => !query || [q.id, q.supplier, q.brand, q.notes].join(' ').toLowerCase().includes(query) && (!filter || q.supplier === filter))
+  const visibleRequests = requests.filter(r => (!query || [r.id, r.part_number, r.part_description].join(' ').toLowerCase().includes(query)) && (!filter || r.part_number === filter))
+  const visibleQuotes = quotes.filter(q => (!query || [q.id, q.supplier, q.brand, q.notes].join(' ').toLowerCase().includes(query)) && (!filter || q.supplier === filter))
   const field = (name: string, label: string, type = 'text') => (
     <label className="editor-field"><span>{label}</span><input type={type} value={form[name] ?? ''} onChange={e => setForm({ ...form, [name]: e.target.value })} /></label>
   )
