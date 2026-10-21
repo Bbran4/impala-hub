@@ -55,7 +55,7 @@ export default function Buyouts({ token, setNotice, setError }: Props) {
     setForm({ ...form, suppliers: form.suppliers.filter((_: Supplier, i: number) => i !== index) })
   }
   const query = search.trim().toLowerCase()
-  const visible = queries.filter(q => (!query || [q.id, q.part_number, q.description, q.development_status, q.status, ...q.suppliers.flatMap(s => [s.supplier, s.notes])].join(' ').toLowerCase().includes(query)) && (!developmentFilter || q.development_status === developmentFilter) && (!statusFilter || q.status === statusFilter))
+  const visible = queries.filter(q => (!query || [q.id, q.part_number, q.description, q.sales_code || '', q.development_status, q.status, ...q.suppliers.flatMap(s => [s.supplier, s.notes])].join(' ').toLowerCase().includes(query)) && (!developmentFilter || q.development_status === developmentFilter) && (!statusFilter || q.status === statusFilter))
   const field = (name: string, label: string, type = 'text') => <label className="editor-field"><span>{label}</span><input disabled={readOnly} type={type} value={form[name] ?? ''} onChange={e => setForm({ ...form, [name]: e.target.value })} /></label>
   return <section className="rfq-workspace">
     <div className="sd-session-bar"><span>Smart Stock Control workspace</span><div className="sd-view-tabs"><button className="active">Parts Query</button></div></div>
