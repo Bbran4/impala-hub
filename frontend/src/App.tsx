@@ -66,6 +66,7 @@ const ROADMAP_ROWS = [
   ['Facebook connection', 'Social account configuration', 'Meta OAuth, Page selection, diagnostics, disconnect', 'Implemented'],
   ['Instagram connection', 'Social account configuration', 'Meta OAuth for professional accounts', 'Implemented; live connection working'],
   ['WhatsApp', 'Not central', 'Deferred', 'Correctly deferred'],
+  ['Wildcard search', 'Search panels', 'Wildcard matching across posts, campaigns and captions', 'Implemented'],
   ['Feed', 'Account feeds, streams, metrics', 'Network columns, 25 newest posts, metrics', 'Partial'],
   ['Create post', 'New Post workflow', 'Create Post editor', 'Implemented'],
   ['Edit draft posts', 'Yes', 'Yes', 'Implemented'],
@@ -435,8 +436,8 @@ export default function App() {
   const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
-  const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims','Implemented'],['Outcome handling','Unknown until decided','Optional outcome request','Implemented'],['Attachments','Evidence files','Saved record attachments','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response workflow','Planned'],['Ageing and SLA','Claim ageing reports','Overdue claim visibility','Planned'],['Exports and audit','Traceable reporting','Exports and history','Planned']]
-const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Part details and supplier quotes','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Stock checks','Availability and inventory','Stock-aware decisions','Planned'],['Reporting','Cost and savings analysis','Exports and response reporting','Planned']]
+  const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims','Implemented'],['Outcome handling','Unknown until decided','Optional outcome request','Implemented'],['Attachments','Evidence files','Saved record attachments','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response workflow','Planned'],['Ageing and SLA','Claim ageing reports','Overdue claim visibility','Planned'],['Exports and audit','Traceable reporting','Exports and history','Planned'],['Wildcard search','Search','Wildcard matching across claim fields','Planned']]
+const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Part details and supplier quotes','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Stock checks','Availability and inventory','Stock-aware decisions','Planned'],['Reporting','Cost and savings analysis','Exports and response reporting','Planned'],['Wildcard search','Search','Wildcard matching across parts, suppliers and sales codes','Implemented']]
 
 const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
   const isStockControlPage = page === 'Parts Query' || page === 'Stock Control Roadmap'
