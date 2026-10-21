@@ -67,9 +67,7 @@ export default function App() {
 
   function handleError(e: unknown) {
     const message = (e as Error).message
-    // A stale token can otherwise keep the login panel hidden while every protected
-    // request fails. Return to the sign-in state for connectivity/auth bootstrap errors.
-    if (e instanceof AuthError || message.startsWith('Cannot reach the Impala Hub API')) {
+    if (e instanceof AuthError) {
       localStorage.removeItem(KEY_STORAGE)
       sessionStorage.removeItem(KEY_STORAGE)
       setKey('')
@@ -86,41 +84,26 @@ export default function App() {
     } catch (e) { handleError(e) }
   }
   useEffect(() => {
-    if (key) {
-      void load()
-      const params = new URLSearchParams(window.location.search)
-      const oauthResult = params.get('facebook_oauth') || params.get('instagram_oauth')
-      if (oauthResult === 'connected' && params.get('instagram_oauth')) {
-        setPage('Configuration'); setNotice('Instagram connected.'); void load()
-      } else if (oauthResult === 'error' && params.get('instagram_oauth')) {
-        setPage('Configuration')
-        const reason = params.get('reason') || 'unknown'
-        const message = reason === 'authorization_cancelled'
-          ? 'Instagram authorization was cancelled or denied in Meta.'
-          : reason === 'meta_denied'
-            ? 'Meta rejected the Instagram authorization request. Confirm the Instagram permissions and that the account is linked to a managed Facebook Page.'
-            : reason === 'missing_code'
-              ? 'Meta returned no authorization code. Start Connect Instagram again.'
-              : reason === 'no_professional_account'
-                ? 'Instagram authorization completed, but no professional Instagram account linked to a managed Facebook Page was found.'
-                : reason === 'callback_failed'
-            ? 'Instagram authorization failed while saving the account. Check the backend logs and verify the Instagram redirect URI and encryption key.'
-            : `Instagram authorization did not finish (${reason.replaceAll('_', ' ')}).`
-        setError(message)
-      } else if (oauthResult === 'choose_page') {
-        setPage('Configuration') // the Page picker lives here
-        setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.')
-        void loadFacebookPages()
-      } else if (oauthResult === 'error') {
-        setPage('Configuration')
-        const reason = params.get('reason') || 'unknown'
-        setError(OAUTH_REASONS[reason] ?? `Facebook authorization did not finish (${reason.replaceAll('_', ' ')}).`)
-      }
-      if (oauthResult) {
-        params.delete('facebook_oauth'); params.delete('reason')
-        const query = params.toString()
-        window.history.replaceState({}, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash)
-      }
+    if (!key) return
+    void load()
+    const params = new URLSearchParams(window.location.search)
+    const fb = params.get('facebook_oauth')
+    const ig = params.get('instagram_oauth')
+    const reason = params.get('reason') || 'unknown'
+    if (fb || ig) {
+      params.delete('facebook_oauth'); params.delete('instagram_oauth'); params.delete('reason')
+      const query = params.toString()
+      window.history.replaceState({}, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash)
+    }
+    if (fb === 'choose_page') {
+      setPage('Configuration'); setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.'); void loadFacebookPages()
+    } else if (fb === 'error') {
+      setPage('Configuration'); setError(OAUTH_REASONS[reason] ?? `Facebook authorization did not finish (${reason.replaceAll('_', ' ')}).`)
+    }
+    if (ig === 'connected') {
+      setPage('Configuration'); setNotice('Instagram connected.')
+    } else if (ig === 'error') {
+      setPage('Configuration'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.`)
     }
   }, [key])
 
