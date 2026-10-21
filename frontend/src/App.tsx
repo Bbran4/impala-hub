@@ -500,7 +500,7 @@ export default function App() {
                     <span title="Audience Number of followers of your channel"><Users size={15} /><strong>{i.followers_count ?? '—'}</strong></span>
                     <span title="Engagement Number of times people engaged with your posts (likes, comments, shares, clicks, and other reported interactions)"><MessageCircle size={15} /><strong>{engagement}</strong><em className={change >= 0 ? 'metric-up' : 'metric-down'}>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</em></span>
                   </div>
-                    <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} card />
+                    <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} card pageName={i.account_name || i.page_name || i.label} pageUrl={i.provider === 'facebook' ? `https://www.facebook.com/${i.page_id || ''}` : `https://www.instagram.com/${i.username || ''}`} />
                   </div>
                 )
               })}
@@ -816,13 +816,15 @@ function PostPivot({ posts, campaigns }: { posts: Post[]; campaigns: Campaign[] 
   )
 }
 
-function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false }: {
+function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false, pageName, pageUrl }: {
   posts: Post[]
   campaigns: Campaign[]
   onEdit: (p: Post) => void
   onOpen: (id: string) => void
   onDelete: (id: string) => void
   card?: boolean
+  pageName?: string
+  pageUrl?: string
 }) {
   if (!posts.length) {
     return (
@@ -840,7 +842,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false }: 
           <article className={card ? "post-row feed-post-card" : "post-row"} key={p.id}>
             {card ? (
               <>
-                <div className="feed-post-top"><a href={p.provider_ids?.permalink || '#'} target="_blank" rel="noreferrer" onClick={(e) => { if (!p.provider_ids?.permalink) e.preventDefault() }}>{p.channels[0] || 'Social page'}</a><time>{fmt(p.published_at || p.publish_at, 'Not posted')}</time></div>
+                <div className="feed-post-top"><a href={p.provider_ids?.permalink || pageUrl || '#'} target="_blank" rel="noreferrer" onClick={(e) => { if (!p.provider_ids?.permalink && !pageUrl) e.preventDefault() }}>{pageName || 'Social page'}</a><time>{fmt(p.published_at || p.publish_at, 'Not posted')}</time></div>
                 <p className="feed-card-caption" onClick={() => onOpen(p.id)}>{p.caption || heading}</p>
                 <div className="feed-card-images" onClick={() => onOpen(p.id)}>
                   {p.media.slice(0, 2).map((m, index) => <div className="feed-card-image" key={m.id || m.url}><img src={mediaSrc(m)} alt={m.name} />{index === 1 && p.media.length > 2 && <span>+{p.media.length - 2}</span>}</div>)}
