@@ -155,16 +155,21 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             # of extra Graph API requests and cause the browser request to fail or time out.
             # Preserve any previously stored organic reach/impressions until a bounded
             # Insights refresh can run independently.
-            insights = {"reach": None, "impressions": None}  # preserve existing metrics; refresh separately
+            insights = {"reach": None, "impressions": None, "clicks": None}
+            if hasattr(client, "post_insights"):
+                try:
+                    insights = client.post_insights(item["id"])
+                except FacebookError:
+                    pass
             if item["id"] in known:
                 local_id, ids = known[item["id"]]
                 if item["permalink_url"]:
                     ids["permalink"] = item["permalink_url"]
                 db.execute(
-                    "UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),shares=COALESCE(?,shares),"
+                    "UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),shares=COALESCE(?,shares),clicks=COALESCE(?,clicks),"
                     "reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),"
                     "metrics_refreshed_at=?,provider_ids_json=? WHERE id=?",
-                    (item["likes"], item["comments"], item["shares"], insights["reach"], insights["impressions"], stamp, json.dumps(ids), local_id),
+                    (item["likes"], item["comments"], item["shares"], insights["clicks"], insights["reach"], insights["impressions"], stamp, json.dumps(ids), local_id),
                 )
                 stats["updated"] += 1
                 continue
