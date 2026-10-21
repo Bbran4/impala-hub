@@ -207,3 +207,8 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .feed-summary{margin:0 0 20px}
 .feed-post-card{padding:14px}
 @media(max-width:600px){.feed-post-columns{grid-template-columns:1fr}.feed-network-metrics{align-items:center}}
+
+/* Network metrics must remain a single horizontal row. */
+.feed-network-cards .feed-network-metrics{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:space-between!important;width:100%}
+.feed-network-cards .feed-network-metrics>span{display:flex!important;flex:0 0 auto!important;flex-direction:row!important;align-items:center!important;white-space:nowrap!important}
+.feed-network-cards .feed-network-metrics>span:nth-child(2){margin-left:auto!important;justify-content:flex-end}
