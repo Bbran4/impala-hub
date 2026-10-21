@@ -93,7 +93,14 @@ export default function App() {
       if (oauthResult === 'connected' && params.get('instagram_oauth')) {
         setPage('Configuration'); setNotice('Instagram connected.'); void load()
       } else if (oauthResult === 'error' && params.get('instagram_oauth')) {
-        setPage('Configuration'); setError('Instagram authorization did not finish. Check that a professional Instagram account is linked to a managed Facebook Page.')
+        setPage('Configuration')
+        const reason = params.get('reason') || 'unknown'
+        const message = reason === 'no_professional_account'
+          ? 'Instagram authorization completed, but no professional Instagram account linked to a managed Facebook Page was found.'
+          : reason === 'callback_failed'
+            ? 'Instagram authorization failed while saving the account. Check the backend logs and verify the Instagram redirect URI and encryption key.'
+            : `Instagram authorization did not finish (${reason.replaceAll('_', ' ')}).`
+        setError(message)
       } else if (oauthResult === 'choose_page') {
         setPage('Configuration') // the Page picker lives here
         setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.')
