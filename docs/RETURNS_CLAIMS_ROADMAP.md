@@ -22,3 +22,8 @@
 ## Acceptance direction
 
 New records may be created before an outcome is known. Outcome Request remains unknown until selected, and every saved record can be edited later.
+
+
+## Wildcard search
+
+Wildcard search is planned across RFC, customer, invoice, part number and other claim fields.
