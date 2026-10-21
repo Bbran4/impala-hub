@@ -90,8 +90,9 @@ export default function App() {
     const fb = params.get('facebook_oauth')
     const ig = params.get('instagram_oauth')
     const reason = params.get('reason') || 'unknown'
+    const detail = params.get('detail')
     if (fb || ig) {
-      params.delete('facebook_oauth'); params.delete('instagram_oauth'); params.delete('reason')
+      params.delete('facebook_oauth'); params.delete('instagram_oauth'); params.delete('reason'); params.delete('detail')
       const query = params.toString()
       window.history.replaceState({}, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash)
     }
@@ -103,7 +104,7 @@ export default function App() {
     if (ig === 'connected') {
       setPage('Configuration'); setNotice('Instagram connected.')
     } else if (ig === 'error') {
-      setPage('Configuration'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.`)
+      setPage('Configuration'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.${detail ? ' Meta said: ' + detail : ''}`)
     }
   }, [key])
 
