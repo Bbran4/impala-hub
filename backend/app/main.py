@@ -631,12 +631,30 @@ class SupplierQuoteIn(BaseModel):
     notes: str = Field(default='', max_length=2000)
 
 
+class PartsSupplierIn(BaseModel):
+    id: Optional[str] = None
+    supplier: str = Field(default='', max_length=160)
+    qty: int = Field(default=1, gt=0, le=1000000)
+    cost: Optional[float] = Field(default=None, ge=0)
+    msrp: Optional[float] = Field(default=None, ge=0)
+    notes: str = Field(default='', max_length=2000)
+
+
+class PartsQueryPatch(BaseModel):
+    part_number: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, min_length=1, max_length=1000)
+    status: Optional[Literal['In Progress', 'Submitted', 'Cancelled']] = None
+    development_status: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    sales_code_id: Optional[str] = None
+    suppliers: Optional[list[PartsSupplierIn]] = None
+
+
 class PartsQueryIn(BaseModel):
     part_number: str = Field(min_length=1, max_length=120)
     description: str = Field(min_length=1, max_length=1000)
     qty: int = Field(default=1, gt=0, le=1000000)
     sales_code_id: Optional[str] = None
-    suppliers: list[SupplierQuoteIn] = Field(default_factory=list, max_length=100)
+    suppliers: list[PartsSupplierIn] = Field(default_factory=list, max_length=100)
     development_status: str = Field(min_length=1, max_length=120)
     status: Literal['In Progress', 'Submitted', 'Cancelled'] = 'In Progress'
 
@@ -771,7 +789,7 @@ def update_parts_query(query_id: str, patch: PartsQueryPatch) -> dict:
 
 
 @app.post("/api/parts-queries/{query_id}/suppliers", dependencies=[Depends(require_api_key)], status_code=201)
-def add_parts_query_supplier(query_id: str, payload: SupplierQuoteIn) -> dict:
+def add_parts_query_supplier(query_id: str, payload: PartsSupplierIn) -> dict:
     supplier_id = uuid.uuid4().hex
     for attempt in range(6):
         try:
@@ -790,7 +808,7 @@ def add_parts_query_supplier(query_id: str, payload: SupplierQuoteIn) -> dict:
 
 
 @app.patch("/api/parts-queries/{query_id}/suppliers/{supplier_id}", dependencies=[Depends(require_api_key)])
-def update_parts_query_supplier(query_id: str, supplier_id: str, payload: SupplierQuoteIn) -> dict:
+def update_parts_query_supplier(query_id: str, supplier_id: str, payload: PartsSupplierIn) -> dict:
     # The background publisher and browser refreshes can briefly hold SQLite's writer lock.
     # Reopen the transaction for each attempt so a transient lock does not become a 500.
     for attempt in range(6):
