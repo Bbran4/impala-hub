@@ -316,6 +316,14 @@ export default function App() {
       await load()
     } catch (e) { handleError(e) }
   }
+  async function moveCampaign(campaignId: string, stage: 'new' | 'in_progress' | 'done') {
+    try {
+      await api('/api/campaigns/' + campaignId, { method: 'PATCH', body: JSON.stringify({ stage }) })
+      setNotice('Campaign moved.')
+      await load()
+    } catch (e) { handleError(e) }
+  }
+
   function openCampaignEditor(c: Campaign) {
     setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignStage(c.stage || 'new'); setCampaignModal(true)
   }
@@ -471,18 +479,25 @@ export default function App() {
             <div className="feed-head">
               <div><span className="pill">SOCIAL FEED</span><h2>Connected social accounts</h2><p>Review Facebook and Instagram activity, engagement and provider health in one feed.</p></div>
               <div className="feed-actions">
-                <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Sync</button>
+                <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
                 <button className="primary" onClick={() => setPage('Configuration')}><Settings size={16} /> Manage accounts</button>
               </div>
             </div>
             <div className="feed-streams">
-              {integrations.filter((i) => i.provider === 'facebook' || i.provider === 'instagram').map((i) => (
-                <div className="feed-stream-card" key={i.provider}>
-                  <div className={`feed-provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : '◎'}</div>
-                  <div><strong>{i.account_name || i.page_name || i.label}</strong><small>{i.provider === 'facebook' ? 'Facebook Page' : 'Instagram Professional'} · {i.status === 'connected' ? 'Connected' : 'Not connected'}</small></div>
-                  <span className={`status-badge ${i.status}`}>{i.status === 'connected' ? 'Live' : 'Connect'}</span>
-                </div>
-              ))}
+              {integrations.filter((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected').map((i) => {
+                const providerPosts = posts.filter((p) => p.channels.includes(i.provider)).sort((a, b) => new Date(b.published_at || b.publish_at || b.created_at || 0).getTime() - new Date(a.published_at || a.publish_at || a.created_at || 0).getTime())
+                const engagement = providerPosts.reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
+                const recent = providerPosts.slice(0, Math.max(1, Math.ceil(providerPosts.length / 2))).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
+                const older = providerPosts.slice(Math.max(1, Math.ceil(providerPosts.length / 2))).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
+                const change = older ? ((recent - older) / older) * 100 : 0
+                return (
+                  <div className="feed-stream-card feed-network-column" key={i.provider}>
+                    <div className="feed-network-head"><div className={`feed-provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : '◎'}</div><div><strong>{i.account_name || i.page_name || i.label}</strong><small>{i.provider === 'facebook' ? 'Facebook Page' : 'Instagram Professional'} · {providerPosts.length} posts</small></div><span className={`status-badge ${i.status}`}>Live</span></div>
+                    <div className="feed-network-metrics"><span><b>Followers</b>{i.followers_count ?? '—'}</span><span><b>Engagement</b>{engagement}</span><span className={change >= 0 ? 'metric-up' : 'metric-down'}><b>Change</b>{change >= 0 ? '+' : ''}{change.toFixed(1)}%</span></div>
+                    <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
+                  </div>
+                )
+              })}
               <button className="feed-add-stream" onClick={() => setPage('Configuration')}><Plus size={17} /> Add account</button>
             </div>
             <div className="feed-summary">
@@ -496,7 +511,7 @@ export default function App() {
               <div><h2>Feed</h2><p>Posts from connected social accounts, ordered by publication or schedule date.</p></div>
               <button className="text-button" onClick={() => { setPage('Posts'); setView('list'); setMonth(null); setFilter('all') }}>Open post manager →</button>
             </div>
-            <PostList posts={posts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
+            
           </>
         )}
 
@@ -577,13 +592,13 @@ export default function App() {
                 ['in_progress', 'In Progress'],
                 ['done', 'Done'],
               ] as const).map(([stage, label]) => (
-                <section className="campaign-column" key={stage}>
+                <section className="campaign-column" key={stage} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/campaign-id'); if (id) void moveCampaign(id, stage) }}>
                   <header className="campaign-column-head"><h3>{label}</h3><span>{campaigns.filter((c) => (c.stage || 'new') === stage).length}</span></header>
                   <button className="campaign-quick-add" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage(stage); setCampaignModal(true) }}><Plus size={14} /> Quick add</button>
                   {campaigns.filter((c) => (c.stage || 'new') === stage).map((c) => (
-                <div className="campaign-card" key={c.id}>
+                <div className="campaign-card" key={c.id} draggable onDragStart={(e) => e.dataTransfer.setData('text/campaign-id', c.id)}>
                   <div className="campaign-icon"><Megaphone size={20} /></div>
-                  <div className="campaign-card-heading"><h3>{c.name}</h3><select aria-label={'Stage for ' + c.name} value={c.stage || 'new'} onChange={(e) => void api('/api/campaigns/' + c.id, { method: 'PATCH', body: JSON.stringify({ stage: e.target.value }) }).then(load).catch(handleError)}><option value="new">New</option><option value="in_progress">In Progress</option><option value="done">Done</option></select></div>
+                  <div className="campaign-card-heading"><h3>{c.name}</h3><span className="status-badge">{(c.stage || 'new').replace('_', ' ')}</span></div>
                   <p>{c.objective || 'No objective added yet.'}</p>
                   <div className="campaign-metrics">
                     <span>{posts.filter((p) => p.campaign_id === c.id).length} Posts</span>
@@ -839,7 +854,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete }: {
               </small>
               {p.status === 'published' && (
                 <small>
-                  Reach {metric(p.reach)} · Impressions {metric(p.impressions)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}
+                  Views {metric(p.impressions ?? p.reach)} · Reach {metric(p.reach)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}
                   {p.metrics_refreshed_at ? ` · updated ${fmt(p.metrics_refreshed_at)}` : ''}
                 </small>
               )}
