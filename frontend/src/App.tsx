@@ -435,7 +435,7 @@ export default function App() {
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
   const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
-  const isStockControlPage = page === 'Buyouts'
+  const isStockControlPage = page === 'Parts Query'
 
   return (
     <div className="shell">
@@ -539,7 +539,7 @@ export default function App() {
                   <div className="app-card-footer"><span className="app-status-dot app-status-planned" /> Planned <span className="app-card-lock">Coming later</span></div>
                 </div>
               ))}
-              <button className="app-card app-card-available" onClick={() => { setPage('Buyouts'); setError(''); setNotice('') }}>
+              <button className="app-card app-card-available" onClick={() => { setPage('Parts Query'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Buyout requests and supplier quotes.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
