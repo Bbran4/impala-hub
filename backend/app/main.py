@@ -904,13 +904,19 @@ def list_returns_claims() -> list[dict]:
 def create_returns_claim(payload: ReturnClaimIn) -> dict:
     record_id, stamp = buyout_id("RFC"), now_iso()
     values = payload.model_dump()
-    with db_session() as db:
-        columns = "id,date,company,rfc_book_number,customer,contact_person,contact_number,invoice_number,invoice_date,reason,part_number,description,qty,outcome_request,returned_by,received_by,supplier_received,comments,attachments_json,status,created_at,updated_at"
-        db.execute(f"INSERT INTO returns_claims({columns}) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                   (record_id, values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"] or None, values["returned_by"], values["received_by"], values["supplier_received"], values["comments"], json.dumps(values["attachments"]), values["status"], stamp, stamp))
-        audit(db, "created", "returns_claim", record_id, values)
-        return returns_claim_row(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
-
+    columns = "id,date,company,rfc_book_number,customer,contact_person,contact_number,invoice_number,invoice_date,reason,part_number,description,qty,outcome_request,returned_by,received_by,supplier_received,comments,attachments_json,status,created_at,updated_at"
+    params = (record_id, values["date"], values["company"], values["rfc_book_number"], values["customer"], values["contact_person"], values["contact_number"], values["invoice_number"], values["invoice_date"], values["reason"], values["part_number"], values["description"], values["qty"], values["outcome_request"] or None, values["returned_by"], values["received_by"], values["supplier_received"], values["comments"], json.dumps(values["attachments"]), values["status"], stamp, stamp)
+    for attempt in range(4):
+        try:
+            with db_session() as db:
+                db.execute(f"INSERT INTO returns_claims({columns}) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", params)
+                audit(db, "created", "returns_claim", record_id, values)
+                return returns_claim_row(db.execute("SELECT * FROM returns_claims WHERE id=?", (record_id,)).fetchone())
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == 3:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+    raise HTTPException(503, "Returns & Claims database is busy; please try again.")
 
 @app.patch("/api/returns-claims/{record_id}", dependencies=[Depends(require_api_key)])
 def update_returns_claim(record_id: str, payload: ReturnClaimPatch) -> dict:
