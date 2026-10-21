@@ -473,7 +473,7 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : page}</h1></div>
+          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{isStockControlPage && <p className="topbar-subtitle">Manage buyout requests and supplier quotes.</p>}</div>
           {!isSalesDeskPage && !isStockControlPage && page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
@@ -551,7 +551,7 @@ export default function App() {
         {isSalesDeskPage && page === 'RFQ Roadmap' ? (
           <section className="roadmap-page">
             <div className="section-head">
-              <div><span className="pill">SALES DESK ROADMAP</span><h2>RFQ capability workspace</h2><p>Current Sales Desk coverage, known gaps, and improvement priorities.</p></div>
+              <div><h2>RFQ capability workspace</h2><p>Current Sales Desk coverage, known gaps, and improvement priorities.</p></div>
             </div>
             <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ Kanban</span><span>Notifications and SLA reminders</span><span>Bulk actions and exports</span><span>DMS/Qlik reconciliation</span></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
@@ -563,7 +563,7 @@ export default function App() {
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">
             <div className="section-head">
-              <div><span className="pill">MARKETING ROADMAP</span><h2>Odoo parity workspace</h2><p>Current feature coverage, gaps, and next implementation priorities.</p></div>
+              <div><h2>Odoo parity workspace</h2><p>Current feature coverage, gaps, and next implementation priorities.</p></div>
             </div>
             <div className="roadmap-priorities">
               <strong>Next priorities</strong>
@@ -580,7 +580,7 @@ export default function App() {
         {key && page === 'Feed' && (
           <>
             <div className="feed-head">
-              <div><span className="pill">SOCIAL FEED</span><h2>Connected social accounts</h2><p>Review Facebook and Instagram activity, engagement and provider health in one feed.</p></div>
+              <div><h2>Connected social accounts</h2><p>Review Facebook and Instagram activity, engagement and provider health in one feed.</p></div>
               <div className="feed-actions">
                 <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
                 <button className="primary" onClick={() => setPage('Configuration')}><Settings size={16} /> Manage accounts</button>
