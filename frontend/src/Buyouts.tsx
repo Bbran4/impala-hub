@@ -24,15 +24,21 @@ export default function Buyouts({ token, setNotice, setError }: Props) {
     if (!form.id) return
     setBusy(true)
     try {
-      await request(token, `/api/parts-queries/${form.id}`, { method: 'PATCH', body: JSON.stringify({ status: form.status, development_status: form.development_status, sales_code_id: form.sales_code_id || null }) })
-      for (const supplier of (form.suppliers || [])) {
-        const body = JSON.stringify({ supplier: supplier.supplier, cost: supplier.cost === '' ? null : Number(supplier.cost), msrp: supplier.msrp === '' ? null : Number(supplier.msrp), notes: supplier.notes || '' })
-        if (supplier.id) {
-          await request(token, `/api/parts-queries/${form.id}/suppliers/${supplier.id}`, { method: 'PATCH', body })
-        } else if (supplier.supplier.trim()) {
-          await request(token, `/api/parts-queries/${form.id}/suppliers`, { method: 'POST', body })
-        }
-      }
+      await request(token, `/api/parts-queries/${form.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: form.status,
+          development_status: form.development_status,
+          sales_code_id: form.sales_code_id || null,
+          suppliers: (form.suppliers || []).filter((supplier: Supplier) => supplier.supplier.trim()).map((supplier: Supplier) => ({
+            id: supplier.id,
+            supplier: supplier.supplier,
+            cost: supplier.cost === '' ? null : Number(supplier.cost),
+            msrp: supplier.msrp === '' ? null : Number(supplier.msrp),
+            notes: supplier.notes || '',
+          })),
+        }),
+      })
       setPanel(false); setSupplierEdit(false); setNotice('Supplier quotes updated.'); await load()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
