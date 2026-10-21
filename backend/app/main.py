@@ -80,7 +80,6 @@ def connect() -> sqlite3.Connection:
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     db.execute("PRAGMA busy_timeout = 30000")
-    db.execute("PRAGMA journal_mode = WAL")
     db.execute("PRAGMA synchronous = NORMAL")
     return db
 
