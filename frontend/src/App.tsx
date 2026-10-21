@@ -36,6 +36,27 @@ const OAUTH_REASONS: Record<string, string> = {
   meta_request_failed: 'A request to Meta failed. Check META_APP_ID and META_APP_SECRET in backend/.env.',
 }
 
+const SALES_ROADMAP_ROWS = [
+  ['Sign-in and sessions', 'Authentication', 'Persistent Impala Hub sessions', 'Implemented'],
+  ['User accounts', 'Users and roles', 'Administrator, manager, salesperson', 'Implemented'],
+  ['Sales-code mapping', 'Not applicable', 'Sales consultant codes', 'Implemented'],
+  ['RFQ creation', 'CRM record creation', 'Create RFQ form', 'Implemented'],
+  ['RFQ editing', 'Record editing', 'Editable RFQ side panel', 'Implemented'],
+  ['RFQ claiming', 'Assignment workflow', 'Claim and assign RFQs', 'Implemented'],
+  ['Unclaimed RFQs', 'Work queues', 'Salespeople can view and claim', 'Implemented'],
+  ['RFQ statuses', 'Pipeline stages', 'Configurable statuses', 'Implemented; Kanban improvement planned'],
+  ['RFQ audit history', 'Chatter/activity history', 'Audit timeline', 'Implemented'],
+  ['Attachments', 'Record attachments', 'Protected RFQ attachments', 'Implemented'],
+  ['Sales Desk dashboard', 'Not applicable', 'Team RFQ and sales metrics', 'Implemented; drill-downs planned'],
+  ['RFQ analytics', 'Not applicable', 'Period-filtered analytics', 'Implemented; funnel improvements planned'],
+  ['Search and filtering', 'Advanced search panels', 'Basic filters', 'Partial'],
+  ['Notifications', 'Activities/messages', 'Not implemented', 'Missing'],
+  ['Bulk operations', 'Mass actions', 'Not implemented', 'Missing'],
+  ['Export and reporting', 'List/report exports', 'Partial', 'Partial'],
+  ['Evolve DMS/Qlik reconciliation', 'Not applicable', 'Planned integration', 'Planned'],
+  ['Personal consultant dashboard', 'Not applicable', 'Planned sales and GP reporting', 'Planned'],
+]
+
 const ROADMAP_ROWS = [
   ['Sign-in', 'Odoo authentication', 'Impala Hub session login', 'Implemented'],
   ['Persistent session', 'Yes', 'Persistent session with retry protection', 'Implemented'],
@@ -412,7 +433,7 @@ export default function App() {
   const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
-  const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration'
+  const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
 
   return (
     <div className="shell">
@@ -426,7 +447,7 @@ export default function App() {
           <>
             <div className="nav-label">WORKSPACE</div>
             {(isSalesDeskPage
-              ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings]] as const)
+              ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
               : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
             ).map(([label, Icon]) => (
               <button
@@ -519,7 +540,17 @@ export default function App() {
           </section>
         )}
 
-        {isSalesDeskPage && <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} />}
+        {isSalesDeskPage && page === 'RFQ Roadmap' ? (
+          <section className="roadmap-page">
+            <div className="section-head">
+              <div><span className="pill">SALES DESK ROADMAP</span><h2>RFQ capability workspace</h2><p>Current Sales Desk coverage, known gaps, and improvement priorities.</p></div>
+            </div>
+            <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ Kanban</span><span>Notifications and SLA reminders</span><span>Bulk actions and exports</span><span>DMS/Qlik reconciliation</span></div>
+            <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
+              {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
+            </tbody></table></div>
+          </section>
+        ) : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">
