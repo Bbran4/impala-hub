@@ -95,9 +95,15 @@ export default function App() {
       } else if (oauthResult === 'error' && params.get('instagram_oauth')) {
         setPage('Configuration')
         const reason = params.get('reason') || 'unknown'
-        const message = reason === 'no_professional_account'
-          ? 'Instagram authorization completed, but no professional Instagram account linked to a managed Facebook Page was found.'
-          : reason === 'callback_failed'
+        const message = reason === 'authorization_cancelled'
+          ? 'Instagram authorization was cancelled or denied in Meta.'
+          : reason === 'meta_denied'
+            ? 'Meta rejected the Instagram authorization request. Confirm the Instagram permissions and that the account is linked to a managed Facebook Page.'
+            : reason === 'missing_code'
+              ? 'Meta returned no authorization code. Start Connect Instagram again.'
+              : reason === 'no_professional_account'
+                ? 'Instagram authorization completed, but no professional Instagram account linked to a managed Facebook Page was found.'
+                : reason === 'callback_failed'
             ? 'Instagram authorization failed while saving the account. Check the backend logs and verify the Instagram redirect URI and encryption key.'
             : `Instagram authorization did not finish (${reason.replaceAll('_', ' ')}).`
         setError(message)
