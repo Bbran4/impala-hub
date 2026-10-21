@@ -718,15 +718,24 @@ def add_parts_query_supplier(query_id: str, payload: SupplierQuoteIn) -> dict:
 
 @app.patch("/api/parts-queries/{query_id}/suppliers/{supplier_id}", dependencies=[Depends(require_api_key)])
 def update_parts_query_supplier(query_id: str, supplier_id: str, payload: SupplierQuoteIn) -> dict:
-    with db_session() as db:
-        updated = db.execute(
-            "UPDATE parts_query_suppliers SET supplier=?,cost=?,msrp=?,notes=? WHERE id=? AND query_id=?",
-            (payload.supplier.strip(), payload.cost, payload.msrp, payload.notes.strip(), supplier_id, query_id),
-        )
-        if updated.rowcount != 1:
-            raise HTTPException(404, "Supplier quote not found")
-        audit(db, "supplier_updated", "parts_query", query_id, {"supplier_id": supplier_id, **payload.model_dump()})
-        return dict(db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
+    # The background publisher and browser refreshes can briefly hold SQLite's writer lock.
+    # Reopen the transaction for each attempt so a transient lock does not become a 500.
+    for attempt in range(6):
+        try:
+            with db_session() as db:
+                updated = db.execute(
+                    "UPDATE parts_query_suppliers SET supplier=?,cost=?,msrp=?,notes=? WHERE id=? AND query_id=?",
+                    (payload.supplier.strip(), payload.cost, payload.msrp, payload.notes.strip(), supplier_id, query_id),
+                )
+                if updated.rowcount != 1:
+                    raise HTTPException(404, "Supplier quote not found")
+                audit(db, "supplier_updated", "parts_query", query_id, {"supplier_id": supplier_id, **payload.model_dump()})
+                return dict(db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == 5:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+    raise HTTPException(503, "Database is busy. Please retry the supplier update.")
 
 
 @app.delete("/api/parts-queries/{query_id}/suppliers/{supplier_id}", dependencies=[Depends(require_api_key)])
