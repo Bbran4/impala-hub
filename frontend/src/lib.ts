@@ -1,5 +1,5 @@
 export type Media = { id: string; name: string; url: string; content_type?: string; size?: number }
-export type Campaign = { id: string; name: string; objective: string; start_date?: string | null; end_date?: string | null }
+export type Campaign = { id: string; name: string; objective: string; stage: 'new' | 'in_progress' | 'done'; start_date?: string | null; end_date?: string | null }
 export type Post = {
   id: string
   title: string
