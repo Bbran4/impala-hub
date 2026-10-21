@@ -451,7 +451,7 @@ export default function App() {
             {(isSalesDeskPage
               ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
-                ? ([['Buyouts', ClipboardList]] as const)
+                ? ([['Parts Query', ClipboardList]] as const)
                 : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
             ).map(([label, Icon]) => (
               <button
@@ -473,7 +473,7 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{isStockControlPage && <p className="topbar-subtitle">Manage buyout requests and supplier quotes.</p>}</div>
+          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{isStockControlPage && <p className="topbar-subtitle">Manage buyout requests and supplier quotes.</p>}</div>
           {!isSalesDeskPage && !isStockControlPage && page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
