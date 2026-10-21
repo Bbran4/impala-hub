@@ -758,14 +758,14 @@ def update_parts_query(query_id: str, patch: PartsQueryPatch) -> dict:
                     else:
                         db.execute("DELETE FROM parts_query_suppliers WHERE query_id=?", (query_id,))
                     for quote in patch.suppliers:
-                        values = (quote.supplier.strip(), quote.cost, quote.msrp, quote.notes.strip())
+                        values = (quote.supplier.strip(), quote.qty, quote.cost, quote.msrp, quote.notes.strip())
                         if quote.id:
                             updated = db.execute("UPDATE parts_query_suppliers SET supplier=?,qty=?,cost=?,msrp=?,notes=? WHERE id=? AND query_id=?",
                                                  (*values, quote.id, query_id))
                             if updated.rowcount != 1:
                                 raise HTTPException(404, "Supplier quote not found")
                         else:
-                            db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
+                            db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,qty,cost,msrp,notes) VALUES(?,?,?,?,?,?,?)",
                                        (uuid.uuid4().hex, query_id, values[0], quote.qty, values[1], values[2], values[3]))
                 audit(db, "updated", "parts_query", query_id, patch.model_dump(exclude_none=True))
                 return parts_query_row(db, db.execute("SELECT * FROM parts_queries WHERE id=?", (query_id,)).fetchone())
@@ -787,7 +787,7 @@ def add_parts_query_supplier(query_id: str, payload: SupplierQuoteIn) -> dict:
                 db.execute("INSERT INTO parts_query_suppliers(id,query_id,supplier,cost,msrp,notes) VALUES(?,?,?,?,?,?)",
                            (supplier_id, query_id, payload.supplier.strip(), payload.qty, payload.cost, payload.msrp, payload.notes.strip()))
                 audit(db, "supplier_added", "parts_query", query_id, payload.model_dump())
-                return dict(db.execute("SELECT id,supplier,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
+                return dict(db.execute("SELECT id,supplier,qty,cost,msrp,notes FROM parts_query_suppliers WHERE id=?", (supplier_id,)).fetchone())
         except sqlite3.OperationalError as exc:
             if "locked" not in str(exc).lower() or attempt == 5:
                 raise
