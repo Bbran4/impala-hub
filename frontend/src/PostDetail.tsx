@@ -102,6 +102,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         <dl className="detail-grid">
           <div><dt>Organic reach</dt><dd>{metric(post.reach)}</dd></div>
           <div><dt>Organic impressions</dt><dd>{metric(post.impressions)}</dd></div>
+          <div><dt>Views</dt><dd>{metric(post.impressions ?? post.reach)}</dd></div>
           <div><dt>Clicks</dt><dd>{metric(post.clicks)}</dd></div>
           <div><dt>Likes</dt><dd>{metric(post.likes)}</dd></div>
           <div><dt>Comments</dt><dd>{metric(post.comments)}</dd></div>
