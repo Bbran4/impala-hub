@@ -23,3 +23,8 @@
 ## Acceptance direction
 
 A Parts Query can be created without a supplier, then updated with one or more suppliers as quotes arrive. Supplier cost comparisons use cost divided by quantity.
+
+
+## Wildcard search
+
+Wildcard search is available across part numbers, descriptions, suppliers and sales codes.
