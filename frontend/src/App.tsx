@@ -467,36 +467,35 @@ export default function App() {
 
         {key && page === 'Feed' && (
           <>
-            <div className="welcome">
-              <div>
-                <span className="pill">MONTHLY OVERVIEW</span>
-                <h2>Make every post count.</h2>
-                <p>Plan, organise and track Impala Spares' social content in one place.</p>
+            <div className="feed-head">
+              <div><span className="pill">SOCIAL FEED</span><h2>Connected social accounts</h2><p>Review Facebook and Instagram activity, engagement and provider health in one feed.</p></div>
+              <div className="feed-actions">
+                <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Sync</button>
+                <button className="primary" onClick={() => setPage('Configuration')}><Settings size={16} /> Manage accounts</button>
               </div>
-              <button className="secondary" onClick={() => setPage('Campaigns')}>View campaigns <ChevronDown size={15} /></button>
             </div>
-            <div className="stats">
-              {[
-                { label: 'Published Posts', value: currentMonthPosts.filter((p) => p.status === 'published').length, filter: 'published', icon: CheckCircle2 },
-                { label: 'Scheduled', value: currentMonthPosts.filter((p) => p.status === 'scheduled').length, filter: 'scheduled', icon: CalendarClock },
-                { label: 'Needs Attention', value: currentMonthPosts.filter((p) => NEEDS_ATTENTION.includes(p.status)).length, filter: 'awaiting_approval', icon: CircleAlert },
-                { label: 'Facebook engagements', value: currentMonthPosts.filter((p) => p.status === 'published' && p.channels.includes('facebook')).reduce((sum, p) => sum + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0), filter: 'engagements', icon: BarChart3 },
-              ].map((s) => (
-                <button
-                  className="stat-card" key={s.label}
-                  onClick={() => { setPage('Posts'); setView('list'); setFilter(s.filter); setCampaignFilter('all'); setSearch(''); setMonth(startOfMonth()) }}
-                >
-                  <div className="stat-top"><span>{s.label}</span><s.icon size={18} /></div>
-                  <strong>{s.value}</strong>
-                  <small>{s.filter === 'engagements' ? 'Facebook-sourced · this month' : 'This month'}</small>
-                </button>
+            <div className="feed-streams">
+              {integrations.filter((i) => i.provider === 'facebook' || i.provider === 'instagram').map((i) => (
+                <div className="feed-stream-card" key={i.provider}>
+                  <div className={`feed-provider-icon ${i.provider}`}>{i.provider === 'facebook' ? 'f' : '◎'}</div>
+                  <div><strong>{i.account_name || i.page_name || i.label}</strong><small>{i.provider === 'facebook' ? 'Facebook Page' : 'Instagram Professional'} · {i.status === 'connected' ? 'Connected' : 'Not connected'}</small></div>
+                  <span className={`status-badge ${i.status}`}>{i.status === 'connected' ? 'Live' : 'Connect'}</span>
+                </div>
               ))}
+              <button className="feed-add-stream" onClick={() => setPage('Configuration')}><Plus size={17} /> Add account</button>
+            </div>
+            <div className="feed-summary">
+              <div><span>Posts in feed</span><strong>{posts.length}</strong></div>
+              <div><span>Likes</span><strong>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</strong></div>
+              <div><span>Comments</span><strong>{posts.reduce((n, p) => n + (p.comments ?? 0), 0)}</strong></div>
+              <div><span>Shares</span><strong>{posts.reduce((n, p) => n + (p.shares ?? 0), 0)}</strong></div>
+              <div><span>Views</span><strong>{posts.reduce((n, p) => n + (p.impressions ?? p.reach ?? 0), 0)}</strong></div>
             </div>
             <div className="section-head">
-              <div><h2>Recent posts</h2><p>Your latest drafts and scheduled content</p></div>
-              <button className="text-button" onClick={() => { setMonth(null); setFilter('all'); setPage('Posts') }}>View all posts →</button>
+              <div><h2>Feed</h2><p>Posts from connected social accounts, ordered by publication or schedule date.</p></div>
+              <button className="text-button" onClick={() => { setPage('Posts'); setView('list'); setMonth(null); setFilter('all') }}>Open post manager →</button>
             </div>
-            <PostList posts={posts.slice(0, 5)} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
+            <PostList posts={posts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
           </>
         )}
 
@@ -527,7 +526,7 @@ export default function App() {
                 <option value="all">All campaigns</option>
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              {integrations.some((i) => i.provider === 'facebook' && i.status === 'connected') && (
+              {integrations.some((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected') && (
                 <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Sync</button>
               )}
               <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>
