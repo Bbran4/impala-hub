@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import secrets
 import time
@@ -57,6 +58,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+log = logging.getLogger("impala.api")
 DB_PATH = Path(settings.database_path).resolve()
 UPLOAD_PATH = Path(settings.upload_dir).resolve()
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1140,15 +1142,23 @@ def _instagram_oauth_callback_impl(code: Optional[str] = None, state: Optional[s
         with db_session() as db:
             db.execute("DELETE FROM instagram_connection")
             chosen = candidates[0]
-            permissions = _meta_graph_get("me/permissions", {"access_token": chosen["token"]}).get("data", [])
+            try:
+                permissions = _meta_graph_get("me/permissions", {"access_token": token}).get("data", [])
+            except HTTPException:
+                permissions = []
             granted = [p.get("permission") for p in permissions if p.get("status") == "granted"]
             debug = _meta_graph_get("debug_token", {"input_token": chosen["token"], "access_token": f"{settings.meta_app_id.strip()}|{settings.meta_app_secret.strip()}"}).get("data", {})
             db.execute("INSERT INTO instagram_connection(id,account_id,account_name,username,encrypted_token,updated_at,last_checked_at,token_expires_at,data_access_expires_at,granted_permissions_json,connection_source) VALUES(1,?,?,?,?,?,?,?,?,?,?)",
                        (chosen["id"], chosen["name"], chosen["username"], encrypted.encrypt(chosen["token"].encode()).decode(), now_iso(), now_iso(), debug.get("expires_at"), debug.get("data_access_expires_at"), json.dumps(granted), "oauth"))
         return RedirectResponse(frontend + "/?instagram_oauth=connected")
-    except HTTPException:
-        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=meta_request_failed")
+    except HTTPException as exc:
+        log.warning("Instagram OAuth failed: %s", exc.detail)
+        if exc.status_code == 503:
+            return RedirectResponse(frontend + "/?instagram_oauth=error&reason=setup")
+        from urllib.parse import quote
+        return RedirectResponse(frontend + "/?instagram_oauth=error&reason=meta_request_failed&detail=" + quote(str(exc.detail)[:250]))
     except Exception:
+        log.exception("Instagram OAuth callback failed")
         return RedirectResponse(frontend + "/?instagram_oauth=error&reason=callback_failed")
 
  
