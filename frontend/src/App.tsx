@@ -624,7 +624,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <div><span>Likes</span><strong>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</strong></div>
               <div><span>Comments</span><strong>{posts.reduce((n, p) => n + (p.comments ?? 0), 0)}</strong></div>
               <div><span>Shares</span><strong>{posts.reduce((n, p) => n + (p.shares ?? 0), 0)}</strong></div>
-              <div><span>Views</span><strong>{posts.reduce((n, p) => n + (p.impressions ?? p.reach ?? 0), 0)}</strong></div>
+              <div><span>Views</span><strong>{posts.reduce((n, p) => n + (p.views ?? p.impressions ?? p.reach ?? 0), 0)}</strong></div>
             </div>            <div className="feed-post-columns">
               {integrations.filter((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected').map((i) => {
                 const providerPosts = posts.filter((p) => p.channels.includes(i.provider)).sort((a, b) => new Date(b.published_at || b.publish_at || b.created_at || 0).getTime() - new Date(a.published_at || a.publish_at || a.created_at || 0).getTime()).slice(0, 25)
@@ -972,7 +972,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false, pa
                   {p.media.slice(0, 2).map((m, index) => <div className="feed-card-image" key={m.id || m.url}><img src={mediaSrc(m)} alt={m.name} />{index === 1 && p.media.length > 2 && <span>+{p.media.length - 2}</span>}</div>)}
                   {!p.media.length && <div className="feed-card-no-image"><ImagePlus size={20} /></div>}
                 </div>
-                <div className="feed-card-bottom"><span><Heart size={14} /> {metric(p.likes)}</span><span><MessageCircle size={14} /> {metric(p.comments)}</span><span className="feed-card-views"><Eye size={14} /> {metric(p.impressions ?? p.reach)}</span></div>
+                <div className="feed-card-bottom"><span><Heart size={14} /> {metric(p.likes)}</span><span><MessageCircle size={14} /> {metric(p.comments)}</span><span className="feed-card-views"><Eye size={14} /> {metric(p.views ?? p.impressions ?? p.reach)}</span></div>
               </>
             ) : (
               <>
@@ -983,7 +983,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false, pa
                   <div className="post-meta"><span className={`status ${p.status}`}>{p.status.replace(/_/g, ' ')}</span><span>{p.channels.join(' · ') || 'No channel'}</span></div>
                   <b>{heading}</b>
                   <small>{campaigns.find((c) => c.id === p.campaign_id)?.name || 'No campaign'} · {p.published_at ? `Posted ${fmt(p.published_at)}` : fmt(p.publish_at)}</small>
-                  {p.status === 'published' && <small>Views {metric(p.impressions ?? p.reach)} · Reach {metric(p.reach)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}{p.metrics_refreshed_at ? ` · updated ${fmt(p.metrics_refreshed_at)}` : ''}</small>}
+                  {p.status === 'published' && <small>Views {metric(p.views ?? p.impressions ?? p.reach)} · Reach {metric(p.reach)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}{p.metrics_refreshed_at ? ` · updated ${fmt(p.metrics_refreshed_at)}` : ''}</small>}
                 </div>
                 <div className="row-actions"><button className="secondary" onClick={() => onOpen(p.id)}>View</button>{EDITABLE.includes(p.status) && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}<button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button></div>
               </>
