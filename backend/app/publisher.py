@@ -155,7 +155,7 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             # of extra Graph API requests and cause the browser request to fail or time out.
             # Preserve any previously stored organic reach/impressions until a bounded
             # Insights refresh can run independently.
-            insights = {"reach": None, "impressions": None, "clicks": None}
+            insights = {"reach": None, "impressions": None, "views": None, "clicks": None}
             if hasattr(client, "post_insights"):
                 try:
                     insights = client.post_insights(item["id"])
@@ -181,10 +181,10 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             published_at = _fb_time(item["created_time"]) if item["created_time"] else stamp
             db.execute(
                 """INSERT INTO posts(id,title,caption,channels_json,status,published_at,media_json,provider_ids_json,
-                   likes,comments,shares,reach,impressions,metrics_refreshed_at,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   likes,comments,shares,reach,impressions,views,metrics_refreshed_at,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (local_id, "", item["message"], json.dumps(["facebook"]), "published", published_at, json.dumps(media),
-                 json.dumps(ids), item["likes"], item["comments"], item["shares"], insights["reach"], insights["impressions"], stamp, stamp, stamp),
+                 json.dumps(ids), item["likes"], item["comments"], item["shares"], insights["reach"], insights["impressions"], insights["views"], stamp, stamp, stamp),
             )
             audit(db, "imported", "post", local_id, {"status": "published", "channels": ["facebook"], "facebook_post_id": item["id"]})
             stats["imported"] += 1
