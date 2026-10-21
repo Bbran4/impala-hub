@@ -533,7 +533,6 @@ export default function App() {
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>
               {[
-                { title: 'Returns & Claims', description: 'Track returns, damage claims, and supplier outcomes.' },
                 { title: 'Fleet Management', description: 'Fleet visibility and vehicle activity.' },
                 { title: 'E-commerce', description: 'Shopify orders, catalogue, and integration health.' },
               ].map((item) => (
