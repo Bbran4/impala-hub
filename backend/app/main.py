@@ -1164,9 +1164,45 @@ def sync_all_integrations() -> dict:
             token = _fernet().decrypt(row["encrypted_token"].encode()).decode()
             client = InstagramClient(row["account_id"], token, settings.facebook_api_version)
             media = client.media()
-            result["instagram"] = {"status": "synced", "account_id": row["account_id"], "items": len(media.get("data") or [])}
+            items = media.get("data") or []
+            imported = 0
+            updated = 0
+            stamp = now_iso()
             with db_session() as db:
-                db.execute("UPDATE instagram_connection SET last_checked_at=?, updated_at=? WHERE id=1", (now_iso(), now_iso()))
+                known = {}
+                for known_row in db.execute("SELECT id,provider_ids_json FROM posts"):
+                    ids = json.loads(known_row["provider_ids_json"])
+                    if ids.get("instagram"):
+                        known[ids["instagram"]] = (known_row["id"], ids)
+                for item in items:
+                    instagram_id = str(item.get("id") or "")
+                    if not instagram_id:
+                        continue
+                    insight_values = {}
+                    for insight in (item.get("insights") or {}).get("data") or []:
+                        values = insight.get("values") or []
+                        if values:
+                            insight_values[insight.get("name")] = values[-1].get("value")
+                    likes = item.get("like_count")
+                    comments = item.get("comments_count")
+                    impressions = insight_values.get("impressions")
+                    reach = insight_values.get("reach")
+                    if instagram_id in known:
+                        local_id, ids = known[instagram_id]
+                        if item.get("permalink"):
+                            ids["permalink"] = item["permalink"]
+                        db.execute("UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),metrics_refreshed_at=?,provider_ids_json=? WHERE id=?", (likes, comments, reach, impressions, stamp, json.dumps(ids), local_id))
+                        updated += 1
+                        continue
+                    local_id = "ig-" + instagram_id.replace("_", "-")
+                    ids = {"instagram": instagram_id, **({"permalink": item["permalink"]} if item.get("permalink") else {})}
+                    image_url = item.get("media_url")
+                    media_json = [{"id": local_id + "-1", "name": "Instagram media", "url": image_url}] if image_url else []
+                    published_at = item.get("timestamp") or stamp
+                    db.execute("INSERT INTO posts(id,title,caption,channels_json,status,published_at,media_json,provider_ids_json,likes,comments,shares,reach,impressions,metrics_refreshed_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (local_id, "", item.get("caption") or "", json.dumps(["instagram"]), "published", published_at, json.dumps(media_json), json.dumps(ids), likes, comments, 0, reach, impressions, stamp, stamp, stamp))
+                    imported += 1
+                db.execute("UPDATE instagram_connection SET last_checked_at=?, updated_at=? WHERE id=1", (stamp, stamp))
+            result["instagram"] = {"status": "synced", "account_id": row["account_id"], "items": len(items), "imported": imported, "updated": updated}
     except Exception as exc:
         result["instagram"] = {"status": "error", "detail": str(exc)}
     return result
