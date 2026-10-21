@@ -216,30 +216,33 @@ class FacebookClient:
             body = self._request("GET", next_url)
 
     def post_insights(self, post_id: str) -> dict:
-        """Return organic Page-post reach and impressions when Meta exposes them.
-
-        Insight availability varies by post age, permission grants and API version. Callers
-        should treat FacebookError as unavailable metrics rather than a publishing failure.
-        """
+        """Return total Page-post performance, including paid/boosted delivery when available."""
         body = self._request(
             "GET", f"/{post_id}/insights",
             params={
-                "metric": "post_impressions,post_impressions_unique",
+                "metric": "post_impressions,post_impressions_unique,post_impressions_paid,post_impressions_paid_unique,post_clicks",
                 "access_token": self._token,
             },
         )
-        values: dict[str, Optional[int]] = {"impressions": None, "reach": None}
+        values: dict[str, Optional[int]] = {"impressions": None, "reach": None, "clicks": None}
         for item in body.get("data", []):
-            name = item.get("name")
             points = item.get("values") or []
             if not points:
                 continue
             value = points[-1].get("value")
-            if isinstance(value, (int, float)):
-                if name == "post_impressions":
-                    values["impressions"] = int(value)
-                elif name == "post_impressions_unique":
-                    values["reach"] = int(value)
+            if not isinstance(value, (int, float)):
+                continue
+            name = item.get("name")
+            if name == "post_impressions":
+                values["impressions"] = int(value)
+            elif name == "post_impressions_unique":
+                values["reach"] = int(value)
+            elif name == "post_clicks":
+                values["clicks"] = int(value)
+            elif name == "post_impressions_paid" and values["impressions"] is not None:
+                values["impressions"] += int(value)
+            elif name == "post_impressions_paid_unique" and values["reach"] is not None:
+                values["reach"] += int(value)
         return values
 
     def publish(self, caption: str, images: list[Path]) -> str:
