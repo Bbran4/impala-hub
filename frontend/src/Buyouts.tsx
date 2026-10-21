@@ -9,7 +9,7 @@ const STATUSES = ['In Progress', 'Submitted', 'Cancelled']
 async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers || {}); headers.set('Authorization', `Bearer ${token}`); if (init?.body) headers.set('Content-Type', 'application/json')
   let response: Response; try { response = await fetch(API + path, { ...init, headers }) } catch { throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL.`) }
-  const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.detail || 'Parts Query request failed'); return body
+  const body = await response.json().catch(() => ({})); if (!response.ok) { const detail = body.detail; const message = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((item: any) => item?.msg || JSON.stringify(item)).join('; ') : detail ? JSON.stringify(detail) : 'Parts Query request failed'; throw new Error(message) } return body
 }
 export default function Buyouts({ token, setNotice, setError }: Props) {
   const [queries, setQueries] = useState<Query[]>([]); const [salesCodes, setSalesCodes] = useState<any[]>([]); const [developmentStatuses, setDevelopmentStatuses] = useState<string[]>([])
