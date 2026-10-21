@@ -152,3 +152,17 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .pivot-table th{background:#f7f9fa;color:#647383;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
 .pivot-total td{font-weight:800;background:#f7f9fa;color:#20364a}
 @media(max-width:850px){.campaign-board{grid-template-columns:1fr}}
+
+.feed-streams{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start}
+.feed-network-column{display:block;padding:14px}
+.feed-network-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.feed-network-head>div:nth-child(2){min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+.feed-network-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:12px}
+.feed-network-metrics span{display:flex;flex-direction:column;gap:3px;background:#f7f9fa;border:1px solid #e2e8ec;border-radius:7px;padding:8px;font-size:12px}
+.feed-network-metrics b{font-size:10px;color:#71808d;font-weight:500}
+.metric-up{color:#238b4d}.metric-down{color:#b63d3d}
+.feed-network-column .post-list{display:flex;flex-direction:column;gap:7px}
+.feed-network-column .post-row{padding:9px 0;border:0;border-top:1px solid #edf0f3;border-radius:0}
+.feed-network-column .row-actions{display:none}
+.campaign-card[draggable="true"]{cursor:grab}
+.campaign-card[draggable="true"]:active{cursor:grabbing}
