@@ -122,6 +122,26 @@ CREATE TABLE IF NOT EXISTS integration_flags (name TEXT PRIMARY KEY, value TEXT 
 """
 
 
+
+SCHEMA_BUYOUTS = """
+CREATE TABLE IF NOT EXISTS buyout_requests (
+    id TEXT PRIMARY KEY,
+    part_number TEXT NOT NULL,
+    part_description TEXT NOT NULL,
+    qty INTEGER NOT NULL CHECK(qty > 0),
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS supplier_quotes (
+    id TEXT PRIMARY KEY,
+    supplier TEXT NOT NULL,
+    brand TEXT NOT NULL,
+    cost REAL NOT NULL CHECK(cost >= 0),
+    msrp REAL NOT NULL CHECK(msrp >= 0),
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+"""
+
 SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
@@ -240,6 +260,7 @@ def init_db() -> None:
         if version < 5:
             conn.executescript(SCHEMA_V5)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
+        conn.executescript(SCHEMA_BUYOUTS)
         conn.execute("DELETE FROM facebook_oauth_states WHERE created_at < ?", (time.time() - 900,))
         conn.execute("DELETE FROM facebook_pending_pages WHERE created_at < ?", (time.time() - 1800,))
         conn.commit()
@@ -518,6 +539,56 @@ def post_values(data: PostIn) -> tuple:
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "service": "impala-hub-marketing", "version": app.version}
+
+
+class BuyoutRequestIn(BaseModel):
+    part_number: str = Field(min_length=1, max_length=120)
+    part_description: str = Field(min_length=1, max_length=500)
+    qty: int = Field(gt=0, le=1000000)
+
+
+class SupplierQuoteIn(BaseModel):
+    supplier: str = Field(min_length=1, max_length=160)
+    brand: str = Field(min_length=1, max_length=160)
+    cost: float = Field(ge=0)
+    msrp: float = Field(ge=0)
+    notes: str = Field(default='', max_length=5000)
+
+
+def buyout_id(prefix: str) -> str:
+    return f"{prefix}-{datetime.now(timezone.utc):%Y%m%d}-{secrets.token_hex(3).upper()}"
+
+
+@app.get("/api/buyouts/requests", dependencies=[Depends(require_api_key)])
+def list_buyout_requests() -> list[dict]:
+    with db_session() as db:
+        return [dict(r) for r in db.execute("SELECT * FROM buyout_requests ORDER BY created_at DESC")]
+
+
+@app.post("/api/buyouts/requests", dependencies=[Depends(require_api_key)], status_code=201)
+def create_buyout_request(payload: BuyoutRequestIn) -> dict:
+    record_id, stamp = buyout_id("BR"), now_iso()
+    with db_session() as db:
+        db.execute("INSERT INTO buyout_requests(id,part_number,part_description,qty,created_at) VALUES(?,?,?,?,?)",
+                   (record_id, payload.part_number.strip(), payload.part_description.strip(), payload.qty, stamp))
+        audit(db, "created", "buyout_request", record_id, payload.model_dump())
+        return dict(db.execute("SELECT * FROM buyout_requests WHERE id=?", (record_id,)).fetchone())
+
+
+@app.get("/api/buyouts/quotes", dependencies=[Depends(require_api_key)])
+def list_supplier_quotes() -> list[dict]:
+    with db_session() as db:
+        return [dict(r) for r in db.execute("SELECT * FROM supplier_quotes ORDER BY created_at DESC")]
+
+
+@app.post("/api/buyouts/quotes", dependencies=[Depends(require_api_key)], status_code=201)
+def create_supplier_quote(payload: SupplierQuoteIn) -> dict:
+    record_id, stamp = buyout_id("SQ"), now_iso()
+    with db_session() as db:
+        db.execute("INSERT INTO supplier_quotes(id,supplier,brand,cost,msrp,notes,created_at) VALUES(?,?,?,?,?,?,?)",
+                   (record_id, payload.supplier.strip(), payload.brand.strip(), payload.cost, payload.msrp, payload.notes.strip(), stamp))
+        audit(db, "created", "supplier_quote", record_id, payload.model_dump())
+        return dict(db.execute("SELECT * FROM supplier_quotes WHERE id=?", (record_id,)).fetchone())
 
 
 @app.get("/api/campaigns", dependencies=[Depends(require_api_key)])
