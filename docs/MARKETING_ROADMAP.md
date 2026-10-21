@@ -62,3 +62,8 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 - Disconnecting a provider removes mirrored published records locally; it does not delete provider content.
 - The Posts manager retains the full local history; the Feed displays the 25 newest posts per connected network.
 - Facebook Views must not be marked complete until a live Refresh populates total views/reach/impressions.
+
+
+## Wildcard search
+
+Marketing roadmap now includes wildcard search across posts, campaigns, captions and supported searchable fields.
