@@ -114,14 +114,22 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         </p>
       </div>
 
-      <div className="detail-card">
-        <h3>Campaign</h3>
-        <div className="inline-form">
-          <select aria-label="Campaign" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
-            <option value="">No campaign</option>
-            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <button className="primary" disabled={saving || campaignId === (post.campaign_id || '')} onClick={() => void saveCampaign()}>
+      <div className="detail-card campaign-assignment-card">
+        <div className="campaign-assignment-heading">
+          <div>
+            <h3>Campaign</h3>
+            <p>Organise this post under a campaign for easier reporting.</p>
+          </div>
+        </div>
+        <div className="campaign-assignment-form">
+          <label className="campaign-assignment-field">
+            <span>Assign to campaign</span>
+            <select aria-label="Assign to campaign" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
+              <option value="">No campaign</option>
+              {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <button className="primary campaign-assignment-save" disabled={saving || campaignId === (post.campaign_id || '')} onClick={() => void saveCampaign()}>
             {saving ? 'Saving...' : 'Save campaign'}
           </button>
         </div>
