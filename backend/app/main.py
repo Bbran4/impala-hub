@@ -988,6 +988,18 @@ def delete_returns_claim(record_id: str) -> dict:
     return {"deleted": True, "id": record_id}
 
 
+@app.delete("/api/campaigns/{campaign_id}", dependencies=[Depends(require_api_key)])
+def delete_campaign(campaign_id: str) -> dict:
+    with db_session() as db:
+        if not db.execute("SELECT 1 FROM campaigns WHERE id=?", (campaign_id,)).fetchone():
+            raise HTTPException(404, "Campaign not found")
+        if db.execute("SELECT 1 FROM posts WHERE campaign_id=? LIMIT 1", (campaign_id,)).fetchone():
+            raise HTTPException(409, "Campaign cannot be deleted while it contains posts.")
+        db.execute("DELETE FROM campaigns WHERE id=?", (campaign_id,))
+        audit(db, "deleted", "campaign", campaign_id, {})
+    return {"deleted": True, "id": campaign_id}
+
+
 @app.get("/api/campaigns", dependencies=[Depends(require_api_key)])
 def list_campaigns() -> list[dict]:
     with db_session() as db:
