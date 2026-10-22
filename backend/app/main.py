@@ -287,6 +287,11 @@ ALTER TABLE posts ADD COLUMN reactions INTEGER;
 PRAGMA user_version = 7;
 """
 
+SCHEMA_V8 = """
+ALTER TABLE posts ADD COLUMN engagements INTEGER;
+PRAGMA user_version = 8;
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -309,6 +314,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V6)
         if version < 7:
             conn.executescript(SCHEMA_V7)
+        if version < 8:
+            conn.executescript(SCHEMA_V8)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
