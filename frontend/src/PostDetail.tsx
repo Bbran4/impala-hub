@@ -139,7 +139,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
             <span>Assign to campaign</span>
             <select aria-label="Assign to campaign" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
               <option value="">No campaign</option>
-              {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {campaigns.filter((c) => c.stage !== 'done').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           <button className="primary campaign-assignment-save" disabled={saving || campaignId === (post.campaign_id || '')} onClick={() => void saveCampaign()}>
