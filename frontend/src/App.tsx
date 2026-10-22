@@ -609,7 +609,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <div className="feed-streams feed-network-cards">
               {integrations.filter((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected').map((i) => {
                 const providerPosts = posts.filter((p) => p.channels.includes(i.provider)).sort((a, b) => new Date(b.published_at || b.publish_at || b.created_at || 0).getTime() - new Date(a.published_at || a.publish_at || a.created_at || 0).getTime()).slice(0, 25)
-                const engagement = providerPosts.reduce((n, p) => n + (p.likes ?? 0) + (p.reactions ?? 0) + (p.saves ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
+                const engagement = providerPosts.reduce((n, p) => n + (p.reactions ?? p.likes ?? 0) + (p.saves ?? 0) + (p.comments ?? 0) + (p.shares ?? 0), 0)
                 const recent = providerPosts.slice(0, Math.max(1, Math.ceil(providerPosts.length / 2))).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.clicks ?? 0), 0)
                 const older = providerPosts.slice(Math.max(1, Math.ceil(providerPosts.length / 2))).reduce((n, p) => n + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.clicks ?? 0), 0)
                 const change = older ? ((recent - older) / older) * 100 : 0
