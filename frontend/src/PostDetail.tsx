@@ -10,6 +10,7 @@ type Props = {
   onReschedule: (p: Post) => void
   onDelete: (id: string) => void
   onSaveCampaign: (postId: string, campaignId: string | null) => Promise<void>
+  onOpenImage: (images: Post['media'], index: number) => void
   onError: (e: unknown) => void
 }
 
@@ -77,7 +78,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         <p className="detail-caption">{post.caption || 'No caption.'}</p>
         <div className="media-grid">
           {post.media.map((m) => (
-            <div className="media-thumb" key={m.id}><img src={mediaSrc(m)} alt={m.name} /><small>{m.name}</small></div>
+            <div className="media-thumb" key={m.id} onClick={() => onOpenImage(post.media, post.media.findIndex((image) => image.id === m.id))} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenImage(post.media, post.media.findIndex((image) => image.id === m.id)) }}><img src={mediaSrc(m)} alt={m.name} /><small>{m.name}</small></div>
           ))}
           {!post.media.length && <div className="media-empty"><ImagePlus size={22} /><span>No images attached</span></div>}
         </div>
