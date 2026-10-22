@@ -454,7 +454,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
     <section className="rfq-workspace">
       <>
           <div className="sd-session-bar">
-            {page === 'RFQs' && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
+            {page === 'RFQs' && view === 'rfqs' && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
             {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button></div>}
           </div>
@@ -462,12 +462,19 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
           {page === 'RFQs' && view === 'dashboard' ? (
             <div className="sd-dashboard">
               <div className="sd-dashboard-grid">
-                {([['Unclaimed', dashboard.unclaimed], ['Claimed', dashboard.claimed], ['Received today', dashboard.received_today], ['Open RFQs', dashboard.open]] as [string, number][]).map(([label, value]) => (
-                  <div className="sd-metric" key={label}><span>{label}</span><strong>{value}</strong></div>
-                ))}
+                <div className="sd-metric"><span>Unclaimed</span><strong>{dashboard.unclaimed}</strong></div>
+                <div className="sd-metric"><span>Claimed</span><strong>{dashboard.claimed}</strong></div>
+                <div className="sd-metric"><span>Received today</span><strong>{dashboard.received_today}</strong></div>
+                <div className="sd-metric"><span>Open RFQs</span><strong>{dashboard.open}</strong></div>
               </div>
+              <div className="sd-dashboard-card sd-gp-card">
+                <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Sales GP performance against configured milestones.</p></div><strong>—</strong></div>
+                <div className="sd-gp-progress"><div className="sd-gp-fill" style={{ width: '0%' }} />{[4, 9.5, 15].map((point) => <span key={point} className={point === 4 ? 'grey' : point === 9.5 ? 'light-blue' : 'dark-blue'} style={{ left: (point / 15 * 100) + '%' }} title={point + '%'}>{point}%</span>)}</div>
+                <div className="sd-gp-scale"><span>0%</span><span>15%</span></div>
+              </div>
+              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Sales performance for the current business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{config.sales_codes.filter((code: any) => code.is_active).map((code: any) => <tr className="rfq-data-row" key={code.id}><td>{code.consultant_name || code.display_name || code.code}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>)}</tbody></table></div></div>
+              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>RFQ performance</h3><p>Lifecycle workload by sales person.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>In progress</th><th>Complete</th><th>Dropped</th><th>Scrapped</th><th>Irrelevant</th><th>Total</th><th>Bonus points</th><th>Response time</th><th>Score</th></tr></thead><tbody>{config.sales_codes.filter((code: any) => code.is_active).map((code: any) => { const mine = rfqs.filter((r: any) => r.sales_code_id === code.id); const count = (term: string) => mine.filter((r: any) => String(r.status_name || '').toLowerCase().includes(term)).length; return <tr className="rfq-data-row" key={code.id}><td>{code.consultant_name || code.display_name || code.code}</td><td>{count('progress')}</td><td>{count('complete')}</td><td>{count('drop')}</td><td>{count('scrap')}</td><td>{count('irrelevant')}</td><td>{mine.length}</td><td>—</td><td>—</td><td>—</td></tr> })}</tbody></table></div></div>
               <div className="sd-dashboard-actions"><button className="primary" onClick={() => setView('rfqs')}>Open RFQ queue</button><button className="secondary" onClick={() => setView('analytics')}>View RFQ analytics</button></div>
-              <div className="rfq-empty-card"><h3>Sales Desk overview</h3><p>Use the queue to claim and manage enquiries, or open analytics to review lifecycle performance.</p></div>
             </div>
           ) : page === 'RFQs' && view === 'analytics' ? (
             <div className="sd-analytics">
