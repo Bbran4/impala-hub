@@ -277,3 +277,51 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 #campaign-type:focus{border-color:#7296b2;box-shadow:0 0 0 3px #7296b21c}
 
 .small-modal>#campaign-type{width:calc(100% - 46px);margin:0 23px;display:block}
+
+/* Shared dropdown styling */
+.toolbar select,
+.rfq-toolbar select,
+.sd-form-grid select,
+.sd-config-layout select,
+.editor-body select,
+.detail-card select,
+.pivot-wrap select,
+.campaign-type-config select,
+.small-modal>select,
+#campaign-type{
+  min-height:40px;
+  border:1px solid #d8e1e7;
+  border-radius:8px;
+  padding:10px 36px 10px 12px;
+  color:#2d3e4d;
+  background-color:#fbfcfd;
+  outline:none;
+  font-size:12px;
+  line-height:1.2;
+  cursor:pointer;
+  appearance:auto;
+  transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease;
+}
+.toolbar select:hover,
+.rfq-toolbar select:hover,
+.sd-form-grid select:hover,
+.sd-config-layout select:hover,
+.editor-body select:hover,
+.detail-card select:hover,
+.pivot-wrap select:hover,
+.campaign-type-config select:hover,
+.small-modal>select:hover,
+#campaign-type:hover{border-color:#b8c9d5;background-color:#fff}
+.toolbar select:focus,
+.rfq-toolbar select:focus,
+.sd-form-grid select:focus,
+.sd-config-layout select:focus,
+.editor-body select:focus,
+.detail-card select:focus,
+.pivot-wrap select:focus,
+.campaign-type-config select:focus,
+.small-modal>select:focus,
+#campaign-type:focus{border-color:#7296b2;box-shadow:0 0 0 3px #7296b21c}
+.small-modal>select{width:calc(100% - 46px);margin:0 23px;display:block}
+.pivot-wrap .section-head>select{width:auto;min-width:180px}
+.toolbar select{width:auto;min-width:150px}
