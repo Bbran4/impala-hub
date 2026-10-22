@@ -14,6 +14,7 @@ import StockControlConfig from './StockControlConfig'
 import StockReordering from './StockReordering'
 import ReturnsClaims from './ReturnsClaims'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
+import { supabase, supabaseConfigured } from './supabase'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
@@ -142,6 +143,9 @@ export default function App() {
 
   async function load() {
     if (!getKey()) return
+    // Supabase Auth is now the production identity provider. Workspace API calls
+    // remain paused until their FastAPI endpoints are migrated to Supabase.
+    if (supabaseConfigured) return
     try {
       const [p, c, i, ct] = await Promise.all([api('/api/posts'), api('/api/campaigns'), api('/api/integrations'), api('/api/campaign-types')])
       setPosts(p); setCampaigns(c); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')
@@ -190,6 +194,23 @@ export default function App() {
 
   async function signIn() {
     setError('')
+    if (supabaseConfigured && supabase) {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: username.trim(), password })
+      if (authError) {
+        setError(authError.message)
+        return
+      }
+      if (!data.session) {
+        setError('Supabase did not create a session. Confirm the user email before signing in.')
+        return
+      }
+      localStorage.setItem(KEY_STORAGE, data.session.access_token)
+      setKey(data.session.access_token)
+      setPassword('')
+      setPage('Apps')
+      setNotice('Signed in with Supabase. Workspace data migration is the next step.')
+      return
+    }
     try {
       const response = await fetch(`${apiBaseUrl}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
       const body = await response.json()
@@ -206,6 +227,7 @@ export default function App() {
     setKey(trimmed); setKeyEntry(''); setError(''); setNotice('API key set for this browser session.')
   }
   function disconnectKey() {
+    if (supabase) void supabase.auth.signOut()
     sessionStorage.removeItem(KEY_STORAGE)
     setKey(''); setKeyEntry(''); setPosts([]); setCampaigns([]); setIntegrations([]); setNotice('')
   }
@@ -537,9 +559,10 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <h2>Sign in to Impala Hub</h2>
             <p>Use your employee account to open the App Dashboard. Sessions persist securely across refreshes until they expire or you log out.</p>
             <div className="inline-form">
-              <input aria-label="Username" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+              <input aria-label="Email" type={supabaseConfigured ? 'email' : 'text'} placeholder={supabaseConfigured ? 'Email address' : 'Username'} value={username} onChange={(e) => setUsername(e.target.value)} />
               <input type="password" aria-label="Password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void signIn() }} />
               <button className="primary" onClick={() => void signIn()}>Sign in</button>
+              {supabaseConfigured && <p className="hint">Authentication is provided by Supabase. Marketing and Sales Desk data migration is still in progress.</p>}
             </div>
           </section>
         )}
