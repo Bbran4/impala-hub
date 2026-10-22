@@ -16,13 +16,18 @@ const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` 
 const formatRand = (value: number) => 'R' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const TEMP_MONTHLY_GROSS_SALES = 792436.44
+const GP_COLORS = [
+  ['red', 'Red'], ['grey', 'Grey'], ['light-blue', 'Light blue'], ['dark-blue', 'Dark blue'],
+  ['green', 'Green'], ['orange', 'Orange'], ['purple', 'Purple'], ['teal', 'Teal'],
+  ['yellow', 'Yellow'], ['pink', 'Pink'], ['navy', 'Navy'], ['brown', 'Brown'],
+] as const
 
 const TEMP_DAILY_SALES = [
   { name: 'Brenton', total: 0, credits: 0, gross: 0, gp: 0 },
   { name: 'Charles', total: 24722.13, credits: 0, gross: 24722.13, gp: 23.83 },
   { name: 'Fredrik', total: 56186.21, credits: 0, gross: 56186.21, gp: 9.09 },
   { name: 'Ian', total: 7200, credits: 0, gross: 7200, gp: 24.58 },
-  { name: 'Jan', total: 14250, credits: -6490, gross: 14250, gp: 50.66 },
+  { name: 'Jan', total: 14250, credits: -6490, gross: 7760, gp: 50.66 },
   { name: 'Miguel', total: 825, credits: 0, gross: 825, gp: 30.67 },
 ]
 
@@ -587,7 +592,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                 <div className="rfq-empty-card sd-form-card">
                   <h3>Monthly GP% milestones</h3><p>The largest marker defines the progress bar total. Values are whole rand amounts and can be edited.</p>
                   <div className="sd-config-add"><input type="number" min="1" step="1" placeholder="Add milestone amount" value={newMilestone} onChange={(e) => setNewMilestone(e.target.value)} /><button className="primary" disabled={!newMilestone || Number(newMilestone) < 0} onClick={() => { const value = Number(newMilestone); if (Number.isInteger(value) && value > 0) { setGpMilestones((items) => [...items, value]); setNewMilestone('') } }}>Add</button></div>
-                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>R{value.toLocaleString()}</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><div className="sd-actions"><select aria-label={'Color for R' + value.toLocaleString()} value={milestoneColors[String(value)] || (value === Math.max(...gpMilestones) ? 'dark-blue' : value === Math.min(...gpMilestones) ? 'grey' : 'light-blue')} onChange={(e) => setMilestoneColors((colors) => ({ ...colors, [String(value)]: e.target.value }))}><option value="red">Red</option><option value="grey">Grey</option><option value="light-blue">Light blue</option><option value="dark-blue">Dark blue</option></select><button className="secondary" onClick={() => { const next = window.prompt('Edit milestone amount', String(value)); const parsed = Number(next); if (next !== null && Number.isInteger(parsed) && parsed > 0) setGpMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove R' + value.toLocaleString() + ' milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
+                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>R{value.toLocaleString()}</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><div className="sd-actions"><div className="sd-color-grid" role="group" aria-label={'Color for R' + value.toLocaleString()}>{GP_COLORS.map(([color, label]) => <button type="button" key={color} className={`sd-color-swatch ${color} ${(milestoneColors[String(value)] || (value === Math.max(...gpMilestones) ? 'dark-blue' : value === Math.min(...gpMilestones) ? 'grey' : 'light-blue')) === color ? 'selected' : ''}`} title={label} aria-label={label} onClick={() => setMilestoneColors((colors) => ({ ...colors, [String(value)]: color }))} />)}</div><button className="secondary" onClick={() => { const next = window.prompt('Edit milestone amount', String(value)); const parsed = Number(next); if (next !== null && Number.isInteger(parsed) && parsed > 0) setGpMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove R' + value.toLocaleString() + ' milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
                 </div>
               )}
               <div className="rfq-empty-card sd-form-card">
