@@ -80,6 +80,7 @@ const ROADMAP_ROWS = [
   ['Post analytics detail', 'Post cards and insights', 'Post details and metrics', 'Partial'],
   ['Campaign creation', 'Yes', 'Yes', 'Implemented'],
   ['Campaign editing', 'Yes', 'Title/objective editing', 'Implemented'],
+  ['Campaign deletion', 'Record actions', 'Delete empty campaigns with a safety guard', 'Implemented'],
   ['Campaign deletion', 'Record actions', 'Not exposed as a complete workflow', 'Incomplete'],
   ['Campaign Kanban stages', 'New/In Progress/Done', 'Drag-and-drop Kanban', 'Implemented'],
   ['Post Kanban', 'Yes', 'Board view', 'Implemented'],
