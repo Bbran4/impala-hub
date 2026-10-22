@@ -70,3 +70,5 @@
 .sd-milestone-list{width:100%}
 .sd-milestone-list .sd-config-row{padding:10px 0}
 .sd-milestone-list small{color:#71808d}
+
+.sd-gp-progress>span.final{transform:translateX(-100%)}
