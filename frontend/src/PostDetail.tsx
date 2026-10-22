@@ -78,7 +78,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         <p className="detail-caption">{post.caption || 'No caption.'}</p>
         <div className="media-grid">
           {post.media.map((m) => (
-            <div className="media-thumb" key={m.id} onClick={() => onOpenImage(post.media, post.media.findIndex((image) => image.id === m.id))} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenImage(post.media, post.media.findIndex((image) => image.id === m.id)) }}><img src={mediaSrc(m)} alt={m.name} /><small>{m.name}</small></div>
+            <button className="media-thumb detail-media-thumb" key={m.id} type="button" onClick={(e) => { e.stopPropagation(); onOpenImage(post.media, post.media.findIndex((image) => image.id === m.id)) }} aria-label={'View ' + m.name + ' full size'}><img src={mediaSrc(m)} alt={m.name} /><small>{m.name}</small></button>
           ))}
           {!post.media.length && <div className="media-empty"><ImagePlus size={22} /><span>No images attached</span></div>}
         </div>
