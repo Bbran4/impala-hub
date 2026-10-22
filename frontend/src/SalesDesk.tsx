@@ -16,7 +16,7 @@ const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` 
 const formatRand = (value: number) => 'R' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const TEMP_MONTHLY_GROSS_SALES = 792436.44
-const TEMP_MONTHLY_GP_PERCENT = 23.83
+const TEMP_MONTHLY_GP_PERCENT = 25.33
 const GP_COLORS = [
   ['red', 'Red'], ['grey', 'Grey'], ['light-blue', 'Light blue'], ['dark-blue', 'Dark blue'],
   ['green', 'Green'], ['orange', 'Orange'], ['purple', 'Purple'], ['teal', 'Teal'],
