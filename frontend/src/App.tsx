@@ -596,7 +596,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
             <div className="roadmap-priorities">
               <strong>Next priorities</strong>
-              <span>Facebook Views and boosted metrics</span><span>Instagram boosted metrics and publishing verification</span><span>Campaign deletion</span><span>Notifications and social conversations</span>
+              <span>Instagram boosted metrics and publishing verification</span><span>Campaign deletion safeguards and workflows</span><span>Notifications and social conversations</span><span>Sentiment analysis and reporting</span>
             </div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Odoo</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
               {ROADMAP_ROWS.map(([capability, odoo, impala, status]) => <tr key={capability}><td>{capability}</td><td>{odoo}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') || status.startsWith('Incomplete') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
