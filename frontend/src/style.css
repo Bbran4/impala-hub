@@ -256,3 +256,6 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .feed-image-viewer-next{right:12px}
 .feed-image-viewer-panel .media-thumb{cursor:zoom-in}
 @media(max-width:600px){.feed-image-viewer-nav{width:36px;height:36px}.feed-image-viewer-prev{left:7px}.feed-image-viewer-next{right:7px}}
+
+.feed-post-modal .detail-card .media-thumb{cursor:zoom-in;transition:border-color .15s ease,box-shadow .15s ease}
+.feed-post-modal .detail-card .media-thumb:hover{border-color:#7296b2;box-shadow:0 3px 10px #1c30421a}
