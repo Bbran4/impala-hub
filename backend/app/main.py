@@ -292,6 +292,11 @@ ALTER TABLE posts ADD COLUMN engagements INTEGER;
 PRAGMA user_version = 8;
 """
 
+SCHEMA_V9 = """
+ALTER TABLE posts ADD COLUMN saves INTEGER;
+PRAGMA user_version = 9;
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -316,6 +321,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V7)
         if version < 8:
             conn.executescript(SCHEMA_V8)
+        if version < 9:
+            conn.executescript(SCHEMA_V9)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
