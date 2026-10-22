@@ -15,6 +15,8 @@ const fmtDate = (v?: string | null, empty = '—') => (v ? new Date(v).toLocaleS
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 const formatRand = (value: number) => 'R' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+const TEMP_MONTHLY_GROSS_SALES = 792436.44
+
 const TEMP_DAILY_SALES = [
   { name: 'Brenton', total: 0, credits: 0, gross: 0, gp: 0 },
   { name: 'Charles', total: 24722.13, credits: 0, gross: 24722.13, gp: 23.83 },
@@ -461,7 +463,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
     if (sort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
     return (Number(!!a.sales_code) - Number(!!b.sales_code)) || String(a.received_at).localeCompare(String(b.received_at))
   })
-  const monthlySales = Number(dashboard.monthly_sales || 0)
+  const monthlySales = Number(dashboard.monthly_sales ?? TEMP_MONTHLY_GROSS_SALES)
   const canConvert = (r: any) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
 
   return (
