@@ -297,6 +297,13 @@ ALTER TABLE posts ADD COLUMN saves INTEGER;
 PRAGMA user_version = 9;
 """
 
+SCHEMA_V10 = """
+ALTER TABLE campaigns ADD COLUMN campaign_type TEXT NOT NULL DEFAULT 'Tips';
+CREATE TABLE IF NOT EXISTS campaign_types (name TEXT PRIMARY KEY, position INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO campaign_types(name, position) VALUES ('Tips', 0), ('Brand Spotlight', 1), ('Sales Ads', 2);
+PRAGMA user_version = 10;
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -323,6 +330,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V8)
         if version < 9:
             conn.executescript(SCHEMA_V9)
+        if version < 10:
+            conn.executescript(SCHEMA_V10)
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
@@ -496,6 +505,7 @@ def validate(model: type[BaseModel], values: dict) -> BaseModel:
 class CampaignIn(BaseModel):
     name: str = Field(max_length=160)
     stage: Literal["new", "in_progress", "done"] = "new"
+    campaign_type: str = Field(default="Tips", max_length=120)
     objective: str = Field(default="", max_length=1000)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -1008,7 +1018,7 @@ def list_campaigns() -> list[dict]:
 
 def campaign_values(data: CampaignIn) -> tuple:
     return (
-        data.name, data.objective, data.stage,
+        data.name, data.objective, data.stage, data.campaign_type,
         data.start_date.isoformat() if data.start_date else None,
         data.end_date.isoformat() if data.end_date else None,
     )
@@ -1019,7 +1029,7 @@ def create_campaign(payload: CampaignIn) -> dict:
     campaign_id, stamp = str(uuid.uuid4()), now_iso()
     with db_session() as db:
         db.execute(
-            "INSERT INTO campaigns(id,name,objective,stage,start_date,end_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO campaigns(id,name,objective,stage,campaign_type,start_date,end_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
             (campaign_id, *campaign_values(payload), stamp, stamp),
         )
         audit(db, "created", "campaign", campaign_id, {"name": payload.name})
@@ -1033,12 +1043,46 @@ def update_campaign(campaign_id: str, patch: CampaignPatch) -> dict:  # type: ig
         merged = {k: current[k] for k in CampaignIn.model_fields} | patch.model_dump(exclude_unset=True)
         data = validate(CampaignIn, merged)
         db.execute(
-            "UPDATE campaigns SET name=?,objective=?,stage=?,start_date=?,end_date=?,updated_at=? WHERE id=?",
+            "UPDATE campaigns SET name=?,objective=?,stage=?,campaign_type=?,start_date=?,end_date=?,updated_at=? WHERE id=?",
             (*campaign_values(data), now_iso(), campaign_id),
         )
         audit(db, "updated", "campaign", campaign_id, {"name": data.name})
         return fetch_campaign(db, campaign_id)
 
+
+@app.get("/api/campaign-types", dependencies=[Depends(require_api_key)])
+def list_campaign_types() -> list[dict]:
+    with db_session() as db:
+        return [dict(r) for r in db.execute("SELECT name, position FROM campaign_types ORDER BY position, name")]
+
+@app.post("/api/campaign-types", dependencies=[Depends(require_api_key)], status_code=201)
+def create_campaign_type(payload: dict) -> dict:
+    name = str(payload.get("name", "")).strip()
+    if not name or len(name) > 120:
+        raise HTTPException(422, "Campaign type name is required")
+    with db_session() as db:
+        position = db.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM campaign_types").fetchone()[0]
+        db.execute("INSERT INTO campaign_types(name, position) VALUES(?, ?)", (name, position))
+        return {"name": name, "position": position}
+
+@app.delete("/api/campaign-types/{name}", dependencies=[Depends(require_api_key)])
+def delete_campaign_type(name: str) -> dict:
+    with db_session() as db:
+        if db.execute("SELECT 1 FROM campaigns WHERE campaign_type=?", (name,)).fetchone():
+            raise HTTPException(409, "Campaign type is in use")
+        db.execute("DELETE FROM campaign_types WHERE name=?", (name,))
+        db.execute("UPDATE campaign_types SET position = position - 1 WHERE position > (SELECT COALESCE(MAX(position), -1) FROM campaign_types)")
+        return {"deleted": True}
+
+@app.put("/api/campaign-types/order", dependencies=[Depends(require_api_key)])
+def reorder_campaign_types(payload: dict) -> list[dict]:
+    names = [str(n).strip() for n in payload.get("names", [])]
+    with db_session() as db:
+        existing = {r["name"] for r in db.execute("SELECT name FROM campaign_types")}
+        if set(names) != existing or len(names) != len(existing):
+            raise HTTPException(422, "Complete campaign type list is required")
+        db.executemany("UPDATE campaign_types SET position=? WHERE name=?", [(i, n) for i, n in enumerate(names)])
+        return [dict(r) for r in db.execute("SELECT name, position FROM campaign_types ORDER BY position")]
 
 @app.get("/api/posts", dependencies=[Depends(require_api_key)])
 def list_posts(status: Optional[PostStatus] = None, campaign_id: Optional[str] = None) -> list[dict]:
