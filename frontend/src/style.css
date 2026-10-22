@@ -249,3 +249,10 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .feed-image-viewer-close:hover{background:#eef3f6}
 .feed-card-image{cursor:zoom-in}
 @media(max-width:600px){.feed-image-viewer{padding:12px}.feed-image-viewer-panel{height:calc(100vh - 24px);padding:14px}}
+
+.feed-image-viewer-nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border:1px solid #ffffff33;border-radius:50%;background:#ffffffed;color:#20364a;display:grid;place-items:center;z-index:2}
+.feed-image-viewer-nav:hover{background:#fff}
+.feed-image-viewer-prev{left:12px}
+.feed-image-viewer-next{right:12px}
+.feed-image-viewer-panel .media-thumb{cursor:zoom-in}
+@media(max-width:600px){.feed-image-viewer-nav{width:36px;height:36px}.feed-image-viewer-prev{left:7px}.feed-image-viewer-next{right:7px}}
