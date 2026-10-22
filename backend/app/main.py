@@ -1101,7 +1101,7 @@ class StockBookingExportRow(BaseModel):
     to_location: str
     to_bin_location: str = ""
     transfer_qty: int = Field(gt=0)
-    remarks: str = ""
+    remarks: str = Field(min_length=1)
 
 
 @app.get("/api/stock-booking/items", dependencies=[Depends(require_api_key)])
