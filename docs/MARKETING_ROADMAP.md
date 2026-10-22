@@ -67,3 +67,8 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 ## Wildcard search
 
 Marketing roadmap now includes wildcard search across posts, campaigns, captions and supported searchable fields.
+
+
+## Recently completed
+
+- Campaign deletion is available for empty campaigns only. Campaigns containing posts are protected from deletion.
