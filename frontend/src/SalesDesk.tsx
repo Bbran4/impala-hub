@@ -13,6 +13,14 @@ const toLocalInput = (value?: string | null) => {
 const toIso = (local: string) => new Date(local).toISOString()
 const fmtDate = (v?: string | null, empty = '—') => (v ? new Date(v).toLocaleString() : empty)
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+const TEMP_DAILY_SALES = [
+  { name: 'Brenton', total: 0, credits: 0, gross: 0, gp: 0 },
+  { name: 'Charles', total: 24722.13, credits: 0, gross: 24722.13, gp: 23.83 },
+  { name: 'Fredrik', total: 56186.21, credits: 0, gross: 56186.21, gp: 9.09 },
+  { name: 'Ian', total: 7200, credits: 0, gross: 7200, gp: 24.58 },
+  { name: 'Jan', total: 14250, credits: -6490, gross: 14250, gp: 50.66 },
+  { name: 'Miguel', total: 825, credits: 0, gross: 825, gp: 30.67 },
+]
 
 function describeDetail(detail: unknown, status: number): string {
   if (typeof detail === 'string') return detail
@@ -476,7 +484,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                 <div className="sd-gp-progress"><div className={`sd-gp-fill ${monthlySales >= Math.max(...gpMilestones, 1) ? 'dark-blue' : monthlySales >= Math.min(...gpMilestones, 1) ? 'light-blue' : 'red'}`} style={{ width: Math.min(100, monthlySales / Math.max(...gpMilestones, 1) * 100) + '%' }} />{[...gpMilestones].sort((a, b) => a - b).map((point, index, points) => <span key={point} className={`${index === 0 ? 'grey' : index === points.length - 1 ? 'dark-blue' : 'light-blue'}${index === points.length - 1 ? ' final' : ''}`} style={{ left: (point / Math.max(...points, 1) * 100) + '%' }} title={'R' + point.toLocaleString()}>{'R' + point.toLocaleString()}</span>)}</div>
                 <div className="sd-gp-scale"><span>R0</span><span>R{Math.max(...gpMilestones, 0).toLocaleString()}</span></div>
               </div>
-              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Sales performance for the current business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{config.sales_codes.filter((code: any) => code.is_active).map((code: any) => <tr className="rfq-data-row" key={code.id}><td>{code.consultant_name || code.display_name || code.code}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>)}</tbody></table></div></div>
+              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Sales performance for the current business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{TEMP_DAILY_SALES.map((row) => <tr className="rfq-data-row" key={row.name}><td>{row.name}</td><td>{row.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{row.credits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{row.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td>{row.gp.toFixed(2)}</td></tr>)}</tbody></table></div></div>
               <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>RFQ performance</h3><p>Lifecycle workload by sales person.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>In progress</th><th>Complete</th><th>Dropped</th><th>Scrapped</th><th>Irrelevant</th><th>Total</th><th>Bonus points</th><th>Response time</th><th>Score</th></tr></thead><tbody>{config.sales_codes.filter((code: any) => code.is_active).map((code: any) => { const mine = rfqs.filter((r: any) => r.sales_code_id === code.id); const count = (term: string) => mine.filter((r: any) => String(r.status_name || '').toLowerCase().includes(term)).length; return <tr className="rfq-data-row" key={code.id}><td>{code.consultant_name || code.display_name || code.code}</td><td>{count('progress')}</td><td>{count('complete')}</td><td>{count('drop')}</td><td>{count('scrap')}</td><td>{count('irrelevant')}</td><td>{mine.length}</td><td>—</td><td>—</td><td>—</td></tr> })}</tbody></table></div></div>
               <div className="sd-dashboard-actions"><button className="primary" onClick={() => setView('rfqs')}>Open RFQ queue</button><button className="secondary" onClick={() => setView('analytics')}>View RFQ analytics</button></div>
             </div>
