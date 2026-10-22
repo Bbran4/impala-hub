@@ -79,3 +79,9 @@ Marketing roadmap now includes wildcard search across posts, campaigns, captions
 - Facebook post Views and Reach retrieval is implemented using current Meta post insight metrics with fallbacks.
 - Post Likes, Reactions, Saves, Comments and Shares are stored and used in engagement totals; availability depends on the provider response.
 - Post analytics detail is implemented for the metrics returned by the connected provider.
+
+
+## Completion update
+
+- Clicks are implemented through the post model and Facebook/Instagram provider sync paths.
+- The Feed is implemented with separate network columns, the 25 newest posts per network, and network/post metrics.
