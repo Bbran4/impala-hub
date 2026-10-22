@@ -336,3 +336,4 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .settings-card h3 { margin-top: 0; }
 .config-list { margin-top: 20px; border-top: 1px solid var(--line, #d7dce5); }
 .config-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line, #d7dce5); }
+.stock-supply-highlight { background: #fff4c2; font-weight: 700; box-shadow: inset 0 -2px 0 #d49b00; }

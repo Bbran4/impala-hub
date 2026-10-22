@@ -78,10 +78,10 @@ def now_iso() -> str:
 def connect() -> sqlite3.Connection:
     # SQLite is used by the API, background publisher and Sales Desk concurrently.
     # Give short-lived writers time to finish instead of surfacing transient 500s.
-    db = sqlite3.connect(DB_PATH, timeout=30.0)
+    db = sqlite3.connect(DB_PATH, timeout=60.0)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
-    db.execute("PRAGMA busy_timeout = 30000")
+    db.execute("PRAGMA busy_timeout = 60000")
     db.execute("PRAGMA synchronous = NORMAL")
     return db
 
@@ -95,6 +95,10 @@ def db_session() -> Iterator[sqlite3.Connection]:
             yield conn
     finally:
         conn.close()
+
+
+def is_locked_error(error: sqlite3.OperationalError) -> bool:
+    return "database is locked" in str(error).lower()
 
 
 SCHEMA_FACEBOOK_OAUTH = """
@@ -334,6 +338,8 @@ CREATE TABLE IF NOT EXISTS stock_locations (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     description TEXT NOT NULL DEFAULT '',
+    vehicle_name TEXT NOT NULL DEFAULT '',
+    supply_branch TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -379,6 +385,12 @@ def init_db() -> None:
             conn.execute("ALTER TABLE stock_booking_items ADD COLUMN franchise TEXT NOT NULL DEFAULT ''")
         if not any(r['name'] == 'description' for r in conn.execute('PRAGMA table_info(stock_locations)')):
             conn.execute("ALTER TABLE stock_locations ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+        if not any(r['name'] == 'vehicle_name' for r in conn.execute('PRAGMA table_info(stock_locations)')):
+            conn.execute("ALTER TABLE stock_locations ADD COLUMN vehicle_name TEXT NOT NULL DEFAULT ''")
+        if not any(r['name'] == 'supply_branch' for r in conn.execute('PRAGMA table_info(stock_locations)')):
+            conn.execute("ALTER TABLE stock_locations ADD COLUMN supply_branch TEXT NOT NULL DEFAULT ''")
+        conn.execute("UPDATE stock_locations SET supply_branch='er' WHERE lower(name) IN ('east rand', 'east rand branch', 'er') AND supply_branch=''")
+        conn.execute("UPDATE stock_locations SET supply_branch='pta' WHERE lower(name) IN ('pretoria', 'pretoria branch', 'pta') AND supply_branch=''")
         if conn.execute("SELECT COUNT(*) FROM stock_booking_items").fetchone()[0] == 0:
             seed = [
                 ('abc001', 'SHIM KIT', 'each', 6, 0, 4, 10, 8, 2, 0, 10, 60, 60),
@@ -1107,6 +1119,8 @@ def replace_stock_booking_items(rows: list[StockBookingRow]) -> dict:
 class StockLocation(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     description: str = ""
+    vehicle_name: str = ""
+    supply_branch: str = Field(default="", pattern="^(|er|pta)$")
 
 
 @app.get("/api/stock-booking/locations", dependencies=[Depends(require_api_key)])
@@ -1119,36 +1133,52 @@ def list_stock_locations() -> list[dict]:
 def create_stock_location(payload: StockLocation) -> dict:
     ident = uuid.uuid4().hex
     now = now_iso()
-    try:
-        with db_session() as db:
-            db.execute("INSERT INTO stock_locations(id,name,description,created_at,updated_at) VALUES(?,?,?,?,?)", (ident, payload.name.strip(), payload.description.strip(), now, now))
-            return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (ident,)).fetchone())
-    except sqlite3.IntegrityError:
-        raise HTTPException(409, "A stock location with that name already exists.")
+    for attempt in range(3):
+        try:
+            with db_session() as db:
+                db.execute("INSERT INTO stock_locations(id,name,description,vehicle_name,supply_branch,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", (ident, payload.name.strip(), payload.description.strip(), payload.vehicle_name.strip(), payload.supply_branch, now, now))
+                return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (ident,)).fetchone())
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "A stock location with that name already exists.")
+        except sqlite3.OperationalError as error:
+            if not is_locked_error(error) or attempt == 2:
+                raise HTTPException(503, "The database is busy. Please retry saving the location.")
+            time.sleep(0.25 * (attempt + 1))
 
 
 @app.patch("/api/stock-booking/locations/{location_id}", dependencies=[Depends(require_api_key)])
 def update_stock_location(location_id: str, payload: StockLocation) -> dict:
     now = now_iso()
-    try:
-        with db_session() as db:
-            if not db.execute("SELECT 1 FROM stock_locations WHERE id=?", (location_id,)).fetchone():
-                raise HTTPException(404, "Stock location not found")
-            db.execute("UPDATE stock_locations SET name=?,description=?,updated_at=? WHERE id=?", (payload.name.strip(), payload.description.strip(), now, location_id))
-            return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (location_id,)).fetchone())
-    except sqlite3.IntegrityError:
-        raise HTTPException(409, "A stock location with that name already exists.")
+    for attempt in range(3):
+        try:
+            with db_session() as db:
+                if not db.execute("SELECT 1 FROM stock_locations WHERE id=?", (location_id,)).fetchone():
+                    raise HTTPException(404, "Stock location not found")
+                db.execute("UPDATE stock_locations SET name=?,description=?,vehicle_name=?,supply_branch=?,updated_at=? WHERE id=?", (payload.name.strip(), payload.description.strip(), payload.vehicle_name.strip(), payload.supply_branch, now, location_id))
+                return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (location_id,)).fetchone())
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "A stock location with that name already exists.")
+        except sqlite3.OperationalError as error:
+            if not is_locked_error(error) or attempt == 2:
+                raise HTTPException(503, "The database is busy. Please retry saving the location.")
+            time.sleep(0.25 * (attempt + 1))
 
 
 @app.delete("/api/stock-booking/locations/{location_id}", dependencies=[Depends(require_api_key)])
 def delete_stock_location(location_id: str) -> dict:
-    with db_session() as db:
-        if not db.execute("SELECT 1 FROM stock_locations WHERE id=?", (location_id,)).fetchone():
-            raise HTTPException(404, "Stock location not found")
-        if db.execute("SELECT COUNT(*) FROM stock_locations").fetchone()[0] <= 2:
-            raise HTTPException(409, "Keep at least two stock locations configured.")
-        db.execute("DELETE FROM stock_locations WHERE id=?", (location_id,))
-    return {"deleted": location_id}
+    for attempt in range(3):
+        try:
+            with db_session() as db:
+                if not db.execute("SELECT 1 FROM stock_locations WHERE id=?", (location_id,)).fetchone():
+                    raise HTTPException(404, "Stock location not found")
+                if db.execute("SELECT COUNT(*) FROM stock_locations").fetchone()[0] <= 2:
+                    raise HTTPException(409, "Keep at least two stock locations configured.")
+                db.execute("DELETE FROM stock_locations WHERE id=?", (location_id,))
+            return {"deleted": location_id}
+        except sqlite3.OperationalError as error:
+            if not is_locked_error(error) or attempt == 2:
+                raise HTTPException(503, "The database is busy. Please retry removing the location.")
+            time.sleep(0.25 * (attempt + 1))
 
 
 @app.post("/api/stock-booking/export", dependencies=[Depends(require_api_key)])
