@@ -7,9 +7,9 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 ## Current priorities
 
 1. Verify Instagram boosted metrics and publishing against a live professional account.
-2. Expand campaign deletion safeguards and workflow coverage.
-3. Add notifications and social conversations.
-4. Add sentiment analysis and advanced reporting.
+2. Add notifications and social conversations.
+3. Add sentiment analysis and advanced reporting.
+4. Expand advanced search and reporting.
 
 ## Parity table
 
