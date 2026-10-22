@@ -402,7 +402,7 @@ export default function App() {
   }
 
   function openCampaignEditor(c: Campaign) {
-    setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignStage(c.stage || 'new'); setCampaignModal(true)
+    setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignStage(c.stage || 'new'); setCampaignType(c.campaign_type || campaignTypes[0] || 'Tips'); setCampaignModal(true)
   }
   async function removeCampaign(c: Campaign) {
     if (posts.some((p) => p.campaign_id === c.id)) { setError('Campaigns can only be deleted when they contain no posts.'); return }
