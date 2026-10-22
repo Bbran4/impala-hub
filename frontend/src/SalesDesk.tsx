@@ -380,8 +380,11 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   const [newMedia, setNewMedia] = useState('')
   const [newStatus, setNewStatus] = useState({ name: '', closed: false })
   const [newUser, setNewUser] = useState({ display_name: '', username: '', password: '', role: 'salesperson' })
+  const [gpMilestones, setGpMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
+  const [newMilestone, setNewMilestone] = useState('')
 
   const closePanel = useCallback(() => setPanel(null), [])
+  useEffect(() => { localStorage.setItem('sales_desk_gp_milestones', JSON.stringify(gpMilestones)) }, [gpMilestones])
   const request: Req = useCallback(async (path, init = {}) => {
     const headers = new Headers(init.headers || {})
     if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -469,7 +472,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
               </div>
               <div className="sd-dashboard-card sd-gp-card">
                 <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Sales GP performance against configured milestones.</p></div><strong>—</strong></div>
-                <div className="sd-gp-progress"><div className="sd-gp-fill" style={{ width: '0%' }} />{[4, 9.5, 15].map((point) => <span key={point} className={point === 4 ? 'grey' : point === 9.5 ? 'light-blue' : 'dark-blue'} style={{ left: (point / 15 * 100) + '%' }} title={point + '%'}>{point}%</span>)}</div>
+                <div className="sd-gp-progress"><div className="sd-gp-fill" style={{ width: '0%' }} />{[...gpMilestones].sort((a, b) => a - b).map((point, index, points) => <span key={point} className={index === 0 ? 'grey' : index === points.length - 1 ? 'dark-blue' : 'light-blue'} style={{ left: (point / Math.max(...points, 1) * 100) + '%' }} title={point + '%'}>{point}%</span>)}</div>
                 <div className="sd-gp-scale"><span>0%</span><span>15%</span></div>
               </div>
               <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Sales performance for the current business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{config.sales_codes.filter((code: any) => code.is_active).map((code: any) => <tr className="rfq-data-row" key={code.id}><td>{code.consultant_name || code.display_name || code.code}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>)}</tbody></table></div></div>
@@ -560,6 +563,13 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                       </div>
                     </>)}
                   </Sortable>
+                </div>
+              )}
+              {isAdmin && (
+                <div className="rfq-empty-card sd-form-card">
+                  <h3>Monthly GP% milestones</h3><p>The largest marker defines the progress bar total. Markers are ordered by value and color-coded from grey to light blue to dark blue.</p>
+                  <div className="sd-config-add"><input type="number" min="0" step="0.1" placeholder="Add milestone %" value={newMilestone} onChange={(e) => setNewMilestone(e.target.value)} /><button className="primary" disabled={!newMilestone || Number(newMilestone) < 0} onClick={() => { const value = Number(newMilestone); if (value > 0) { setGpMilestones((items) => [...items, value]); setNewMilestone('') } }}>Add</button></div>
+                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>{value}%</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><button className="icon-button" aria-label={'Remove ' + value + ' percent milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div>)}</div>
                 </div>
               )}
               <div className="rfq-empty-card sd-form-card">
