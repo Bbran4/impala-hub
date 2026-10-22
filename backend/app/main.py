@@ -1133,10 +1133,18 @@ def update_post(post_id: str, patch: PostPatch) -> dict:  # type: ignore[valid-t
             if "campaign_id" in changes and new_campaign != current["campaign_id"]:
                 if new_campaign and not db.execute("SELECT 1 FROM campaigns WHERE id = :campaign_id", {"campaign_id": new_campaign}).fetchone():
                     raise HTTPException(422, "Selected campaign does not exist")
-                db.execute(
-                    "UPDATE posts SET campaign_id = :campaign_id, updated_at = :updated_at WHERE id = :post_id",
-                    {"campaign_id": new_campaign, "updated_at": now_iso(), "post_id": post_id},
-                )
+                update_args = {"campaign_id": new_campaign, "updated_at": now_iso(), "post_id": post_id}
+                for attempt in range(5):
+                    try:
+                        db.execute(
+                            "UPDATE posts SET campaign_id = :campaign_id, updated_at = :updated_at WHERE id = :post_id",
+                            update_args,
+                        )
+                        break
+                    except sqlite3.OperationalError as exc:
+                        if "locked" not in str(exc).lower() or attempt == 4:
+                            raise
+                        time.sleep(0.15 * (attempt + 1))
                 audit(db, "updated", "post", post_id, {"status": current["status"], "changed": ["campaign_id"]})
             return fetch_post(db, post_id)
         base = {k: current[k] for k in PostIn.model_fields}
