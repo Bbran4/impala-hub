@@ -111,6 +111,10 @@ export default function App() {
   const [campaignName, setCampaignName] = useState('')
   const [campaignObjective, setCampaignObjective] = useState('')
   const [campaignStage, setCampaignStage] = useState<'new' | 'in_progress' | 'done'>('new')
+  const [campaignType, setCampaignType] = useState('Tips')
+  const [campaignTypes, setCampaignTypes] = useState<string[]>([])
+  const [newCampaignType, setNewCampaignType] = useState('')
+  const [draggedCampaignType, setDraggedCampaignType] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -135,8 +139,8 @@ export default function App() {
   async function load() {
     if (!getKey()) return
     try {
-      const [p, c, i] = await Promise.all([api('/api/posts'), api('/api/campaigns'), api('/api/integrations')])
-      setPosts(p); setCampaigns(c); setIntegrations(i); setError('')
+      const [p, c, i, ct] = await Promise.all([api('/api/posts'), api('/api/campaigns'), api('/api/integrations'), api('/api/campaign-types')])
+      setPosts(p); setCampaigns(c); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')
     } catch (e) { handleError(e) }
   }
   useEffect(() => {
@@ -383,7 +387,7 @@ export default function App() {
   async function createCampaign() {
     if (!campaignName.trim()) return
     try {
-      const payload = { name: campaignName, objective: campaignObjective, stage: campaignStage }
+      const payload = { name: campaignName, objective: campaignObjective, stage: campaignStage, campaign_type: campaignType }
       await api(editingCampaignId ? `/api/campaigns/${editingCampaignId}` : '/api/campaigns', { method: editingCampaignId ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       setCampaignName(''); setCampaignObjective(''); setEditingCampaignId(null); setCampaignModal(false); setNotice(editingCampaignId ? 'Campaign updated.' : 'Campaign created.')
       await load()
@@ -838,6 +842,23 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 </div>
               ))}
             </div>
+            <CampaignTypeConfiguration
+              types={campaignTypes}
+              draft={newCampaignType}
+              onDraftChange={setNewCampaignType}
+              dragged={draggedCampaignType}
+              onDragStart={setDraggedCampaignType}
+              onAdd={async () => {
+                if (!newCampaignType.trim()) return
+                try { await api('/api/campaign-types', { method: 'POST', body: JSON.stringify({ name: newCampaignType }) }); setNewCampaignType(''); await load() } catch (e) { handleError(e) }
+              }}
+              onDelete={async (name) => {
+                try { await api('/api/campaign-types/' + encodeURIComponent(name), { method: 'DELETE' }); await load() } catch (e) { handleError(e) }
+              }}
+              onReorder={async (names) => {
+                try { await api('/api/campaign-types/order', { method: 'PUT', body: JSON.stringify({ names }) }); await load() } catch (e) { handleError(e) }
+              }}
+            />
             <div className="security-note">
               <Settings size={20} />
               <div>
@@ -947,6 +968,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </header>
             <label htmlFor="campaign-name">Campaign name</label>
             <input id="campaign-name" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} placeholder="e.g. Spring maintenance campaign" />
+            <label htmlFor="campaign-type">Campaign type</label>
+            <select id="campaign-type" value={campaignType} onChange={(e) => setCampaignType(e.target.value)}>{campaignTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select>
             <label htmlFor="campaign-objective">Objective</label>
             <textarea id="campaign-objective" value={campaignObjective} onChange={(e) => setCampaignObjective(e.target.value)} placeholder="What should this campaign achieve?" rows={3} />
             <footer className="editor-foot">
@@ -961,8 +984,25 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
 }
 
 
-function PostPivot({ posts, campaigns }: { posts: Post[]; campaigns: Campaign[] }) {
-  const rows = campaigns.map((campaign) => {
+function CampaignTypeConfiguration({ types, draft, onDraftChange, dragged, onDragStart, onAdd, onDelete, onReorder }: { types: string[]; draft: string; onDraftChange: (v: string) => void; dragged: string | null; onDragStart: (v: string | null) => void; onAdd: () => void; onDelete: (name: string) => void; onReorder: (names: string[]) => void }) {
+  function drop(target: string) {
+    if (!dragged || dragged === target) return
+    const next = [...types]
+    const from = next.indexOf(dragged); const to = next.indexOf(target)
+    next.splice(from, 1); next.splice(to, 0, dragged)
+    onDragStart(null); onReorder(next)
+  }
+  return <div className="detail-card campaign-type-config">
+    <div className="section-head"><div><h2>Campaign types</h2><p>Manage the categories used by campaigns and grouped post insights.</p></div></div>
+    <div className="campaign-type-add"><input value={draft} placeholder="Add campaign type" onChange={(e) => onDraftChange(e.target.value)} /><button className="primary" onClick={onAdd}>Add type</button></div>
+    <div className="campaign-type-list">{types.map((type) => <div className="campaign-type-row" key={type} draggable onDragStart={() => onDragStart(type)} onDragOver={(e) => e.preventDefault()} onDrop={() => drop(type)}><span>☷ {type}</span><button className="icon-button" aria-label={'Remove ' + type} onClick={() => onDelete(type)}><Trash2 size={15} /></button></div>)}</div>
+  </div>
+}
+
+function PostPivot({ posts, campaigns, campaignTypes }: { posts: Post[]; campaigns: Campaign[]; campaignTypes: string[] }) {
+  const [selectedType, setSelectedType] = useState('all')
+  const scoped = selectedType === 'all' ? campaigns : campaigns.filter((campaign) => campaign.campaign_type === selectedType)
+  const rows = scoped.map((campaign) => {
     const items = posts.filter((p) => p.campaign_id === campaign.id)
     return { label: campaign.name, posts: items.length, likes: items.reduce((n, p) => n + (p.likes ?? 0), 0), comments: items.reduce((n, p) => n + (p.comments ?? 0), 0), shares: items.reduce((n, p) => n + (p.shares ?? 0), 0), clicks: items.reduce((n, p) => n + (p.clicks ?? 0), 0) }
   })
@@ -971,7 +1011,7 @@ function PostPivot({ posts, campaigns }: { posts: Post[]; campaigns: Campaign[] 
   const totals = rows.reduce((a, r) => ({ label: 'Total', posts: a.posts + r.posts, likes: a.likes + r.likes, comments: a.comments + r.comments, shares: a.shares + r.shares, clicks: a.clicks + r.clicks }), { label: 'Total', posts: 0, likes: 0, comments: 0, shares: 0, clicks: 0 })
   return (
     <div className="pivot-wrap">
-      <div className="section-head"><div><h2>Post insights</h2><p>Grouped reporting for the current filters.</p></div></div>
+      <div className="section-head"><div><h2>Post insights</h2><p>Grouped reporting for the current filters.</p></div><select aria-label="Campaign type" value={selectedType} onChange={(e) => setSelectedType(e.target.value)}><option value="all">All campaign types</option>{campaignTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></div>
       <div className="pivot-table-wrap"><table className="pivot-table"><thead><tr><th>Campaign</th><th>Posts</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Clicks</th></tr></thead><tbody>
         {rows.filter((r) => r.posts > 0).map((r) => <tr key={r.label}><td>{r.label}</td><td>{r.posts}</td><td>{r.likes}</td><td>{r.comments}</td><td>{r.shares}</td><td>{r.clicks}</td></tr>)}
         <tr className="pivot-total"><td>{totals.label}</td><td>{totals.posts}</td><td>{totals.likes}</td><td>{totals.comments}</td><td>{totals.shares}</td><td>{totals.clicks}</td></tr>
