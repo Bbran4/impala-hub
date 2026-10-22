@@ -96,3 +96,17 @@
 .sd-color-swatch.pink,.sd-gp-progress .pink{background:#d45a91}
 .sd-color-swatch.navy,.sd-gp-progress .navy{background:#142b40}
 .sd-color-swatch.brown,.sd-gp-progress .brown{background:#8a5a3b}
+
+.sd-gp-percent-text{font-style:normal;font-size:16px;color:#d64545}
+.sd-gp-percent-text.grey{color:#7b8790}
+.sd-gp-percent-text.light-blue{color:#6ba8d2}
+.sd-gp-percent-text.dark-blue{color:#234e70}
+.sd-gp-percent-text.red{color:#d64545}
+.sd-gp-percent-text.green{color:#2f9e6b}
+.sd-gp-percent-text.orange{color:#e68a2e}
+.sd-gp-percent-text.purple{color:#8b5fbf}
+.sd-gp-percent-text.teal{color:#229c9c}
+.sd-gp-percent-text.yellow{color:#b28b00}
+.sd-gp-percent-text.pink{color:#d45a91}
+.sd-gp-percent-text.navy{color:#142b40}
+.sd-gp-percent-text.brown{color:#8a5a3b}
