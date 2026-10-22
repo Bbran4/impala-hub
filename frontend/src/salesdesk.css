@@ -60,10 +60,10 @@
 .sd-dashboard-card-head h3{margin:0;color:#20364a;font:700 15px Manrope,sans-serif}
 .sd-dashboard-card-head p{margin:5px 0 0;color:#71808d;font-size:11px}
 .sd-dashboard-card-head>strong{font:800 28px Manrope;color:#20364a}
-.sd-gp-progress{position:relative;height:18px;margin:32px 10px 10px;background:linear-gradient(to right,#d64545 0%,#d64545 26.666%,#7eb6dc 26.666%,#7eb6dc 63.333%,#234e70 63.333%,#234e70 100%);border-radius:10px}
-.sd-gp-progress .sd-gp-fill{height:100%;border-radius:10px;background:#d64545}
-.sd-gp-progress>span{position:absolute;top:-26px;transform:translateX(-50%);font-size:10px;font-weight:700;padding:3px 6px;border-radius:10px;color:#fff}
-.sd-gp-progress>span::after{content:'';position:absolute;left:50%;top:100%;height:20px;border-left:2px solid currentColor}
+.sd-gp-progress{position:relative;height:18px;margin:32px 10px 10px;background:#d64545;border-radius:10px}
+.sd-gp-progress .sd-gp-fill{height:100%;border-radius:10px;background:#d64545;transition:width .25s ease,background .25s ease}.sd-gp-progress .sd-gp-fill.light-blue{background:#6ba8d2}.sd-gp-progress .sd-gp-fill.dark-blue{background:#234e70}
+.sd-gp-progress>span{position:absolute;top:-26px;transform:translateX(-50%);font-size:10px;font-weight:700;padding:3px 6px;border-radius:10px;color:#fff!important}
+.sd-gp-progress>span::after{display:none}
 .sd-gp-progress .grey{background:#7b8790;color:#7b8790}.sd-gp-progress .light-blue{background:#6ba8d2;color:#6ba8d2}.sd-gp-progress .dark-blue{background:#234e70;color:#234e70}
 .sd-gp-scale{display:flex;justify-content:space-between;color:#71808d;font-size:10px}
 
