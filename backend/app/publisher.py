@@ -167,9 +167,9 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
                     ids["permalink"] = item["permalink_url"]
                 db.execute(
                     "UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),shares=COALESCE(?,shares),reactions=COALESCE(?,reactions),clicks=COALESCE(?,clicks),"
-                    "reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),views=COALESCE(?,views),"
+                    "reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),views=COALESCE(?,views),engagements=COALESCE(?,engagements),"
                     "metrics_refreshed_at=?,provider_ids_json=? WHERE id=?",
-                    (item["likes"], item["comments"], item["shares"], item["reactions"], insights["clicks"], insights["reach"], insights["impressions"], insights["views"], stamp, json.dumps(ids), local_id),
+                    (item["likes"], item["comments"], item["shares"], item["reactions"], insights["clicks"], insights["reach"], insights["impressions"], insights["views"], insights["engagements"], stamp, json.dumps(ids), local_id),
                 )
                 stats["updated"] += 1
                 continue
@@ -181,8 +181,8 @@ def sync_posts(client: FacebookClient, limit: int = 100) -> dict:
             published_at = _fb_time(item["created_time"]) if item["created_time"] else stamp
             db.execute(
                 """INSERT INTO posts(id,title,caption,channels_json,status,published_at,media_json,provider_ids_json,
-                   likes,comments,shares,reactions,reach,impressions,views,metrics_refreshed_at,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   likes,comments,shares,reactions,reach,impressions,views,engagements,metrics_refreshed_at,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (local_id, "", item["message"], json.dumps(["facebook"]), "published", published_at, json.dumps(media),
                  json.dumps(ids), item["likes"], item["comments"], item["shares"], item["reactions"], insights["reach"], insights["impressions"], insights["views"], stamp, stamp, stamp),
             )
