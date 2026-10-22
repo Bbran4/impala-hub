@@ -332,8 +332,20 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .stock-booking-table th, .stock-booking-table td { white-space: nowrap; }
 .stock-booking-qty { width: 74px; padding: 7px 8px; border: 1px solid var(--line, #d7dce5); border-radius: 7px; background: #fff; }
 .stock-comments-field { min-width: 220px; }
-.settings-card { max-width: 760px; padding: 24px; background: #fff; border: 1px solid var(--line, #d7dce5); border-radius: 14px; }
+.settings-card { max-width: 1180px; padding: 24px; background: #fff; border: 1px solid var(--line, #d7dce5); border-radius: 14px; }
 .settings-card h3 { margin-top: 0; }
+.stock-config-form { flex-wrap: wrap; align-items: stretch; gap: 10px; }
+.stock-config-form input, .stock-config-select { min-width: 190px; flex: 1 1 190px; }
+.stock-config-form > .primary, .stock-config-form > .secondary { flex: 0 0 auto; margin-top: 4px; }
+.stock-config-form > .primary { margin-right: 100%; }
+.stock-config-select { appearance: none; border: 1px solid var(--line, #d7dce5); border-radius: 8px; background: #fff; color: inherit; padding: 10px 34px 10px 12px; font: inherit; line-height: 1.2; background-image: linear-gradient(45deg, transparent 50%, #687386 50%), linear-gradient(135deg, #687386 50%, transparent 50%); background-position: calc(100% - 17px) 50%, calc(100% - 11px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
+.stock-config-select:focus { outline: 2px solid rgba(55, 118, 219, .22); border-color: #3776db; }
+.stock-color-field { display: flex; align-items: center; gap: 8px; min-width: 150px; color: #687386; font-size: 12px; }
+.stock-color-field input { min-width: 42px; flex: 0 0 42px; width: 42px; height: 38px; padding: 3px; }
 .config-list { margin-top: 20px; border-top: 1px solid var(--line, #d7dce5); }
 .config-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line, #d7dce5); }
 .stock-supply-highlight { background: #fff4c2; font-weight: 700; box-shadow: inset 0 -2px 0 #d49b00; }
+.stock-cell-picking-slip { background: #e5e7eb !important; color: #4b5563; }
+.stock-cell-short { background: #ffedd5 !important; color: #9a3412; font-weight: 700; }
+.stock-row-no-warehouse td { background: #fee2e2 !important; color: #991b1b; }
+.stock-row-no-warehouse .stock-cell-picking-slip, .stock-row-no-warehouse .stock-cell-short { color: #991b1b; }

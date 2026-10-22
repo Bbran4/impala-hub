@@ -340,6 +340,7 @@ CREATE TABLE IF NOT EXISTS stock_locations (
     description TEXT NOT NULL DEFAULT '',
     vehicle_name TEXT NOT NULL DEFAULT '',
     supply_branch TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL DEFAULT '#dff7ff',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -389,17 +390,24 @@ def init_db() -> None:
             conn.execute("ALTER TABLE stock_locations ADD COLUMN vehicle_name TEXT NOT NULL DEFAULT ''")
         if not any(r['name'] == 'supply_branch' for r in conn.execute('PRAGMA table_info(stock_locations)')):
             conn.execute("ALTER TABLE stock_locations ADD COLUMN supply_branch TEXT NOT NULL DEFAULT ''")
+        if not any(r['name'] == 'color' for r in conn.execute('PRAGMA table_info(stock_locations)')):
+            conn.execute("ALTER TABLE stock_locations ADD COLUMN color TEXT NOT NULL DEFAULT '#dff7ff'")
+        for column in ('bin_pta', 'bin_er', 'bin_wh'):
+            if not any(r['name'] == column for r in conn.execute('PRAGMA table_info(stock_booking_items)')):
+                conn.execute(f"ALTER TABLE stock_booking_items ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         conn.execute("UPDATE stock_locations SET supply_branch='er' WHERE lower(name) IN ('east rand', 'east rand branch', 'er') AND supply_branch=''")
         conn.execute("UPDATE stock_locations SET supply_branch='pta' WHERE lower(name) IN ('pretoria', 'pretoria branch', 'pta') AND supply_branch=''")
         if conn.execute("SELECT COUNT(*) FROM stock_booking_items").fetchone()[0] == 0:
             seed = [
-                ('abc001', 'SHIM KIT', 'each', 6, 0, 4, 10, 8, 2, 0, 10, 60, 60),
-                ('xyz998', 'shirt', 'each', 4, 0, 1, 5, 0, 0, 0, 5, 48, 50),
-                ('33215', 'belt', 'each', 1, 0, 4, 5, 3, 0, 2, 5, 28, 30),
-                ('hp0-15-6', 'cap', '3', 2, 0, 3, 5, 1, 3, 1, 5, 20, 50),
-                ('zzzahx', 'jacket', 'each', 2, 0, 3, 5, 0, 0, 5, 5, 20, 20),
+                ('abc001', 'SHIM KIT', 'each', 6, 0, 4, 10, 8, 2, 0, 10, 60, 60, 'pt13', 'er50', 'a1-01-01', 'hadidas'),
+                ('xyz998', 'shirt', 'each', 4, 0, 1, 5, 0, 0, 0, 5, 48, 50, 'pt36', 'er23', 's3-01-16', 'mike'),
+                ('33215', 'belt', 'each', 1, 0, 4, 5, 3, 0, 2, 5, 28, 30, 'pt25', 'er14', 's3-04-25', 'generic'),
+                ('hp0-15-6', 'cap', '3', 2, 0, 3, 5, 1, 3, 1, 5, 20, 50, 'pt16', 'er11', 'c1-01-06', 'generic'),
+                ('zzzahx', 'jacket', 'each', 2, 0, 3, 5, 0, 0, 5, 5, 20, 20, 'pt46', 'er01', 'b2-06-03', 'pumba'),
             ]
-            conn.executemany("INSERT INTO stock_booking_items(id,franchise,part_number,description,unit_size,supply_er,on_picking_slip_er,qoh_er,max_er,supply_pta,on_picking_slip_pta,qoh_pta,max_pta,qoh_wh,max_wh,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(uuid.uuid4().hex, '', *row, now_iso()) for row in seed])
+            conn.executemany("INSERT INTO stock_booking_items(id,franchise,part_number,description,unit_size,supply_er,on_picking_slip_er,qoh_er,max_er,supply_pta,on_picking_slip_pta,qoh_pta,max_pta,qoh_wh,max_wh,bin_pta,bin_er,bin_wh,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(uuid.uuid4().hex, row[-1], *row[:-1], now_iso()) for row in seed])
+        bin_seed = [('abc001', 'hadidas', 'pt13', 'er50', 'a1-01-01'), ('xyz998', 'mike', 'pt36', 'er23', 's3-01-16'), ('33215', 'generic', 'pt25', 'er14', 's3-04-25'), ('hp0-15-6', 'generic', 'pt16', 'er11', 'c1-01-06'), ('zzzahx', 'pumba', 'pt46', 'er01', 'b2-06-03')]
+        conn.executemany("UPDATE stock_booking_items SET franchise=?,bin_pta=?,bin_er=?,bin_wh=?,updated_at=? WHERE part_number=?", [(franchise, pta, er, wh, now_iso(), part) for part, franchise, pta, er, wh in bin_seed])
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
@@ -1121,6 +1129,7 @@ class StockLocation(BaseModel):
     description: str = ""
     vehicle_name: str = ""
     supply_branch: str = Field(default="", pattern="^(|er|pta)$")
+    color: str = Field(default="#dff7ff", pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 @app.get("/api/stock-booking/locations", dependencies=[Depends(require_api_key)])
@@ -1136,7 +1145,7 @@ def create_stock_location(payload: StockLocation) -> dict:
     for attempt in range(3):
         try:
             with db_session() as db:
-                db.execute("INSERT INTO stock_locations(id,name,description,vehicle_name,supply_branch,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", (ident, payload.name.strip(), payload.description.strip(), payload.vehicle_name.strip(), payload.supply_branch, now, now))
+                db.execute("INSERT INTO stock_locations(id,name,description,vehicle_name,supply_branch,color,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (ident, payload.name.strip(), payload.description.strip(), payload.vehicle_name.strip(), payload.supply_branch, payload.color, now, now))
                 return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (ident,)).fetchone())
         except sqlite3.IntegrityError:
             raise HTTPException(409, "A stock location with that name already exists.")
@@ -1154,7 +1163,7 @@ def update_stock_location(location_id: str, payload: StockLocation) -> dict:
             with db_session() as db:
                 if not db.execute("SELECT 1 FROM stock_locations WHERE id=?", (location_id,)).fetchone():
                     raise HTTPException(404, "Stock location not found")
-                db.execute("UPDATE stock_locations SET name=?,description=?,vehicle_name=?,supply_branch=?,updated_at=? WHERE id=?", (payload.name.strip(), payload.description.strip(), payload.vehicle_name.strip(), payload.supply_branch, now, location_id))
+                db.execute("UPDATE stock_locations SET name=?,description=?,vehicle_name=?,supply_branch=?,color=?,updated_at=? WHERE id=?", (payload.name.strip(), payload.description.strip(), payload.vehicle_name.strip(), payload.supply_branch, payload.color, now, location_id))
                 return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (location_id,)).fetchone())
         except sqlite3.IntegrityError:
             raise HTTPException(409, "A stock location with that name already exists.")
