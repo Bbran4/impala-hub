@@ -398,6 +398,15 @@ export default function App() {
   function openCampaignEditor(c: Campaign) {
     setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignStage(c.stage || 'new'); setCampaignModal(true)
   }
+  async function removeCampaign(c: Campaign) {
+    if (posts.some((p) => p.campaign_id === c.id)) { setError('Campaigns can only be deleted when they contain no posts.'); return }
+    if (!window.confirm(`Delete campaign "${c.name}"?`)) return
+    try {
+      await api(`/api/campaigns/${c.id}`, { method: 'DELETE' })
+      setNotice('Campaign deleted.')
+      await load()
+    } catch (e) { handleError(e) }
+  }
 
   async function removePost(id: string) {
     if (!confirm('Delete this post?')) return
@@ -730,7 +739,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                   <p>{c.objective || 'No objective added yet.'}</p>
                                     <div className="campaign-footer">
                     <button className="text-button" onClick={() => openCampaignEditor(c)}>Edit</button>
-                    <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>
+                    <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>{!posts.some((p) => p.campaign_id === c.id) && <button className="text-button danger" onClick={() => void removeCampaign(c)}>Delete</button>}
                   </div>
                 </div>
                   ))}
