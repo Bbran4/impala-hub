@@ -4,7 +4,7 @@ import { headingOf, type Post } from './lib'
 
 // Only drafts and posts awaiting approval can change date. Scheduled and published posts are locked.
 const MOVABLE = ['draft', 'awaiting_approval']
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const pad = (n: number) => String(n).padStart(2, '0')
 const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const postDate = (p: Post) => p.published_at || p.publish_at || null
@@ -34,8 +34,8 @@ export default function PostCalendar({ posts, month, onOpen, onChangeDate, onCre
   }, [posts])
   const unscheduled = posts.filter((p) => !postDate(p) && MOVABLE.includes(p.status))
 
-  // Monday-first grid covering the whole month.
-  const offset = (month.getDay() + 6) % 7
+  // Sunday-first grid covering the whole month.
+  const offset = month.getDay()
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
   const cells = Array.from({ length: Math.ceil((offset + daysInMonth) / 7) * 7 }, (_, i) => {
     const day = i - offset + 1
