@@ -940,7 +940,7 @@ function PostPivot({ posts, campaigns }: { posts: Post[]; campaigns: Campaign[] 
   const totals = rows.reduce((a, r) => ({ label: 'Total', posts: a.posts + r.posts, likes: a.likes + r.likes, comments: a.comments + r.comments, shares: a.shares + r.shares, clicks: a.clicks + r.clicks }), { label: 'Total', posts: 0, likes: 0, comments: 0, shares: 0, clicks: 0 })
   return (
     <div className="pivot-wrap">
-      <div className="section-head"><div><h2>Post insights</h2><p>Odoo-style grouped reporting for the current filters.</p></div></div>
+      <div className="section-head"><div><h2>Post insights</h2><p>Grouped reporting for the current filters.</p></div></div>
       <div className="pivot-table-wrap"><table className="pivot-table"><thead><tr><th>Campaign</th><th>Posts</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Clicks</th></tr></thead><tbody>
         {rows.filter((r) => r.posts > 0).map((r) => <tr key={r.label}><td>{r.label}</td><td>{r.posts}</td><td>{r.likes}</td><td>{r.comments}</td><td>{r.shares}</td><td>{r.clicks}</td></tr>)}
         <tr className="pivot-total"><td>{totals.label}</td><td>{totals.posts}</td><td>{totals.likes}</td><td>{totals.comments}</td><td>{totals.shares}</td><td>{totals.clicks}</td></tr>
