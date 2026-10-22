@@ -240,3 +240,12 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .campaign-assignment-field select:focus{border-color:#7296b2;box-shadow:0 0 0 3px #7296b21c}
 .campaign-assignment-save{min-height:40px}
 @media(max-width:520px){.campaign-assignment-form{align-items:stretch;flex-direction:column}.campaign-assignment-save{width:100%}}
+
+/* Full-size image viewer inside the feed post overlay */
+.feed-image-viewer{z-index:40;align-items:center;justify-content:center;padding:24px;background:#081521e8}
+.feed-image-viewer-panel{position:relative;display:flex;align-items:center;justify-content:center;width:min(1100px,100%);height:min(900px,calc(100vh - 48px));padding:24px;background:#102333;border:1px solid #ffffff26;border-radius:14px;box-shadow:0 20px 70px #0008}
+.feed-image-viewer-panel img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:8px}
+.feed-image-viewer-close{position:absolute;right:12px;top:12px;z-index:1;background:#fff;color:#20364a}
+.feed-image-viewer-close:hover{background:#eef3f6}
+.feed-card-image{cursor:zoom-in}
+@media(max-width:600px){.feed-image-viewer{padding:12px}.feed-image-viewer-panel{height:calc(100vh - 24px);padding:14px}}
