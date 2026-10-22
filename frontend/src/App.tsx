@@ -723,7 +723,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             )}
             {view === 'calendar' && (
               <PostCalendar
-                posts={filteredPosts} month={month ?? startOfMonth()} onOpen={openPost} onError={setError}
+                posts={filteredPosts} month={month ?? startOfMonth()} onOpen={(id) => { setDetailId(id); setError('') }} onError={setError}
                 onChangeDate={(id, iso, message) => void patchPost(id, { publish_at: iso }, message)}
                 onCreate={(local) => { setEditor({ ...emptyPost(), publish_at: local }); setError('') }}
               />
@@ -868,7 +868,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
           </>
         )}
-              {key && page === 'Feed' && detailId && selected && (
+              {key && (page === 'Feed' || (page === 'Posts' && view === 'calendar')) && detailId && selected && (
           <div className="overlay feed-post-modal" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetailId(null) }}>
             <div className="feed-post-modal-panel">
               <button className="icon-button feed-post-modal-close" aria-label="Close post details" onClick={() => setDetailId(null)}><X size={20} /></button>
