@@ -451,6 +451,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
     if (sort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
     return (Number(!!a.sales_code) - Number(!!b.sales_code)) || String(a.received_at).localeCompare(String(b.received_at))
   })
+  const monthlySales = Number(dashboard.monthly_sales || 0)
   const canConvert = (r: any) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
 
   return (
@@ -471,8 +472,8 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                 <div className="sd-metric"><span>Open RFQs</span><strong>{dashboard.open}</strong></div>
               </div>
               <div className="sd-dashboard-card sd-gp-card">
-                <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Sales GP performance against configured milestones.</p></div><strong>—</strong></div>
-                <div className="sd-gp-progress"><div className="sd-gp-fill" style={{ width: '0%' }} />{[...gpMilestones].sort((a, b) => a - b).map((point, index, points) => <span key={point} className={index === 0 ? 'grey' : index === points.length - 1 ? 'dark-blue' : 'light-blue'} style={{ left: (point / Math.max(...points, 1) * 100) + '%' }} title={point + '%'}>{point}%</span>)}</div>
+                <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Sales GP performance against configured milestones.</p></div><strong>R{monthlySales.toLocaleString()}</strong></div>
+                <div className="sd-gp-progress"><div className={`sd-gp-fill ${monthlySales >= Math.max(...gpMilestones, 1) ? 'dark-blue' : monthlySales >= Math.min(...gpMilestones, 1) ? 'light-blue' : 'red'}`} style={{ width: Math.min(100, monthlySales / Math.max(...gpMilestones, 1) * 100) + '%' }} />{[...gpMilestones].sort((a, b) => a - b).map((point, index, points) => <span key={point} className={index === 0 ? 'grey' : index === points.length - 1 ? 'dark-blue' : 'light-blue'} style={{ left: (point / Math.max(...points, 1) * 100) + '%' }} title={'R' + point.toLocaleString()}>{'R' + point.toLocaleString()}</span>)}</div>
                 <div className="sd-gp-scale"><span>0%</span><span>15%</span></div>
               </div>
               <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Sales performance for the current business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{config.sales_codes.filter((code: any) => code.is_active).map((code: any) => <tr className="rfq-data-row" key={code.id}><td>{code.consultant_name || code.display_name || code.code}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>)}</tbody></table></div></div>
@@ -567,9 +568,9 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
               )}
               {isAdmin && (
                 <div className="rfq-empty-card sd-form-card">
-                  <h3>Monthly GP% milestones</h3><p>The largest marker defines the progress bar total. Markers are ordered by value and color-coded from grey to light blue to dark blue.</p>
-                  <div className="sd-config-add"><input type="number" min="0" step="0.1" placeholder="Add milestone %" value={newMilestone} onChange={(e) => setNewMilestone(e.target.value)} /><button className="primary" disabled={!newMilestone || Number(newMilestone) < 0} onClick={() => { const value = Number(newMilestone); if (value > 0) { setGpMilestones((items) => [...items, value]); setNewMilestone('') } }}>Add</button></div>
-                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>{value}%</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><button className="icon-button" aria-label={'Remove ' + value + ' percent milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div>)}</div>
+                  <h3>Monthly GP% milestones</h3><p>The largest marker defines the progress bar total. Values are whole rand amounts and can be edited.</p>
+                  <div className="sd-config-add"><input type="number" min="1" step="1" placeholder="Add milestone amount" value={newMilestone} onChange={(e) => setNewMilestone(e.target.value)} /><button className="primary" disabled={!newMilestone || Number(newMilestone) < 0} onClick={() => { const value = Number(newMilestone); if (Number.isInteger(value) && value > 0) { setGpMilestones((items) => [...items, value]); setNewMilestone('') } }}>Add</button></div>
+                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>R{value.toLocaleString()}</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><div className="sd-actions"><button className="secondary" onClick={() => { const next = window.prompt('Edit milestone amount', String(value)); const parsed = Number(next); if (next !== null && Number.isInteger(parsed) && parsed > 0) setGpMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove R' + value.toLocaleString() + ' milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
                 </div>
               )}
               <div className="rfq-empty-card sd-form-card">
