@@ -115,6 +115,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null)
   const [view, setView] = useState<'list' | 'board' | 'calendar' | 'pivot'>('list')
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
 
@@ -168,15 +169,16 @@ export default function App() {
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
-    if (!editor && !campaignModal) return
+    if (!editor && !campaignModal && !imageViewer) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (campaignModal) setCampaignModal(false)
+      if (imageViewer) setImageViewer(null)
+      else if (campaignModal) setCampaignModal(false)
       else setEditor(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [editor, campaignModal])
+  }, [editor, campaignModal, imageViewer])
 
   async function signIn() {
     setError('')
@@ -856,6 +858,14 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
           </div>
         )}
+        {imageViewer && (
+          <div className="overlay feed-image-viewer" role="dialog" aria-modal="true" aria-label="Full-size post image" onMouseDown={(e) => { if (e.target === e.currentTarget) setImageViewer(null) }}>
+            <div className="feed-image-viewer-panel">
+              <button className="icon-button feed-image-viewer-close" aria-label="Close full-size image" onClick={() => setImageViewer(null)}><X size={20} /></button>
+              <img src={imageViewer.url} alt={imageViewer.name} />
+            </div>
+          </div>
+        )}
 </main>
 
       {editor && (
@@ -997,7 +1007,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false, pa
                 <div className="feed-post-top"><a href={p.provider_ids?.permalink || pageUrl || '#'} target="_blank" rel="noreferrer" onClick={(e) => { if (!p.provider_ids?.permalink && !pageUrl) e.preventDefault() }}>{pageName || 'Social page'}</a><time>{fmt(p.published_at || p.publish_at, 'Not posted')}</time></div>
                 <p className="feed-card-caption" onClick={() => onOpen(p.id)}>{p.caption || heading}</p>
                 <div className="feed-card-images" onClick={() => onOpen(p.id)}>
-                  {p.media.slice(0, 2).map((m, index) => <div className="feed-card-image" key={m.id || m.url}><img src={mediaSrc(m)} alt={m.name} />{index === 1 && p.media.length > 2 && <span>+{p.media.length - 2}</span>}</div>)}
+                  {p.media.slice(0, 2).map((m, index) => <div className="feed-card-image" key={m.id || m.url} onClick={(e) => { e.stopPropagation(); setImageViewer({ url: mediaSrc(m), name: m.name }) }}><img src={mediaSrc(m)} alt={m.name} />{index === 1 && p.media.length > 2 && <span>+{p.media.length - 2}</span>}</div>)}
                   {!p.media.length && <div className="feed-card-no-image"><ImagePlus size={20} /></div>}
                 </div>
                 <div className="feed-card-bottom"><span><Heart size={14} /> {metric(p.likes)}</span><span><MessageCircle size={14} /> {metric(p.comments)}</span><span className="feed-card-views"><Eye size={14} /> {metric(p.views ?? p.impressions ?? p.reach)}</span></div>
