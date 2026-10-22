@@ -115,6 +115,15 @@ def init_sales_desk_db(database_path: Optional[Path] = None) -> None:
             created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_sd_attachments_rfq ON sd_rfq_attachments(rfq_id);
+        CREATE TABLE IF NOT EXISTS sd_notifications (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            rfq_id TEXT NOT NULL REFERENCES sd_rfqs(id) ON DELETE RESTRICT,
+            kind TEXT NOT NULL,
+            message TEXT NOT NULL,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
         -- Attachments are permanent. The database itself refuses deletes, not just the API.
         CREATE TRIGGER IF NOT EXISTS trg_sd_attachments_no_delete BEFORE DELETE ON sd_rfq_attachments
         BEGIN SELECT RAISE(ABORT, 'Attachments cannot be deleted'); END;
@@ -694,6 +703,26 @@ def patch_rfq(rfq_id: str, payload: RFQPatchIn, user: dict = Depends(current_use
 @router.get("/rfqs/{rfq_id}/history")
 def rfq_history(rfq_id: str, user: dict = Depends(current_user)) -> list[dict]:
     return get_rfq(rfq_id, user)["audit_history"]
+
+
+@router.post("/rfqs/{rfq_id}/send-for-approval")
+def send_for_approval(rfq_id: str, user: dict = Depends(current_user)) -> dict:
+    with db_session() as db:
+        row = db.execute(RFQ_SELECT + " WHERE r.id=?", (rfq_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "RFQ not found")
+        if not row["document_number"].strip():
+            raise HTTPException(422, "A document number is required before sending for approval.")
+        if not row["status_is_closed"]:
+            raise HTTPException(422, "The RFQ status must be Complete before sending for approval.")
+        if row["attachment_count"] < 1:
+            raise HTTPException(422, "Add at least one attachment before sending for approval.")
+        admins = db.execute("SELECT id FROM sd_users WHERE role IN ('administrator','admin')").fetchall()
+        message = f"RFQ {row['rfq_no']} is ready for approval."
+        for admin in admins:
+            db.execute("INSERT INTO sd_notifications(id,user_id,rfq_id,kind,message,created_at) VALUES(?,?,?,?,?,?)", (uuid.uuid4().hex, admin["id"], rfq_id, "rfq_approval", message, _now()))
+        _audit(db, rfq_id, user["id"], "sent_for_approval", {"notified_admins": len(admins)})
+    return {"sent": True, "notified_admins": len(admins)}
 
 
 @router.post("/rfqs/{rfq_id}/convert-to-invoice", status_code=201)

@@ -17,6 +17,7 @@ Implemented today:
 - Sales Desk dashboard with team metrics.
 - RFQ analytics with period filters and charts.
 - Drag-and-drop ordering for configuration items.
+- Send for Approval action on existing RFQs when the document number, attachment and Complete status requirements are met; RFQ administrators receive an approval notification.
 
 ## Improvement roadmap
 
@@ -49,7 +50,8 @@ Implemented today:
 | Sales Desk dashboard | Implemented | Add drill-downs and saved periods |
 | RFQ analytics | Implemented | Add conversion funnel and cohort comparisons |
 | Search/filtering | Basic filters | Add advanced filters and saved views |
-| Notifications | Missing | Add bell, unread count, and reminders |
+| Send for approval | Implemented with document, attachment and Complete-status guards | Add approval queue and decision tracking |
+| Notifications | Approval notification persistence implemented | Add bell, unread count, and reminders |
 | Bulk operations | Missing | Add multi-select actions |
 | Export/reporting | Partial | Add CSV, XLSX, and print views |
 | DMS integration | Planned | Reconcile with Qlik before production use |

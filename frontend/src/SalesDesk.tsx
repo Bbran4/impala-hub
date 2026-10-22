@@ -264,11 +264,21 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
     } catch (e) { setError((e as Error).message); await onChanged(); await load() } finally { setBusy(false) }
   }
 
+  async function sendForApproval() {
+    setBusy(true); setError('')
+    try {
+      await request(`/api/sales-desk/rfqs/${rfqId}/send-for-approval`, { method: 'POST' })
+      setNotice('RFQ sent to the RFQ administrator for approval.')
+      await onChanged()
+    } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
   const codeLabel = (c: any) => `${c.code} · ${c.consultant_name || c.display_name}`
   const mediaChoices = config.media_platforms.filter((m: any) => m.is_active || m.id === form.media_platform_id)
   const statusChoices = config.statuses.filter((s: any) => s.is_active || s.id === form.status_id)
   const codeChoices = config.sales_codes.filter((c: any) => c.is_active || c.id === form.sales_code_id)
   const disabled = readOnly || busy
+  const canSendForApproval = mode === 'edit' && !readOnly && Boolean(form.document_number.trim()) && Boolean(rfq?.attachments?.length) && String(rfq?.status || '').toLowerCase() === 'complete'
 
   return (
     <div className="overlay">
@@ -370,6 +380,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
           <button className="secondary" onClick={requestClose}>{readOnly ? 'Close' : 'Cancel'}</button>
           {readOnly && isSales && <button className="primary" disabled={busy} onClick={() => void claim()}>Claim this RFQ</button>}
           {!readOnly && <button className="primary" disabled={busy || loading || (mode === 'edit' && !dirty)} onClick={() => void save()}>{busy ? 'Saving…' : mode === 'create' ? 'Create RFQ' : 'Save changes'}</button>}
+          {canSendForApproval && <button className="secondary" disabled={busy || loading || dirty} onClick={() => void sendForApproval()}>Send for Approval</button>}
         </footer>
       </section>
     </div>

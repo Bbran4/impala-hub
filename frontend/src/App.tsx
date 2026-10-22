@@ -51,6 +51,7 @@ const SALES_ROADMAP_ROWS = [
   ['RFQ statuses', 'Pipeline stages', 'Configurable statuses', 'Implemented; Kanban improvement planned'],
   ['RFQ audit history', 'Chatter/activity history', 'Audit timeline', 'Implemented'],
   ['Attachments', 'Record attachments', 'Protected RFQ attachments', 'Implemented'],
+  ['Send for approval', 'Approval handoff', 'Requires document number, attachment and Complete status; notifies RFQ administrators', 'Implemented'],
   ['Sales Desk dashboard', 'Not applicable', 'Team RFQ and sales metrics', 'Implemented; drill-downs planned'],
   ['RFQ analytics', 'Not applicable', 'Period-filtered analytics', 'Implemented; funnel improvements planned'],
   ['Search and filtering', 'Advanced search panels', 'Basic filters', 'Partial'],
@@ -590,7 +591,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <div className="section-head">
               <div><h2>RFQ capability workspace</h2><p>Current Sales Desk coverage, known gaps, and improvement priorities.</p></div>
             </div>
-            <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ Kanban</span><span>Notifications and SLA reminders</span><span>Bulk actions and exports</span><span>DMS/Qlik reconciliation</span></div>
+            <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ approval review queue</span><span>Notifications and SLA reminders</span><span>Bulk actions and exports</span><span>DMS/Qlik reconciliation</span></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
               {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
