@@ -20,7 +20,7 @@
 | Priority | Capability | Outcome | Status |
 |---|---|---|---|
 | 1 | Qlik/Google Sheets stock import | Refresh stock data without manual API entry | Planned |
-| 2 | Evolve XLSX template export | Export directly into the supplied `LocationTransferTemplate.xlsx` format | Partial; CSV-compatible export exists |
+| 2 | Evolve picking-list export | Export franchise, locations, bins, quantities and comments using the supplied transfer format | Implemented |
 | 3 | Supplier response workflow | Track quote requests and responses | Planned |
 | 4 | Approval workflow | Approve queries and supplier selections | Planned |
 | 5 | Supplier history | Reuse supplier performance and pricing history | Planned |
