@@ -216,41 +216,29 @@ class FacebookClient:
             body = self._request("GET", next_url)
 
     def post_insights(self, post_id: str) -> dict:
-        """Return total Page-post performance with compatibility fallbacks across Graph versions."""
-        metric_sets = [
-            "post_media_view,post_total_media_view_unique,post_clicks",
-            "post_impressions,post_impressions_unique,post_clicks",
-        ]
-        body = None
-        for metrics in metric_sets:
-            try:
-                body = self._request(
-                    "GET", f"/{post_id}/insights",
-                    params={"metric": metrics, "access_token": self._token},
-                )
-                if body.get("data"):
-                    break
-            except FacebookError:
-                continue
+        """Return post views, unique reach and clicks with independent metric fallbacks."""
         values: dict[str, Optional[int]] = {"impressions": None, "reach": None, "views": None, "clicks": None}
-        for item in (body or {}).get("data", []):
-            points = item.get("values") or []
-            if not points:
-                continue
-            value = points[-1].get("value")
-            if not isinstance(value, (int, float)):
-                continue
-            name = item.get("name")
-            if name == "post_media_view":
-                values["views"] = int(value)
-            elif name == "post_total_media_view_unique":
-                values["reach"] = int(value)
-            elif name == "post_impressions":
-                values["impressions"] = int(value)
-            elif name == "post_impressions_unique":
-                values["reach"] = int(value)
-            elif name == "post_clicks":
-                values["clicks"] = int(value)
+        metric_fallbacks = {
+            "views": ["post_media_view", "post_impressions"],
+            "reach": ["post_total_media_view_unique", "post_impressions_unique"],
+            "clicks": ["post_clicks"],
+        }
+        for target, names in metric_fallbacks.items():
+            for name in names:
+                try:
+                    body = self._request(
+                        "GET", f"/{post_id}/insights",
+                        params={"metric": name, "access_token": self._token},
+                    )
+                except FacebookError:
+                    continue
+                points = (body.get("data") or [{}])[0].get("values") or []
+                value = points[-1].get("value") if points else None
+                if isinstance(value, (int, float)):
+                    values[target] = int(value)
+                    if target == "views" and name == "post_impressions":
+                        values["impressions"] = int(value)
+                    break
         return values
 
     def publish(self, caption: str, images: list[Path]) -> str:
