@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
+  ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
@@ -115,7 +115,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [imageViewer, setImageViewer] = useState<{ url: string; name: string } | null>(null)
+  const [imageViewer, setImageViewer] = useState<{ images: Post['media']; index: number } | null>(null)
   const [view, setView] = useState<'list' | 'board' | 'calendar' | 'pivot'>('list')
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
 
@@ -770,7 +770,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           selected ? (
             <PostDetail
               post={selected} campaigns={campaigns} onBack={() => setPage('Posts')} onEdit={openEditor}
-              onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onError={handleError}
+              onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onOpenImage={(images, index) => setImageViewer({ images, index })} onError={handleError}
             />
           ) : (
             <div className="empty">
@@ -858,11 +858,13 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
           </div>
         )}
-        {imageViewer && (
+        {imageViewer && imageViewer.images[imageViewer.index] && (
           <div className="overlay feed-image-viewer" role="dialog" aria-modal="true" aria-label="Full-size post image" onMouseDown={(e) => { if (e.target === e.currentTarget) setImageViewer(null) }}>
             <div className="feed-image-viewer-panel">
               <button className="icon-button feed-image-viewer-close" aria-label="Close full-size image" onClick={() => setImageViewer(null)}><X size={20} /></button>
-              <img src={imageViewer.url} alt={imageViewer.name} />
+              {imageViewer.images.length > 1 && <button className="feed-image-viewer-nav feed-image-viewer-prev" aria-label="Previous image" onClick={() => setImageViewer((v) => v ? { ...v, index: (v.index - 1 + v.images.length) % v.images.length } : v)}><ArrowLeft size={22} /></button>}
+              <img src={mediaSrc(imageViewer.images[imageViewer.index])} alt={imageViewer.images[imageViewer.index].name} />
+              {imageViewer.images.length > 1 && <button className="feed-image-viewer-nav feed-image-viewer-next" aria-label="Next image" onClick={() => setImageViewer((v) => v ? { ...v, index: (v.index + 1) % v.images.length } : v)}><ArrowRight size={22} /></button>}
             </div>
           </div>
         )}
@@ -1007,7 +1009,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false, pa
                 <div className="feed-post-top"><a href={p.provider_ids?.permalink || pageUrl || '#'} target="_blank" rel="noreferrer" onClick={(e) => { if (!p.provider_ids?.permalink && !pageUrl) e.preventDefault() }}>{pageName || 'Social page'}</a><time>{fmt(p.published_at || p.publish_at, 'Not posted')}</time></div>
                 <p className="feed-card-caption" onClick={() => onOpen(p.id)}>{p.caption || heading}</p>
                 <div className="feed-card-images" onClick={() => onOpen(p.id)}>
-                  {p.media.slice(0, 2).map((m, index) => <div className="feed-card-image" key={m.id || m.url} onClick={(e) => { e.stopPropagation(); setImageViewer({ url: mediaSrc(m), name: m.name }) }}><img src={mediaSrc(m)} alt={m.name} />{index === 1 && p.media.length > 2 && <span>+{p.media.length - 2}</span>}</div>)}
+                  {p.media.slice(0, 2).map((m, index) => <div className="feed-card-image" key={m.id || m.url} onClick={() => onOpen(p.id)}><img src={mediaSrc(m)} alt={m.name} />{index === 1 && p.media.length > 2 && <span>+{p.media.length - 2}</span>}</div>)}
                   {!p.media.length && <div className="feed-card-no-image"><ImagePlus size={20} /></div>}
                 </div>
                 <div className="feed-card-bottom"><span><Heart size={14} /> {metric(p.likes)}</span><span><MessageCircle size={14} /> {metric(p.comments)}</span><span className="feed-card-views"><Eye size={14} /> {metric(p.views ?? p.impressions ?? p.reach)}</span></div>
