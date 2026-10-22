@@ -417,7 +417,7 @@ export default function App() {
     } catch (e) { handleError(e) }
   }
 
-  function openPost(id: string) { setDetailId(id); setPage('Post'); setError('') }
+  function openPost(id: string) { setDetailId(id); setError(''); if (page !== 'Feed') setPage('Post') }
 
   // Failed posts reopen with their existing content and a safe near-future time.
   function reschedulePost(p: Post) {
@@ -837,7 +837,18 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
           </>
         )}
-      </main>
+              {key && page === 'Feed' && detailId && selected && (
+          <div className="overlay feed-post-modal" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetailId(null) }}>
+            <div className="feed-post-modal-panel">
+              <button className="icon-button feed-post-modal-close" aria-label="Close post details" onClick={() => setDetailId(null)}><X size={20} /></button>
+              <PostDetail
+                post={selected} campaigns={campaigns} onBack={() => setDetailId(null)} onEdit={openEditor}
+                onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onError={handleError}
+              />
+            </div>
+          </div>
+        )}
+</main>
 
       {editor && (
         <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setEditor(null) }}>
