@@ -463,7 +463,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
     if (sort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
     return (Number(!!a.sales_code) - Number(!!b.sales_code)) || String(a.received_at).localeCompare(String(b.received_at))
   })
-  const monthlySales = Number(dashboard.monthly_sales ?? TEMP_MONTHLY_GROSS_SALES)
+  const monthlySales = TEMP_MONTHLY_GROSS_SALES
   const canConvert = (r: any) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
 
   return (
