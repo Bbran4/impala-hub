@@ -247,7 +247,7 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .feed-image-viewer-panel img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:8px}
 .feed-image-viewer-close{position:absolute;right:12px;top:12px;z-index:1;background:#fff;color:#20364a}
 .feed-image-viewer-close:hover{background:#eef3f6}
-.feed-card-image{cursor:zoom-in}
+.feed-card-image{cursor:pointer}
 @media(max-width:600px){.feed-image-viewer{padding:12px}.feed-image-viewer-panel{height:calc(100vh - 24px);padding:14px}}
 
 .feed-image-viewer-nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border:1px solid #ffffff33;border-radius:50%;background:#ffffffed;color:#20364a;display:grid;place-items:center;z-index:2}
@@ -259,3 +259,6 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 
 .feed-post-modal .detail-card .media-thumb{cursor:zoom-in;transition:border-color .15s ease,box-shadow .15s ease}
 .feed-post-modal .detail-card .media-thumb:hover{border-color:#7296b2;box-shadow:0 3px 10px #1c30421a}
+
+.feed-post-modal .detail-media-thumb{appearance:none;border:1px solid #dce4e9;padding:0;text-align:left;color:inherit;font:inherit;background:#fff;cursor:zoom-in}
+.feed-post-modal .detail-media-thumb:hover{border-color:#7296b2;box-shadow:0 3px 10px #1c30421a}
