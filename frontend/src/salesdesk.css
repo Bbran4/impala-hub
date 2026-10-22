@@ -72,3 +72,5 @@
 .sd-milestone-list small{color:#71808d}
 
 .sd-gp-progress>span.final{transform:translateX(-100%)}
+
+.sd-highlight-value{font-weight:800;color:#20364a}
