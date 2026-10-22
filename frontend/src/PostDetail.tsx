@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, CalendarClock, ImagePlus, Lock, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarClock, ImagePlus, Lock, Pencil, Trash2, X } from 'lucide-react'
 import { api, EDITABLE, fmt, mediaSrc, metric, type Campaign, type HistoryEntry, type Post } from './lib'
 
 type Props = {
@@ -27,12 +27,24 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
   const [campaignId, setCampaignId] = useState(post.campaign_id || '')
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   const [saving, setSaving] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
 
   const editable = EDITABLE.includes(post.status)
   const published = post.status === 'published'
   const heading = post.title?.trim() || post.caption?.trim().slice(0, 110) || 'Untitled post'
 
   useEffect(() => { setCampaignId(post.campaign_id || '') }, [post.id, post.campaign_id])
+
+  useEffect(() => {
+    if (lightboxIndex === null) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxIndex(null)
+      if (e.key === 'ArrowLeft' && post.media.length > 1) setLightboxIndex((i) => i === null ? 0 : (i - 1 + post.media.length) % post.media.length)
+      if (e.key === 'ArrowRight' && post.media.length > 1) setLightboxIndex((i) => i === null ? 0 : (i + 1) % post.media.length)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightboxIndex, post.media.length])
 
   useEffect(() => {
     let live = true
@@ -78,7 +90,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         <p className="detail-caption">{post.caption || 'No caption.'}</p>
         <div className="media-grid">
           {post.media.map((m) => (
-            <button className="media-thumb detail-media-thumb" key={m.id} type="button" onClick={(e) => { e.stopPropagation(); onOpenImage(post.media, post.media.findIndex((image) => image.id === m.id)) }} aria-label={'View ' + m.name + ' full size'}><img src={mediaSrc(m)} alt={m.name} /><small>{m.name}</small></button>
+            <button className="media-thumb detail-media-thumb" key={m.id} type="button" onClick={(e) => { e.stopPropagation(); setLightboxIndex(post.media.findIndex((image) => image.id === m.id)) }} aria-label={'View ' + m.name + ' full size'}><img src={mediaSrc(m)} alt={m.name} /><small>{m.name}</small></button>
           ))}
           {!post.media.length && <div className="media-empty"><ImagePlus size={22} /><span>No images attached</span></div>}
         </div>
@@ -146,6 +158,16 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
           ))}
         </ul>
       </div>
+      {lightboxIndex !== null && post.media[lightboxIndex] && (
+        <div className="overlay feed-image-viewer" role="dialog" aria-modal="true" aria-label="Full-size post image" onMouseDown={(e) => { if (e.target === e.currentTarget) setLightboxIndex(null) }}>
+          <div className="feed-image-viewer-panel">
+            <button className="icon-button feed-image-viewer-close" aria-label="Close full-size image" onClick={() => setLightboxIndex(null)}><X size={20} /></button>
+            {post.media.length > 1 && <button className="feed-image-viewer-nav feed-image-viewer-prev" aria-label="Previous image" onClick={() => setLightboxIndex((i) => i === null ? 0 : (i - 1 + post.media.length) % post.media.length)}><ArrowLeft size={22} /></button>}
+            <img src={mediaSrc(post.media[lightboxIndex])} alt={post.media[lightboxIndex].name} />
+            {post.media.length > 1 && <button className="feed-image-viewer-nav feed-image-viewer-next" aria-label="Next image" onClick={() => setLightboxIndex((i) => i === null ? 0 : (i + 1) % post.media.length)}><ArrowRight size={22} /></button>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
