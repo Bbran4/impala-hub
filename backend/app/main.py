@@ -1692,11 +1692,12 @@ def sync_all_integrations() -> dict:
                     impressions = insight_values.get("impressions")
                     reach = insight_values.get("reach")
                     clicks = insight_values.get("total_interactions")
+                    views = insight_values.get("views") or insight_values.get("impressions")
                     if instagram_id in known:
                         local_id, ids = known[instagram_id]
                         if item.get("permalink"):
                             ids["permalink"] = item["permalink"]
-                        db.execute("UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),clicks=COALESCE(?,clicks),reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),views=COALESCE(?,views),metrics_refreshed_at=?,provider_ids_json=? WHERE id=?", (likes, comments, clicks, reach, impressions, stamp, json.dumps(ids), local_id))
+                        db.execute("UPDATE posts SET likes=COALESCE(?,likes),comments=COALESCE(?,comments),clicks=COALESCE(?,clicks),reach=COALESCE(?,reach),impressions=COALESCE(?,impressions),views=COALESCE(?,views),metrics_refreshed_at=?,provider_ids_json=? WHERE id=?", (likes, comments, clicks, reach, impressions, views, stamp, json.dumps(ids), local_id))
                         updated += 1
                         continue
                     local_id = "ig-" + instagram_id.replace("_", "-")
@@ -1704,7 +1705,7 @@ def sync_all_integrations() -> dict:
                     image_url = item.get("media_url")
                     media_json = [{"id": local_id + "-1", "name": "Instagram media", "url": image_url}] if image_url else []
                     published_at = item.get("timestamp") or stamp
-                    db.execute("INSERT INTO posts(id,title,caption,channels_json,status,published_at,media_json,provider_ids_json,likes,comments,shares,reach,impressions,metrics_refreshed_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (local_id, "", item.get("caption") or "", json.dumps(["instagram"]), "published", published_at, json.dumps(media_json), json.dumps(ids), likes, comments, clicks, reach, impressions, stamp, stamp, stamp))
+                    db.execute("INSERT INTO posts(id,title,caption,channels_json,status,published_at,media_json,provider_ids_json,likes,comments,shares,reach,impressions,views,metrics_refreshed_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (local_id, "", item.get("caption") or "", json.dumps(["instagram"]), "published", published_at, json.dumps(media_json), json.dumps(ids), likes, comments, clicks, reach, impressions, views, stamp, stamp, stamp))
                     imported += 1
                 db.execute("UPDATE instagram_connection SET last_checked_at=?, updated_at=? WHERE id=1", (stamp, stamp))
             result["instagram"] = {"status": "synced", "account_id": row["account_id"], "items": len(items), "imported": imported, "updated": updated}
