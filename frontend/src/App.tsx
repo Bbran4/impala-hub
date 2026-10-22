@@ -735,7 +735,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <>
             <div className="section-head">
               <div><h2>Campaigns</h2><p>Group related posts under a shared marketing objective.</p></div>
-              <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage('new'); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>
+              <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage('new'); setCampaignType(campaignTypes[0] || 'Tips'); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>
             </div>
             <div className="campaign-board">
               {([
@@ -745,7 +745,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               ] as const).map(([stage, label]) => (
                 <section className="campaign-column" key={stage} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/campaign-id'); if (id) void moveCampaign(id, stage) }}>
                   <header className="campaign-column-head"><h3>{label}</h3><span>{campaigns.filter((c) => (c.stage || 'new') === stage).length}</span></header>
-                  <button className="campaign-quick-add" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage(stage); setCampaignModal(true) }}><Plus size={14} /> Quick add</button>
+                  <button className="campaign-quick-add" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage(stage); setCampaignType(campaignTypes[0] || 'Tips'); setCampaignModal(true) }}><Plus size={14} /> Quick add</button>
                   {campaigns.filter((c) => (c.stage || 'new') === stage).map((c) => (
                 <div className="campaign-card" key={c.id} draggable onDragStart={(e) => e.dataTransfer.setData('text/campaign-id', c.id)}>
                   <div className="campaign-icon"><Megaphone size={20} /></div>
