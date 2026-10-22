@@ -228,3 +228,15 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .roadmap-status.missing{background:#fff0ed;color:#a34130}
 
 .feed-post-modal{z-index:30;align-items:center;justify-content:center;padding:24px}.feed-post-modal-panel{position:relative;width:min(760px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:24px;background:#f8fafb;border-radius:12px;box-shadow:0 18px 60px #0b203055}.feed-post-modal-panel .post-detail{padding:24px}.feed-post-modal-close{position:absolute;right:16px;top:16px;z-index:2;background:#fff}
+
+/* Post overlay campaign assignment */
+.campaign-assignment-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.campaign-assignment-heading h3{margin-bottom:5px}
+.campaign-assignment-heading p{margin:0;color:#7b8994;font-size:11px;line-height:1.5}
+.campaign-assignment-form{display:flex;align-items:flex-end;gap:10px;margin-top:16px}
+.campaign-assignment-field{display:flex;flex:1;min-width:0;flex-direction:column;gap:7px}
+.campaign-assignment-field span{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#71808d}
+.campaign-assignment-field select{width:100%;border:1px solid #d8e1e7;border-radius:8px;padding:11px 12px;color:#2d3e4d;background:#fbfcfd;outline-color:#7296b2;font-size:12px}
+.campaign-assignment-field select:focus{border-color:#7296b2;box-shadow:0 0 0 3px #7296b21c}
+.campaign-assignment-save{min-height:40px}
+@media(max-width:520px){.campaign-assignment-form{align-items:stretch;flex-direction:column}.campaign-assignment-save{width:100%}}
