@@ -218,11 +218,12 @@ class FacebookClient:
 
     def post_insights(self, post_id: str) -> dict:
         """Return post views, unique reach and clicks with independent metric fallbacks."""
-        values: dict[str, Optional[int]] = {"impressions": None, "reach": None, "views": None, "clicks": None}
+        values: dict[str, Optional[int]] = {"impressions": None, "reach": None, "views": None, "clicks": None, "engagements": None}
         metric_fallbacks = {
             "views": ["post_media_view", "post_impressions"],
             "reach": ["post_total_media_view_unique", "post_impressions_unique"],
             "clicks": ["post_clicks"],
+            "engagements": ["post_engagements"],
         }
         for target, names in metric_fallbacks.items():
             for name in names:
