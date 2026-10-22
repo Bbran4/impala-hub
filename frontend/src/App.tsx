@@ -51,7 +51,7 @@ const SALES_ROADMAP_ROWS = [
   ['RFQ statuses', 'Pipeline stages', 'Configurable statuses', 'Implemented; Kanban improvement planned'],
   ['RFQ audit history', 'Chatter/activity history', 'Audit timeline', 'Implemented'],
   ['Attachments', 'Record attachments', 'Protected RFQ attachments', 'Implemented'],
-  ['Send for approval', 'Approval handoff', 'Requires document number, attachment and Complete status; notifies RFQ administrators', 'Implemented'],
+  ['Send for approval', 'Approval handoff', 'Requires document number, attachment and Complete status; notifies RFQ administrators', 'Partial; needs testing'],
   ['Sales Desk dashboard', 'Not applicable', 'Team RFQ and sales metrics', 'Implemented; drill-downs planned'],
   ['RFQ analytics', 'Not applicable', 'Period-filtered analytics', 'Implemented; funnel improvements planned'],
   ['Search and filtering', 'Advanced search panels', 'Basic filters', 'Partial'],

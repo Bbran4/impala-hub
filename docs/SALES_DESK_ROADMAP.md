@@ -17,7 +17,7 @@ Implemented today:
 - Sales Desk dashboard with team metrics.
 - RFQ analytics with period filters and charts.
 - Drag-and-drop ordering for configuration items.
-- Send for Approval action on existing RFQs when the document number, attachment and Complete status requirements are met; RFQ administrators receive an approval notification.
+- Send for Approval action has an initial implementation for existing RFQs, with document number, attachment and Complete-status guards plus persisted administrator notifications; end-to-end testing remains.
 
 ## Improvement roadmap
 
@@ -50,7 +50,7 @@ Implemented today:
 | Sales Desk dashboard | Implemented | Add drill-downs and saved periods |
 | RFQ analytics | Implemented | Add conversion funnel and cohort comparisons |
 | Search/filtering | Basic filters | Add advanced filters and saved views |
-| Send for approval | Implemented with document, attachment and Complete-status guards | Add approval queue and decision tracking |
+| Send for approval | Partial; initial implementation with document, attachment and Complete-status guards | Test end-to-end administrator notification, then add approval queue and decision tracking |
 | Notifications | Approval notification persistence implemented | Add bell, unread count, and reminders |
 | Bulk operations | Missing | Add multi-select actions |
 | Export/reporting | Partial | Add CSV, XLSX, and print views |
