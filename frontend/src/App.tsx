@@ -442,6 +442,14 @@ export default function App() {
     } catch (e) { handleError(e) }
   }
 
+  useEffect(() => {
+    const locked = page === 'Feed' && Boolean(detailId)
+    if (!locked) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [page, detailId])
+
   const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
