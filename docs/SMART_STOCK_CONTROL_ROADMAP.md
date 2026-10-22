@@ -9,6 +9,8 @@
 - Development Status and workflow Status fields.
 - Search, filters, side-panel creation, editing, supplier management and deletion.
 - Stock Booking workspace with branch stock comparison and one Book quantity per part.
+- Stock Reordering workspace with franchise, alternatives, branch/warehouse QOH, safety stock, sales, supplier and reorder metrics.
+- Stock Reordering filters for supplier, part number, description, alternative number and supplier category.
 - Configurable From/To locations with optional descriptions, vehicles, branch mappings and highlight colors.
 - From restricted to `10 — Warehouse`; To restricted to `ERBAKKIE` and `PTABAKKIE`.
 - Calculated branch supply values: `Max - QOH - On Picking Slip`, with descending ER/PT supply sorting.

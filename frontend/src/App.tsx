@@ -11,6 +11,7 @@ import SalesDesk from './SalesDesk'
 import Buyouts from './Buyouts'
 import StockBooking from './StockBooking'
 import StockControlConfig from './StockControlConfig'
+import StockReordering from './StockReordering'
 import ReturnsClaims from './ReturnsClaims'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
@@ -463,10 +464,10 @@ export default function App() {
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
   const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims','Implemented'],['Outcome handling','Unknown until decided','Optional outcome request','Implemented'],['Attachments','Evidence files','Saved record attachments','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response workflow','Planned'],['Ageing and SLA','Claim ageing reports','Overdue claim visibility','Planned'],['Exports and audit','Traceable reporting','Exports and history','Planned'],['Wildcard search','Search','Wildcard matching across claim fields','Planned']]
-const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Part details and supplier quotes','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','ER/PTA stock comparison, Book quantities and export','Implemented'],['Location configuration','Locations and vehicles','Descriptions, vehicles, supply mappings and colors','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['Qlik/Google Sheets import','Live inventory feed','Refresh stock data from source sheet','Planned'],['Supplier response workflow','Quote lifecycle','Track quote requests and supplier responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Wildcard search','Search','Wildcard matching across parts, suppliers and sales codes','Implemented']]
+const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Part details and supplier quotes','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','ER/PTA stock comparison, Book quantities and export','Implemented'],['Stock Reordering','Inventory planning','Stock, safety, sales, supplier and reorder metrics','Implemented'],['Location configuration','Locations and vehicles','Descriptions, vehicles, supply mappings and colors','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['Qlik/Google Sheets import','Live inventory feed','Refresh stock data from source sheet','Planned'],['Supplier response workflow','Quote lifecycle','Track quote requests and supplier responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Wildcard search','Search','Wildcard matching across parts, suppliers and sales codes','Implemented']]
 
 const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
-  const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
+  const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Reordering' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
   const isReturnsClaimsPage = page === 'Returns & Claims' || page === 'Returns & Claims Roadmap'
 
   return (
@@ -483,7 +484,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             {(isSalesDeskPage
               ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
-              ? ([['Stock Booking', PackageCheck], ['Parts Query', ClipboardList], ['Stock Control Configuration', Settings], ['Stock Control Roadmap', Map]] as const)
+              ? ([['Stock Booking', PackageCheck], ['Stock Reordering', PackageCheck], ['Parts Query', ClipboardList], ['Stock Control Configuration', Settings], ['Stock Control Roadmap', Map]] as const)
                 : isReturnsClaimsPage
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
@@ -604,7 +605,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
-        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
+        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Reordering' ? <StockReordering token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">

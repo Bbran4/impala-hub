@@ -350,6 +350,20 @@ INSERT OR IGNORE INTO stock_locations(id, name, description, created_at, updated
 PRAGMA user_version = 12;
 """
 
+SCHEMA_V13 = """
+CREATE TABLE IF NOT EXISTS stock_reordering_items (
+    id TEXT PRIMARY KEY,
+    franchise TEXT NOT NULL DEFAULT '', part_number TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+    alt_1 TEXT NOT NULL DEFAULT '', alt_2 TEXT NOT NULL DEFAULT '', alt_3 TEXT NOT NULL DEFAULT '', alt_4 TEXT NOT NULL DEFAULT '',
+    qoh_er REAL NOT NULL DEFAULT 0, safety_er REAL NOT NULL DEFAULT 0, qoh_pta REAL NOT NULL DEFAULT 0, safety_pta REAL NOT NULL DEFAULT 0,
+    qoh_wh REAL NOT NULL DEFAULT 0, safety_wh REAL NOT NULL DEFAULT 0, global_safety REAL NOT NULL DEFAULT 0,
+    qty_on_order REAL NOT NULL DEFAULT 0, qty_to_order REAL NOT NULL DEFAULT 0, lead_time TEXT NOT NULL DEFAULT '', avg_sales REAL NOT NULL DEFAULT 0,
+    sales_this_month REAL NOT NULL DEFAULT 0, gauge TEXT NOT NULL DEFAULT '', supplier TEXT NOT NULL DEFAULT '', last_cost REAL,
+    supplier_type TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stock_reordering_part ON stock_reordering_items(part_number);
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -382,6 +396,8 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V11)
         if version < 12:
             conn.executescript(SCHEMA_V12)
+        if version < 13:
+            conn.executescript(SCHEMA_V13)
         if not any(r['name'] == 'franchise' for r in conn.execute('PRAGMA table_info(stock_booking_items)')):
             conn.execute("ALTER TABLE stock_booking_items ADD COLUMN franchise TEXT NOT NULL DEFAULT ''")
         if not any(r['name'] == 'description' for r in conn.execute('PRAGMA table_info(stock_locations)')):
@@ -1072,6 +1088,56 @@ def delete_returns_claim(record_id: str) -> dict:
             raise HTTPException(404, "Returns & Claims record not found")
         audit(db, "deleted", "returns_claim", record_id, {})
     return {"deleted": True, "id": record_id}
+
+
+# --------------------------------------------------------------------------- stock reordering
+class StockReorderingRow(BaseModel):
+    id: str
+    franchise: str = ""
+    part_number: str
+    description: str = ""
+    alt_1: str = ""
+    alt_2: str = ""
+    alt_3: str = ""
+    alt_4: str = ""
+    qoh_er: float = 0
+    safety_er: float = 0
+    qoh_pta: float = 0
+    safety_pta: float = 0
+    qoh_wh: float = 0
+    safety_wh: float = 0
+    global_safety: float = 0
+    qty_on_order: float = 0
+    qty_to_order: float = 0
+    lead_time: str = ""
+    avg_sales: float = 0
+    sales_this_month: float = 0
+    gauge: str = ""
+    supplier: str = ""
+    last_cost: Optional[float] = None
+    supplier_type: str = ""
+
+
+@app.get("/api/stock-reordering/items", dependencies=[Depends(require_api_key)])
+def list_stock_reordering_items(supplier: str = "", part_number: str = "", description: str = "", alt_number: str = "", supplier_type: str = "", search: str = "") -> list[dict]:
+    with db_session() as db:
+        rows = [dict(row) for row in db.execute("SELECT * FROM stock_reordering_items ORDER BY part_number")]
+    def matches(row: dict) -> bool:
+        alt_values = ' '.join(row.get(f'alt_{i}', '') for i in range(1, 5)).lower()
+        search_value = search.lower().strip()
+        searchable = ' '.join([row['part_number'], row['description'], row['supplier'], alt_values]).lower()
+        return ((not search_value or search_value in searchable) and (not supplier or supplier.lower() in row['supplier'].lower()) and (not part_number or part_number.lower() in row['part_number'].lower()) and (not description or description.lower() in row['description'].lower()) and (not alt_number or alt_number.lower() in alt_values) and (not supplier_type or row['supplier_type'].lower() == supplier_type.lower()))
+    return [row for row in rows if matches(row)]
+
+
+@app.put("/api/stock-reordering/items", dependencies=[Depends(require_api_key)])
+def replace_stock_reordering_items(rows: list[StockReorderingRow]) -> dict:
+    now = now_iso()
+    with db_session() as db:
+        db.execute("DELETE FROM stock_reordering_items")
+        columns = "id,franchise,part_number,description,alt_1,alt_2,alt_3,alt_4,qoh_er,safety_er,qoh_pta,safety_pta,qoh_wh,safety_wh,global_safety,qty_on_order,qty_to_order,lead_time,avg_sales,sales_this_month,gauge,supplier,last_cost,supplier_type,updated_at"
+        db.executemany(f"INSERT INTO stock_reordering_items({columns}) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(r.id, r.franchise, r.part_number, r.description, r.alt_1, r.alt_2, r.alt_3, r.alt_4, r.qoh_er, r.safety_er, r.qoh_pta, r.safety_pta, r.qoh_wh, r.safety_wh, r.global_safety, r.qty_on_order, r.qty_to_order, r.lead_time, r.avg_sales, r.sales_this_month, r.gauge, r.supplier, r.last_cost, r.supplier_type, now) for r in rows])
+    return {"saved": len(rows)}
 
 
 # --------------------------------------------------------------------------- stock booking
