@@ -262,3 +262,11 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 
 .feed-post-modal .detail-media-thumb{appearance:none;border:1px solid #dce4e9;padding:0;text-align:left;color:inherit;font:inherit;background:#fff;cursor:zoom-in}
 .feed-post-modal .detail-media-thumb:hover{border-color:#7296b2;box-shadow:0 3px 10px #1c30421a}
+
+.campaign-type-config{margin-top:18px}
+.campaign-type-add{display:flex;gap:8px;margin:12px 0}
+.campaign-type-add input{flex:1;border:1px solid #d8e1e7;border-radius:8px;padding:10px 12px;background:#fbfcfd}
+.campaign-type-list{display:flex;flex-direction:column;border-top:1px solid #edf0f3}
+.campaign-type-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 4px;border-bottom:1px solid #edf0f3;color:#304456;font-size:12px;cursor:grab}
+.campaign-type-row:active{cursor:grabbing;background:#f7f9fa}
+.campaign-type-row span{font-weight:600}
