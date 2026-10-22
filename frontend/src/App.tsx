@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
-  LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map,
+  LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map, PackageCheck,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
@@ -9,6 +9,8 @@ import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
 import SalesDesk from './SalesDesk'
 import Buyouts from './Buyouts'
+import StockBooking from './StockBooking'
+import StockControlConfig from './StockControlConfig'
 import ReturnsClaims from './ReturnsClaims'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 
@@ -463,7 +465,7 @@ export default function App() {
 const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Part details and supplier quotes','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Stock checks','Availability and inventory','Stock-aware decisions','Planned'],['Reporting','Cost and savings analysis','Exports and response reporting','Planned'],['Wildcard search','Search','Wildcard matching across parts, suppliers and sales codes','Implemented']]
 
 const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
-  const isStockControlPage = page === 'Parts Query' || page === 'Stock Control Roadmap'
+  const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
   const isReturnsClaimsPage = page === 'Returns & Claims' || page === 'Returns & Claims Roadmap'
 
   return (
@@ -480,7 +482,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             {(isSalesDeskPage
               ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
-                ? ([['Parts Query', ClipboardList], ['Stock Control Roadmap', Map]] as const)
+              ? ([['Stock Booking', PackageCheck], ['Parts Query', ClipboardList], ['Stock Control Configuration', Settings], ['Stock Control Roadmap', Map]] as const)
                 : isReturnsClaimsPage
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
@@ -504,7 +506,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{isStockControlPage && <p className="topbar-subtitle">Manage buyout requests and supplier quotes.</p>}</div>
+          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
           {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && page !== 'Apps' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
@@ -574,9 +576,9 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 <div className="app-card-copy"><h3>Returns &amp; Claims</h3><p>Track returns, damage claims, and supplier outcomes.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>
-              <button className="app-card app-card-available" onClick={() => { setPage('Parts Query'); setError(''); setNotice('') }}>
+              <button className="app-card app-card-available" onClick={() => { setPage('Stock Booking'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
-                <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Buyout requests and supplier quotes.</p></div>
+                <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Compare stock, book branch transfers, and manage Parts Queries.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>
             </div>
@@ -601,7 +603,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
-        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
+        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">

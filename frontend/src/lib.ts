@@ -21,6 +21,9 @@ export type Post = {
   likes?: number | null
   comments?: number | null
   shares?: number | null
+  reactions?: number | null
+  saves?: number | null
+  views?: number | null
   metrics_refreshed_at?: string | null
   created_at?: string
   updated_at?: string

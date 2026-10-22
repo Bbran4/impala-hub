@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 import logging
 import os
@@ -18,7 +20,7 @@ from pathlib import Path
 from typing import Iterator, Literal, Optional, get_args
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError, create_model, field_validator, model_validator
@@ -304,6 +306,43 @@ INSERT OR IGNORE INTO campaign_types(name, position) VALUES ('Tips', 0), ('Brand
 PRAGMA user_version = 10;
 """
 
+SCHEMA_V11 = """
+CREATE TABLE IF NOT EXISTS stock_booking_items (
+    id TEXT PRIMARY KEY,
+    franchise TEXT NOT NULL DEFAULT '',
+    part_number TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    unit_size TEXT NOT NULL DEFAULT '',
+    supply_er INTEGER NOT NULL DEFAULT 0,
+    on_picking_slip_er INTEGER NOT NULL DEFAULT 0,
+    qoh_er INTEGER NOT NULL DEFAULT 0,
+    max_er INTEGER NOT NULL DEFAULT 0,
+    supply_pta INTEGER NOT NULL DEFAULT 0,
+    on_picking_slip_pta INTEGER NOT NULL DEFAULT 0,
+    qoh_pta INTEGER NOT NULL DEFAULT 0,
+    max_pta INTEGER NOT NULL DEFAULT 0,
+    qoh_wh INTEGER NOT NULL DEFAULT 0,
+    max_wh INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stock_booking_part ON stock_booking_items(part_number);
+PRAGMA user_version = 11;
+"""
+
+SCHEMA_V12 = """
+CREATE TABLE IF NOT EXISTS stock_locations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+INSERT OR IGNORE INTO stock_locations(id, name, description, created_at, updated_at) VALUES ('warehouse', 'WH', '', datetime('now'), datetime('now'));
+INSERT OR IGNORE INTO stock_locations(id, name, description, created_at, updated_at) VALUES ('east-rand', 'East Rand', '', datetime('now'), datetime('now'));
+INSERT OR IGNORE INTO stock_locations(id, name, description, created_at, updated_at) VALUES ('pretoria', 'Pretoria', '', datetime('now'), datetime('now'));
+PRAGMA user_version = 12;
+"""
+
 
 def init_db() -> None:
     conn = connect()
@@ -332,6 +371,23 @@ def init_db() -> None:
             conn.executescript(SCHEMA_V9)
         if version < 10:
             conn.executescript(SCHEMA_V10)
+        if version < 11:
+            conn.executescript(SCHEMA_V11)
+        if version < 12:
+            conn.executescript(SCHEMA_V12)
+        if not any(r['name'] == 'franchise' for r in conn.execute('PRAGMA table_info(stock_booking_items)')):
+            conn.execute("ALTER TABLE stock_booking_items ADD COLUMN franchise TEXT NOT NULL DEFAULT ''")
+        if not any(r['name'] == 'description' for r in conn.execute('PRAGMA table_info(stock_locations)')):
+            conn.execute("ALTER TABLE stock_locations ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+        if conn.execute("SELECT COUNT(*) FROM stock_booking_items").fetchone()[0] == 0:
+            seed = [
+                ('abc001', 'SHIM KIT', 'each', 6, 0, 4, 10, 8, 2, 0, 10, 60, 60),
+                ('xyz998', 'shirt', 'each', 4, 0, 1, 5, 0, 0, 0, 5, 48, 50),
+                ('33215', 'belt', 'each', 1, 0, 4, 5, 3, 0, 2, 5, 28, 30),
+                ('hp0-15-6', 'cap', '3', 2, 0, 3, 5, 1, 3, 1, 5, 20, 50),
+                ('zzzahx', 'jacket', 'each', 2, 0, 3, 5, 0, 0, 5, 5, 20, 20),
+            ]
+            conn.executemany("INSERT INTO stock_booking_items(id,franchise,part_number,description,unit_size,supply_er,on_picking_slip_er,qoh_er,max_er,supply_pta,on_picking_slip_pta,qoh_pta,max_pta,qoh_wh,max_wh,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(uuid.uuid4().hex, '', *row, now_iso()) for row in seed])
         conn.executescript(SCHEMA_FACEBOOK_OAUTH)
         conn.executescript(SCHEMA_BUYOUTS)
         conn.executescript(SCHEMA_PARTS_QUERIES)
@@ -996,6 +1052,114 @@ def delete_returns_claim(record_id: str) -> dict:
             raise HTTPException(404, "Returns & Claims record not found")
         audit(db, "deleted", "returns_claim", record_id, {})
     return {"deleted": True, "id": record_id}
+
+
+# --------------------------------------------------------------------------- stock booking
+class StockBookingRow(BaseModel):
+    id: str
+    franchise: str = ""
+    part_number: str
+    description: str = ""
+    unit_size: str = ""
+    supply_er: int = 0
+    on_picking_slip_er: int = 0
+    qoh_er: int = 0
+    max_er: int = 0
+    supply_pta: int = 0
+    on_picking_slip_pta: int = 0
+    qoh_pta: int = 0
+    max_pta: int = 0
+    qoh_wh: int = 0
+    max_wh: int = 0
+
+
+class StockBookingExportRow(BaseModel):
+    part_number: str
+    franchise: str
+    from_location: str = "Warehouse"
+    from_bin_location: str = ""
+    to_location: str
+    to_bin_location: str = ""
+    transfer_qty: int = Field(gt=0)
+    remarks: str = ""
+
+
+@app.get("/api/stock-booking/items", dependencies=[Depends(require_api_key)])
+def list_stock_booking_items(search: str = "") -> list[dict]:
+    with db_session() as db:
+        rows = db.execute("SELECT * FROM stock_booking_items ORDER BY part_number").fetchall()
+    needle = search.strip().lower()
+    return [dict(row) for row in rows if not needle or needle in f"{row['part_number']} {row['description']}".lower()]
+
+
+@app.put("/api/stock-booking/items", dependencies=[Depends(require_api_key)])
+def replace_stock_booking_items(rows: list[StockBookingRow]) -> dict:
+    now = now_iso()
+    with db_session() as db:
+        db.execute("DELETE FROM stock_booking_items")
+        db.executemany(
+            "INSERT INTO stock_booking_items(id,franchise,part_number,description,unit_size,supply_er,on_picking_slip_er,qoh_er,max_er,supply_pta,on_picking_slip_pta,qoh_pta,max_pta,qoh_wh,max_wh,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [(r.id, r.franchise, r.part_number, r.description, r.unit_size, r.supply_er, r.on_picking_slip_er, r.qoh_er, r.max_er, r.supply_pta, r.on_picking_slip_pta, r.qoh_pta, r.max_pta, r.qoh_wh, r.max_wh, now) for r in rows],
+        )
+    return {"saved": len(rows)}
+
+
+class StockLocation(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = ""
+
+
+@app.get("/api/stock-booking/locations", dependencies=[Depends(require_api_key)])
+def list_stock_locations() -> list[dict]:
+    with db_session() as db:
+        return [dict(row) for row in db.execute("SELECT * FROM stock_locations ORDER BY name COLLATE NOCASE")]
+
+
+@app.post("/api/stock-booking/locations", dependencies=[Depends(require_api_key)], status_code=201)
+def create_stock_location(payload: StockLocation) -> dict:
+    ident = uuid.uuid4().hex
+    now = now_iso()
+    try:
+        with db_session() as db:
+            db.execute("INSERT INTO stock_locations(id,name,description,created_at,updated_at) VALUES(?,?,?,?,?)", (ident, payload.name.strip(), payload.description.strip(), now, now))
+            return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (ident,)).fetchone())
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "A stock location with that name already exists.")
+
+
+@app.patch("/api/stock-booking/locations/{location_id}", dependencies=[Depends(require_api_key)])
+def update_stock_location(location_id: str, payload: StockLocation) -> dict:
+    now = now_iso()
+    try:
+        with db_session() as db:
+            if not db.execute("SELECT 1 FROM stock_locations WHERE id=?", (location_id,)).fetchone():
+                raise HTTPException(404, "Stock location not found")
+            db.execute("UPDATE stock_locations SET name=?,description=?,updated_at=? WHERE id=?", (payload.name.strip(), payload.description.strip(), now, location_id))
+            return dict(db.execute("SELECT * FROM stock_locations WHERE id=?", (location_id,)).fetchone())
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "A stock location with that name already exists.")
+
+
+@app.delete("/api/stock-booking/locations/{location_id}", dependencies=[Depends(require_api_key)])
+def delete_stock_location(location_id: str) -> dict:
+    with db_session() as db:
+        if not db.execute("SELECT 1 FROM stock_locations WHERE id=?", (location_id,)).fetchone():
+            raise HTTPException(404, "Stock location not found")
+        if db.execute("SELECT COUNT(*) FROM stock_locations").fetchone()[0] <= 2:
+            raise HTTPException(409, "Keep at least two stock locations configured.")
+        db.execute("DELETE FROM stock_locations WHERE id=?", (location_id,))
+    return {"deleted": location_id}
+
+
+@app.post("/api/stock-booking/export", dependencies=[Depends(require_api_key)])
+def export_stock_booking(rows: list[StockBookingExportRow]) -> StreamingResponse:
+    if not rows:
+        raise HTTPException(400, "Select at least one stock booking row before exporting.")
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["Franchise", "Part Number", "From Location", "From Bin Location", "To Location", "To Bin Location", "Transfer Qty", "Remarks"])
+    writer.writerows([[r.franchise, r.part_number, r.from_location, r.from_bin_location, r.to_location, r.to_bin_location, r.transfer_qty, r.remarks] for r in rows])
+    return StreamingResponse(iter([output.getvalue().encode("utf-8-sig")]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=LocationTransfer.csv"})
 
 
 @app.delete("/api/campaigns/{campaign_id}", dependencies=[Depends(require_api_key)])
