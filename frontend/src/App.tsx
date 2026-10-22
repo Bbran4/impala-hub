@@ -719,7 +719,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               />
             )}
             {view === 'pivot' && (
-              <PostPivot posts={filteredPosts} campaigns={campaigns} />
+              <PostPivot posts={filteredPosts} campaigns={campaigns} campaignTypes={campaignTypes} />
             )}
             {view === 'calendar' && (
               <PostCalendar
