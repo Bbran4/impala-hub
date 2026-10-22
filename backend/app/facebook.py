@@ -23,7 +23,7 @@ class FacebookError(Exception):
 
 
 BASE_FIELDS = "id,message,created_time,permalink_url,full_picture,attachments{media,subattachments}"
-LIKES_FIELDS = ",likes.limit(0).summary(true),shares"
+LIKES_FIELDS = ",likes.limit(0).summary(true),reactions.limit(0).summary(true),shares"
 COMMENTS_FIELDS = ",comments.limit(0).summary(true)"
 # Tried in this order. Comments are user-generated content and may need a different permission
 # (pages_read_user_content) than likes and shares, so a refusal there must not hide the rest.
@@ -55,6 +55,7 @@ def parse_post(raw: dict) -> dict:
         "permalink_url": raw.get("permalink_url"),
         "images": _images(raw),
         "likes": _count(raw, "likes"),
+        "reactions": _count(raw, "reactions"),
         "comments": _count(raw, "comments"),
         # Facebook leaves "shares" out entirely when a post has none, so a missing value means 0 -- but only
         # when engagement figures were requested at all. Without them it is "not available".
