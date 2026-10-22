@@ -16,6 +16,7 @@ const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` 
 const formatRand = (value: number) => 'R' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const TEMP_MONTHLY_GROSS_SALES = 792436.44
+const TEMP_MONTHLY_GP_PERCENT = 23.83
 const GP_COLORS = [
   ['red', 'Red'], ['grey', 'Grey'], ['light-blue', 'Light blue'], ['dark-blue', 'Dark blue'],
   ['green', 'Green'], ['orange', 'Orange'], ['purple', 'Purple'], ['teal', 'Teal'],
@@ -399,10 +400,15 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   const [newUser, setNewUser] = useState({ display_name: '', username: '', password: '', role: 'salesperson' })
   const [gpMilestones, setGpMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
   const [newMilestone, setNewMilestone] = useState('')
+  const [gpPercentMilestones, setGpPercentMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_percent_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
+  const [gpPercentColors, setGpPercentColors] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_percent_colors') || '{}') } catch { return {} } })
+  const [newGpPercent, setNewGpPercent] = useState('')
   const [milestoneColors, setMilestoneColors] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestone_colors') || '{}') } catch { return {} } })
 
   const closePanel = useCallback(() => setPanel(null), [])
   useEffect(() => { localStorage.setItem('sales_desk_gp_milestones', JSON.stringify(gpMilestones)) }, [gpMilestones])
+  useEffect(() => { localStorage.setItem('sales_desk_gp_percent_milestones', JSON.stringify(gpPercentMilestones)) }, [gpPercentMilestones])
+  useEffect(() => { localStorage.setItem('sales_desk_gp_percent_colors', JSON.stringify(gpPercentColors)) }, [gpPercentColors])
   useEffect(() => { localStorage.setItem('sales_desk_gp_milestone_colors', JSON.stringify(milestoneColors)) }, [milestoneColors])
   const request: Req = useCallback(async (path, init = {}) => {
     const headers = new Headers(init.headers || {})
@@ -474,6 +480,9 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   const sortedMilestones = [...gpMilestones].sort((a, b) => a - b)
   const reachedMilestone = sortedMilestones.filter((point) => monthlySales >= point).pop()
   const progressColor = reachedMilestone ? (milestoneColors[String(reachedMilestone)] || (reachedMilestone === sortedMilestones[sortedMilestones.length - 1] ? 'dark-blue' : 'grey')) : 'red'
+  const sortedGpPercentMilestones = [...gpPercentMilestones].sort((a, b) => a - b)
+  const reachedGpPercent = sortedGpPercentMilestones.filter((point) => TEMP_MONTHLY_GP_PERCENT >= point).pop()
+  const gpPercentColor = reachedGpPercent ? (gpPercentColors[String(reachedGpPercent)] || 'dark-blue') : 'red'
   const canConvert = (r: any) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
 
   return (
@@ -494,7 +503,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                 <div className="sd-metric"><span>Open RFQs</span><strong>{dashboard.open}</strong></div>
               </div>
               <div className="sd-dashboard-card sd-gp-card">
-                <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Sales GP performance against configured milestones.</p></div><strong>R{monthlySales.toLocaleString()}</strong></div>
+                <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Sales GP performance against configured milestones.</p></div><strong>R{monthlySales.toLocaleString()} <em className={`sd-gp-percent-text ${gpPercentColor}`}>@ {TEMP_MONTHLY_GP_PERCENT.toFixed(2)}%</em></strong></div>
                 <div className="sd-gp-progress"><div className={`sd-gp-fill ${progressColor}`} style={{ width: Math.min(100, monthlySales / Math.max(...gpMilestones, 1) * 100) + '%' }} />{[...gpMilestones].sort((a, b) => a - b).map((point, index, points) => <span key={point} className={`${milestoneColors[String(point)] || (index === points.length - 1 ? 'dark-blue' : index === 0 ? 'grey' : 'light-blue')}${index === points.length - 1 ? ' final' : ''}`} style={{ left: (point / Math.max(...points, 1) * 100) + '%' }} title={'R' + point.toLocaleString()}>{'R' + point.toLocaleString()}</span>)}</div>
                 <div className="sd-gp-scale"><span>R0</span><span>R{Math.max(...gpMilestones, 0).toLocaleString()}</span></div>
               </div>
@@ -593,6 +602,13 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                   <h3>Monthly GP% milestones</h3><p>The largest marker defines the progress bar total. Values are whole rand amounts and can be edited.</p>
                   <div className="sd-config-add"><input type="number" min="1" step="1" placeholder="Add milestone amount" value={newMilestone} onChange={(e) => setNewMilestone(e.target.value)} /><button className="primary" disabled={!newMilestone || Number(newMilestone) < 0} onClick={() => { const value = Number(newMilestone); if (Number.isInteger(value) && value > 0) { setGpMilestones((items) => [...items, value]); setNewMilestone('') } }}>Add</button></div>
                   <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>R{value.toLocaleString()}</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><div className="sd-actions"><div className="sd-color-grid" role="group" aria-label={'Color for R' + value.toLocaleString()}>{GP_COLORS.map(([color, label]) => <button type="button" key={color} className={`sd-color-swatch ${color} ${(milestoneColors[String(value)] || (value === Math.max(...gpMilestones) ? 'dark-blue' : value === Math.min(...gpMilestones) ? 'grey' : 'light-blue')) === color ? 'selected' : ''}`} title={label} aria-label={label} onClick={() => setMilestoneColors((colors) => ({ ...colors, [String(value)]: color }))} />)}</div><button className="secondary" onClick={() => { const next = window.prompt('Edit milestone amount', String(value)); const parsed = Number(next); if (next !== null && Number.isInteger(parsed) && parsed > 0) setGpMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove R' + value.toLocaleString() + ' milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
+                </div>
+              )}
+              {isAdmin && (
+                <div className="rfq-empty-card sd-form-card">
+                  <h3>GP% milestones</h3><p>Set the GP% thresholds that control the color of the monthly GP% text.</p>
+                  <div className="sd-config-add"><input type="number" min="0" step="0.01" placeholder="Add GP% milestone" value={newGpPercent} onChange={(e) => setNewGpPercent(e.target.value)} /><button className="primary" disabled={!newGpPercent || Number(newGpPercent) < 0} onClick={() => { const value = Number(newGpPercent); if (value >= 0) { setGpPercentMilestones((items) => [...items, value]); setNewGpPercent('') } }}>Add</button></div>
+                  <div className="sd-milestone-list">{sortedGpPercentMilestones.map((value) => <div className="sd-config-row" key={value}><div><b>{value}%</b><small>GP% threshold</small></div><div className="sd-actions"><div className="sd-color-grid" role="group" aria-label={'Color for GP ' + value + '%'}>{GP_COLORS.map(([color, label]) => <button type="button" key={color} className={`sd-color-swatch ${color} ${(gpPercentColors[String(value)] || 'dark-blue') === color ? 'selected' : ''}`} title={label} aria-label={label} onClick={() => setGpPercentColors((colors) => ({ ...colors, [String(value)]: color }))} />)}</div><button className="secondary" onClick={() => { const next = window.prompt('Edit GP% milestone', String(value)); const parsed = Number(next); if (next !== null && parsed >= 0) setGpPercentMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove GP ' + value + '% milestone'} onClick={() => setGpPercentMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
                 </div>
               )}
               <div className="rfq-empty-card sd-form-card">
