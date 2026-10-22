@@ -31,6 +31,8 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
 
   const editable = EDITABLE.includes(post.status)
   const published = post.status === 'published'
+  const assignedCampaign = campaigns.find((campaign) => campaign.id === campaignId)
+  const campaignLocked = assignedCampaign?.stage === 'done'
   const heading = post.title?.trim() || post.caption?.trim().slice(0, 110) || 'Untitled post'
 
   useEffect(() => { setCampaignId(post.campaign_id || '') }, [post.id, post.campaign_id])
@@ -137,12 +139,13 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         <div className="campaign-assignment-form">
           <label className="campaign-assignment-field">
             <span>Assign to campaign</span>
-            <select aria-label="Assign to campaign" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
+            <select aria-label="Assign to campaign" value={campaignId} disabled={campaignLocked} onChange={(e) => setCampaignId(e.target.value)}>
               <option value="">No campaign</option>
-              {campaigns.filter((c) => c.stage !== 'done').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {campaigns.filter((c) => c.stage !== 'done' || c.id === campaignId).map((c) => <option key={c.id} value={c.id}>{c.name}{c.stage === 'done' ? ' (Done)' : ''}</option>)}
             </select>
           </label>
-          <button className="primary campaign-assignment-save" disabled={saving || campaignId === (post.campaign_id || '')} onClick={() => void saveCampaign()}>
+          {campaignLocked && <p className="campaign-assignment-locked">This post is assigned to a completed campaign and cannot be reassigned.</p>}
+          <button className="primary campaign-assignment-save" disabled={saving || campaignLocked || campaignId === (post.campaign_id || '')} onClick={() => void saveCampaign()}>
             {saving ? 'Saving...' : 'Save campaign'}
           </button>
         </div>
