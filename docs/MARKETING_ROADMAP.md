@@ -6,11 +6,10 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 
 ## Current priorities
 
-1. Resolve Facebook post Views, reach, impressions, and boosted-performance collection.
-2. Verify Instagram boosted metrics and publishing against a live professional account.
-3. Complete campaign deletion.
-4. Expand search/filter panels and reporting.
-5. Add notifications, social conversations, and sentiment analysis.
+1. Verify Instagram boosted metrics and publishing against a live professional account.
+2. Expand campaign deletion safeguards and workflow coverage.
+3. Add notifications and social conversations.
+4. Add sentiment analysis and advanced reporting.
 
 ## Parity table
 
@@ -22,7 +21,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 | Facebook connection | Social account configuration | Meta OAuth, Page selection, diagnostics, disconnect | Implemented |
 | Instagram connection | Social account configuration | Meta OAuth for professional accounts | Implemented; live connection working |
 | WhatsApp | Not central | Deferred | Correctly deferred |
-| Feed | Account feeds, streams, metrics | Network columns, 25 newest posts, metrics | Partial |
+| Feed | Account feeds, streams, metrics | Network columns, 25 newest posts, metrics | Implemented; provider availability applies |
 | Create post | New Post workflow | Create Post editor | Implemented |
 | Edit draft posts | Yes | Yes | Implemented |
 | Edit scheduled/published posts | Odoo record editing | Restricted; campaign can still be changed | Partial by design |
@@ -31,17 +30,17 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 | Publish now | Yes | Facebook workflow | Partial |
 | Facebook publishing | Yes | OAuth/Page publishing | Implemented |
 | Instagram publishing | Yes | OAuth/API foundation | Partial; live publishing verification required |
-| Likes | Yes | Stored/displayed where synced | Partial |
-| Comments | Yes | Stored/displayed where synced | Partial |
-| Shares | Yes | Facebook shares | Partial |
-| Views | Yes | Reach/impression/view fields and fallbacks | Partial; Facebook Views still unresolved |
-| Clicks | Yes | Post model and provider paths | Partial |
-| Reach | Odoo insights | Facebook/Instagram fields | Partial |
+| Likes | Yes | Stored/displayed where synced, including reactions and saves | Implemented; provider availability applies |
+| Comments | Yes | Stored/displayed where synced | Implemented; provider availability applies |
+| Shares | Yes | Provider shares | Implemented; provider availability applies |
+| Views | Yes | Facebook post views and provider fallbacks | Implemented; provider availability applies |
+| Clicks | Yes | Post model and Facebook/Instagram provider paths | Implemented; provider availability applies |
+| Reach | Odoo insights | Facebook/Instagram fields and fallbacks | Implemented; provider availability applies |
 | Impressions | Odoo insights | Facebook/Instagram fields | Partial |
-| Post analytics detail | Post cards and insights | Post details and metrics | Partial |
+| Post analytics detail | Post cards and insights | Post detail performance metrics | Implemented; provider availability applies |
 | Campaign creation | Yes | Yes | Implemented |
 | Campaign editing | Yes | Title/objective editing | Implemented |
-| Campaign deletion | Available through record actions | Not exposed as a complete workflow | Incomplete |
+| Campaign deletion | Available through record actions | Empty campaigns can be deleted; campaigns with posts are protected | Implemented |
 | Campaign Kanban stages | New/In Progress/Done | Drag-and-drop Kanban | Implemented |
 | Campaign cards | Posts and engagement context | Clean cards without inline listings | Implemented |
 | Post Kanban | Yes | Board view | Implemented |
@@ -61,7 +60,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 - Facebook and Instagram are the only active social providers.
 - Disconnecting a provider removes mirrored published records locally; it does not delete provider content.
 - The Posts manager retains the full local history; the Feed displays the 25 newest posts per connected network.
-- Facebook Views must not be marked complete until a live Refresh populates total views/reach/impressions.
+- Facebook Views, reach and clicks are implemented with current Meta post insight fallbacks; live provider responses determine which values are available for a specific post.
 
 
 ## Wildcard search
