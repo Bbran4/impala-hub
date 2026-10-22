@@ -853,7 +853,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <button className="icon-button feed-post-modal-close" aria-label="Close post details" onClick={() => setDetailId(null)}><X size={20} /></button>
               <PostDetail
                 post={selected} campaigns={campaigns} onBack={() => setDetailId(null)} onEdit={openEditor}
-                onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onError={handleError}
+                onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onOpenImage={(images, index) => setImageViewer({ images, index })} onError={handleError}
               />
             </div>
           </div>
