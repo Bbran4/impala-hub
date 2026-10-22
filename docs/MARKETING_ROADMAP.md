@@ -72,3 +72,10 @@ Marketing roadmap now includes wildcard search across posts, campaigns, captions
 ## Recently completed
 
 - Campaign deletion is available for empty campaigns only. Campaigns containing posts are protected from deletion.
+
+
+## Metrics status update
+
+- Facebook post Views and Reach retrieval is implemented using current Meta post insight metrics with fallbacks.
+- Post Likes, Reactions, Saves, Comments and Shares are stored and used in engagement totals; availability depends on the provider response.
+- Post analytics detail is implemented for the metrics returned by the connected provider.
