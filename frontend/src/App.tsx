@@ -143,9 +143,6 @@ export default function App() {
 
   async function load() {
     if (!getKey()) return
-    // Supabase Auth is now the production identity provider. Workspace API calls
-    // remain paused until their FastAPI endpoints are migrated to Supabase.
-    if (supabaseConfigured) return
     try {
       const [p, c, i, ct] = await Promise.all([api('/api/posts'), api('/api/campaigns'), api('/api/integrations'), api('/api/campaign-types')])
       setPosts(p); setCampaigns(c); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')

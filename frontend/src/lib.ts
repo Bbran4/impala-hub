@@ -39,6 +39,7 @@ export type HistoryEntry = {
 export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+import { supabase, supabaseConfigured } from './supabase'
 export const KEY_STORAGE = 'impala_session_token'
 export const getKey = () => localStorage.getItem(KEY_STORAGE) || ''
 
@@ -58,6 +59,7 @@ function describeError(detail: unknown, status: number): string {
 }
 
 export async function api(path: string, options: RequestInit = {}) {
+  if (supabaseConfigured && supabase) return supabaseApi(path, options)
   const headers = new Headers(options.headers || {})
   headers.set('Authorization', `Bearer ${getKey()}`)
   if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
@@ -82,6 +84,60 @@ export async function api(path: string, options: RequestInit = {}) {
     throw new Error(describeError(body.detail, res.status))
   }
   return res.status === 204 ? null : res.json()
+}
+
+async function supabaseApi(path: string, options: RequestInit) {
+  const client = supabase
+  if (!client) throw new Error('Supabase is not configured.')
+  const method = (options.method || 'GET').toUpperCase()
+  const body = options.body && typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+  const campaignMatch = path.match(/^\/api\/campaigns\/([^/]+)$/)
+  if (path === '/api/campaigns' || campaignMatch) {
+    const query = client.from('campaigns')
+    if (method === 'GET') {
+      const { data, error } = await query.select('*').order('updated_at', { ascending: false })
+      if (error) throw new Error(error.message)
+      return data || []
+    }
+    if (method === 'POST') {
+      const { data, error } = await query.insert({ ...body, owner_id: (await client.auth.getUser()).data.user?.id }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    }
+    if (method === 'PATCH' && campaignMatch) {
+      const { data, error } = await query.update(body).eq('id', campaignMatch[1]).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    }
+    if (method === 'DELETE' && campaignMatch) {
+      const { error } = await query.delete().eq('id', campaignMatch[1])
+      if (error) throw new Error(error.message)
+      return null
+    }
+  }
+  if (path === '/api/campaign-types') {
+    if (method === 'GET') {
+      const { data, error } = await client.from('campaign_types').select('name,position').order('position')
+      if (error) throw new Error(error.message)
+      return data || []
+    }
+    if (method === 'POST') {
+      const { data, error } = await client.from('campaign_types').insert({ name: body.name, position: 999 }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    }
+  }
+  const typeDelete = path.match(/^\/api\/campaign-types\/(.+)$/)
+  if (typeDelete && method === 'DELETE') {
+    const { error } = await client.from('campaign_types').delete().eq('name', decodeURIComponent(typeDelete[1]))
+    if (error) throw new Error(error.message)
+    return null
+  }
+  if (path === '/api/integrations' && method === 'GET') {
+    return [{ provider: 'facebook', status: 'not_connected' }, { provider: 'instagram', status: 'not_connected' }]
+  }
+  if (path === '/api/posts' && method === 'GET') return []
+  throw new Error('This Marketing action is not migrated to Supabase yet.')
 }
 
 export const mediaSrc = (m: Media) => (m.url.startsWith('http') ? m.url : `${API}${m.url}`)
