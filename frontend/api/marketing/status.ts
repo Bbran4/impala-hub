@@ -10,13 +10,16 @@ export default async function handler(req: any, res: any) {
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return res.status(401).json({ detail: 'Invalid or expired session.' })
+  const { data: connections } = await supabase.from('provider_connections').select('provider,status,account_name,page_name,last_checked_at,last_error')
+  const connected = new Map((connections || []).map((connection: any) => [connection.provider, connection]))
   return res.status(200).json({
     authenticated: true,
     providers: {
-      facebook: Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
-      instagram: Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
+      facebook: connected.get('facebook') || { status: 'not_connected' },
+      instagram: connected.get('instagram') || { status: 'not_connected' },
     },
     publishing: false,
-    message: 'Server boundary is ready. Provider OAuth and publishing are not enabled yet.',
+    metaConfigured: Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET),
+    message: 'Provider connection storage is ready. OAuth and publishing are not enabled yet.',
   })
 }
