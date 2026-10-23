@@ -268,9 +268,10 @@ export default function App() {
     setBusy(true); setError('')
     try {
       const r = await api('/api/integrations/sync', { method: 'POST' })
-      const fb = r.facebook?.status === 'error' ? `Facebook error: ${r.facebook.detail || 'unknown error'}` : r.facebook?.status === 'not_connected' ? 'Facebook not connected' : `Facebook synced`
+      const fb = r.facebook?.status === 'error' ? `Facebook error: ${r.facebook.detail || 'unknown error'}` : r.facebook?.status === 'not_connected' ? 'Facebook not connected' : `Facebook synced (${r.facebook.items || 0} new, ${r.facebook.fetched || 0} checked)`
       const ig = r.instagram?.status === 'synced' ? `Instagram synced (${r.instagram.items} items)` : r.instagram?.status === 'not_connected' ? 'Instagram not connected' : `Instagram error: ${r.instagram?.detail || 'unknown error'}`
       setNotice(`${fb}; ${ig}.`)
+      if (r.facebook?.status === 'synced') setMonth(null)
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
   }
