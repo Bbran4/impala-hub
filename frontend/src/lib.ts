@@ -227,6 +227,10 @@ async function supabaseApi(path: string, options: RequestInit) {
     const roleRows = await client.from('profile_roles').select('role_id').eq('profile_id', user.id)
     const roleIds = (roleRows.data || []).map((r: any) => r.role_id)
     const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : profile.data.sales_code ? 'salesperson' : roleIds.includes('sales') ? 'manager' : 'salesperson'
+    const auditRfq = async (rfqId: string, action: string, changes: Record<string, unknown> = {}) => {
+      const result = await client.from('sales_desk_rfq_audit').insert({ rfq_id: rfqId, actor_user_id: user.id, action, changes })
+      if (result.error) throw new Error(result.error.message)
+    }
     if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: profile.data.sales_code || null, is_active: true }
     if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
     const attachmentUpload = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/attachments$/)
@@ -294,7 +298,17 @@ async function supabaseApi(path: string, options: RequestInit) {
       const result = detailMatch ? await query.eq('id', detailMatch[1]).single() : await query.order('received_at', { ascending: true }).limit(500)
       if (result.error) throw new Error(result.error.message)
       const normalize = (r: any) => ({ ...r, media_platform: r.media_platform?.name || null, status: r.status?.name || null, status_name: r.status?.name || null, status_is_closed: !!r.status?.is_closed, sales_code: r.sales_code?.code || null })
-      if (detailMatch) return normalize(result.data)
+      if (detailMatch) {
+        const history = await client.from('sales_desk_rfq_audit').select('id,action,changes,created_at,actor_user_id').eq('rfq_id', detailMatch[1]).order('id')
+        if (history.error) throw new Error(history.error.message)
+        const actorIds = [...new Set((history.data || []).map((entry: any) => entry.actor_user_id))]
+        const actors = actorIds.length ? await client.from('profiles').select('id,display_name').in('id', actorIds) : { data: [] as any[], error: null }
+        if (actors.error) throw new Error(actors.error.message)
+        const names = new Map((actors.data || []).map((actor: any) => [actor.id, actor.display_name]))
+        const item = normalize(result.data)
+        item.audit_history = (history.data || []).map((entry: any) => ({ ...entry, changes: entry.changes || {}, actor_name: names.get(entry.actor_user_id) || entry.actor_user_id }))
+        return item
+      }
       const items = (result.data || []).map(normalize)
       return { items, total: items.length, limit: 500, offset: 0 }
     }
@@ -306,11 +320,13 @@ async function supabaseApi(path: string, options: RequestInit) {
       const status = body.status_id || (await client.from('sales_desk_statuses').select('id').ilike('name', 'Unclaimed').eq('is_active', true).single()).data?.id
       const result = await client.from('sales_desk_rfqs').insert({ ...body, rfq_no: n.rfq_no, business_date: n.business_date, daily_number: n.daily_number, status_id: status, created_by: user.id, updated_by: user.id }).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
       if (result.error) throw new Error(result.error.message)
+      await auditRfq(result.data.id, 'created', { rfq_no: result.data.rfq_no })
       return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
     }
     if (detailMatch && method === 'PATCH') {
       const result = await client.from('sales_desk_rfqs').update({ ...body, updated_by: user.id }).eq('id', detailMatch[1]).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
       if (result.error) throw new Error(result.error.message)
+      await auditRfq(detailMatch[1], 'updated', { changed: Object.keys(body) })
       return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
     }
     const actionMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/(claim|send-for-approval|convert-to-invoice)$/)
@@ -326,6 +342,7 @@ async function supabaseApi(path: string, options: RequestInit) {
         const newStatus = await client.from('sales_desk_statuses').select('id').ilike('name', 'New').eq('is_active', true).single()
         const updated = await client.from('sales_desk_rfqs').update({ sales_code_id: code.data.id, claimed_at: new Date().toISOString(), status_id: newStatus.data?.id || current.data.status_id, updated_by: user.id }).eq('id', id).is('sales_code_id', null).select().single()
         if (updated.error) throw new Error(updated.error.message)
+        await auditRfq(id, 'claimed', { sales_code: profile.data.sales_code })
       } else if (action === 'send-for-approval') {
         if (!current.data.document_number?.trim()) throw new Error('A document number is required before sending for approval.')
         if (!current.data.status?.is_closed) throw new Error('The RFQ status must be closed before sending for approval.')
@@ -338,6 +355,8 @@ async function supabaseApi(path: string, options: RequestInit) {
         const source = current.data
         const invoice = await client.from('sales_desk_rfqs').insert({ rfq_no: `${source.rfq_no}INV`, business_date: source.business_date, daily_number: source.daily_number + 1000000, rfq_type: 'invoice', original_rfq_no: source.rfq_no, converted_at: new Date().toISOString(), media_platform_id: source.media_platform_id, customer_name: source.customer_name, contact_number: source.contact_number, email_address: source.email_address, query_information: source.query_information, sales_code_id: source.sales_code_id, claimed_at: source.claimed_at, received_at: source.received_at, remarks: source.remarks, status_id: source.status_id, document_number: source.document_number, created_by: user.id, updated_by: user.id }).select().single()
         if (invoice.error) throw new Error(invoice.error.message)
+        await auditRfq(id, 'invoice_copy_created', { to_rfq_no: invoice.data.rfq_no })
+        await auditRfq(invoice.data.id, 'created_from_quotation', { from_rfq_no: source.rfq_no })
         return invoice.data
       }
       const refreshed = await client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').eq('id', id).single()

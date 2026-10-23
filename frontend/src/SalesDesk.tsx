@@ -380,7 +380,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
               <div className="sd-history">
                 <h4>History</h4>
                 {rfq.audit_history.slice().reverse().map((h: any, i: number) => (
-                  <p key={i}><b>{fmtDate(h.created_at)}</b> · {describeHistory(h)}</p>
+                  <p key={i}><b>{fmtDate(h.created_at)}</b> · {h.actor_name ? `${h.actor_name} · ` : ''}{describeHistory(h)}</p>
                 ))}
               </div>
             )}
