@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/marketing/facebook/publish-due",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }
