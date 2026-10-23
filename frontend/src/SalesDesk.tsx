@@ -583,7 +583,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                       <div className="sd-actions">
                         <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/media-platforms/${m.id}`, { is_active: !m.is_active })}>{m.is_active ? 'Deactivate' : 'Activate'}</button>
                         <button className="secondary" onClick={() => { const name = window.prompt('Rename media platform', m.name); if (name?.trim()) void patchOption(`/api/sales-desk/config/media-platforms/${m.id}`, { name }) }}>Rename</button>
-                        {m.rfq_count === 0 && <button className="icon-button" aria-label={`Delete ${m.name}`} title="Delete" onClick={() => removeOption('media-platforms', m, 'media platform')}><Trash2 size={16} /></button>}
+                        {(m.rfq_count === 0 || m.rfq_count == null) && <button className="icon-button" aria-label={`Delete ${m.name}`} title="Delete" onClick={() => removeOption('media-platforms', m, 'media platform')}><Trash2 size={16} /></button>}
                       </div>
                     </>)}
                   </Sortable>
@@ -604,7 +604,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                         <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { is_closed: !s.is_closed })}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button>
                         <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { is_active: !s.is_active })}>{s.is_active ? 'Deactivate' : 'Activate'}</button>
                         <button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { name }) }}>Rename</button>
-                        {s.rfq_count === 0 && s.name.toLowerCase() !== 'unclaimed' && <button className="icon-button" aria-label={`Delete ${s.name}`} title="Delete" onClick={() => removeOption('statuses', s, 'status')}><Trash2 size={16} /></button>}
+                        {(s.rfq_count === 0 || s.rfq_count == null) && s.name.toLowerCase() !== 'unclaimed' && <button className="icon-button" aria-label={`Delete ${s.name}`} title="Delete" onClick={() => removeOption('statuses', s, 'status')}><Trash2 size={16} /></button>}
                       </div>
                     </>)}
                   </Sortable>
