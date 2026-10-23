@@ -7,7 +7,7 @@ export default async function handler(req: any, res: any) {
   const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
   if (!url || !key) return res.status(503).json({ detail: 'Supabase server configuration is incomplete.' })
   if (!token) return res.status(401).json({ detail: 'Authentication required.' })
-  const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return res.status(401).json({ detail: 'Invalid or expired session.' })
   const { data: connections } = await supabase.from('provider_connections').select('provider,status,account_name,page_name,last_checked_at,last_error')
