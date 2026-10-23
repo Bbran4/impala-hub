@@ -130,6 +130,7 @@ export default function App() {
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
   const [profile, setProfile] = useState({ first_name: '', surname: '', email: '', avatar_url: '', sales_code: '' })
   const [profileBusy, setProfileBusy] = useState(false)
+  const [isAdministrator, setIsAdministrator] = useState(false)
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -138,6 +139,8 @@ export default function App() {
     const user = (await supabase.auth.getUser()).data.user
     if (!user) return
     const { data } = await supabase.from('profiles').select('first_name,surname,email,avatar_url,sales_code').eq('id', user.id).maybeSingle()
+    const roles = await supabase.from('profile_roles').select('role_id').eq('profile_id', user.id)
+    setIsAdministrator((roles.data || []).some((role: any) => role.role_id === 'administrator'))
     setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
   }
 
@@ -563,7 +566,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <>
             <div className="nav-label">WORKSPACE</div>
             {(isSalesDeskPage
-              ? ([['RFQs', ClipboardList], ['RFQ Configuration', Settings], ['RFQ Roadmap', Map]] as const)
+              ? ([['RFQs', ClipboardList], ...(isAdministrator ? [['RFQ Configuration', Settings] as const] : []), ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
               ? ([['Stock Booking', PackageCheck], ['Stock Reordering', PackageCheck], ['Parts Query', ClipboardList], ['Stock Control Configuration', Settings], ['Stock Control Roadmap', Map]] as const)
                 : isReturnsClaimsPage

@@ -516,7 +516,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
     <section className="rfq-workspace">
       <>
           <div className="sd-session-bar">
-            {page === 'RFQs' && view === 'rfqs' && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
+            {page === 'RFQs' && view === 'rfqs' && isAdmin && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
             {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button></div>}
           </div>
@@ -581,8 +581,8 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                 )) : <tr><td colSpan={8}><div className="rfq-empty"><ClipboardList size={28} /><h3>{rfqs.length ? 'No matching RFQs' : 'No RFQs yet'}</h3><p>Incoming enquiries and manually captured RFQs will appear here.</p></div></td></tr>}</tbody>
               </table></div>
             </>
-          ) : !isStaff ? (
-            <div className="rfq-empty-card"><Settings size={26} /><h3>Manager or administrator access required</h3><p>Only managers and administrators can open Sales Desk configuration.</p></div>
+          ) : !isAdmin ? (
+            <div className="rfq-empty-card"><Settings size={26} /><h3>Administrator access required</h3><p>Only administrators can open Sales Desk configuration.</p></div>
           ) : (
             <div className="sd-config-layout">
               {isAdmin && (

@@ -320,7 +320,7 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { items, total: items.length, limit: 500, offset: 0 }
     }
     if (path === '/api/sales-desk/rfqs' && method === 'POST') {
-      if (role === 'salesperson') throw new Error('Salespeople cannot create RFQs directly')
+      if (role !== 'administrator') throw new Error('Only administrators can create RFQs directly.')
       const seq = await client.rpc('next_sales_desk_rfq_number')
       if (seq.error || !seq.data?.[0]) throw new Error(seq.error?.message || 'Unable to allocate an RFQ number.')
       const n = seq.data[0]
