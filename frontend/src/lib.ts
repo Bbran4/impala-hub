@@ -378,7 +378,7 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { ...refreshed.data, media_platform: refreshed.data.media_platform?.name, status: refreshed.data.status?.name, status_name: refreshed.data.status?.name, status_is_closed: !!refreshed.data.status?.is_closed, sales_code: refreshed.data.sales_code?.code || null }
     }
     if (path === '/api/sales-desk/dashboard' && method === 'GET') {
-      const all = await client.from('sales_desk_rfqs').select('status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed)')
+      const all = await client.from('sales_desk_rfqs').select('status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed),sales_desk_sales_codes(code,display_name)')
       if (all.error) throw new Error(all.error.message)
       const today = new Date().toISOString().slice(0, 10); const rows: any[] = all.data || []
       const [daily, performance] = await Promise.all([
@@ -387,7 +387,13 @@ async function supabaseApi(path: string, options: RequestInit) {
       ])
       if (daily.error) throw new Error(daily.error.message)
       if (performance.error) throw new Error(performance.error.message)
-      return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length, daily_sales: daily.data || [], rfq_performance: performance.data || [] }
+      const performanceRows = (performance.data || []).map((saved: any) => {
+        const mine = rows.filter((row) => row.sales_desk_sales_codes?.code === saved.sales_person)
+        const named = mine.length ? mine : rows.filter((row) => row.sales_desk_sales_codes?.display_name === saved.sales_person)
+        const status = (row: any) => String(row.sales_desk_statuses?.name || '').toLowerCase()
+        return { ...saved, in_progress: named.filter((row) => status(row).includes('progress')).length, complete: named.filter((row) => status(row).includes('complete') || status(row).includes('quotation')).length, dropped: named.filter((row) => status(row).includes('drop')).length, scrapped: named.filter((row) => status(row).includes('scrap')).length, irrelevant: named.filter((row) => status(row).includes('irrelevant')).length, total: named.length }
+      })
+      return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length, daily_sales: daily.data || [], rfq_performance: performanceRows }
     }
     if (path.startsWith('/api/sales-desk/analytics') && method === 'GET') {
       const result = await client.from('sales_desk_rfqs').select('rfq_type,status_id,created_at,sales_desk_statuses(name,is_closed)')
