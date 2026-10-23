@@ -46,17 +46,25 @@ export default async function handler(req: any, res: any) {
         const image = attachment.media?.image?.src || attachment.url
         return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
       })
-      let insights: Record<string, number> = {}
-      try {
-        const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=post_impressions,post_impressions_unique,post_video_views,post_clicks,post_clicks_by_type&access_token=${encodeURIComponent(pageToken)}`)
-        const insightData = await insightResponse.json()
-        if (!insightResponse.ok || insightData.error) metricsUnavailable += 1
-        for (const metric of insightData.data || []) {
-          const value = metric.values?.[0]?.value
-          if (typeof value === 'object' && value !== null) insights[metric.name] = Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0)
-          else insights[metric.name] = Number(value || 0)
-        }
-      } catch { metricsUnavailable += 1 }
+      const insights: Record<string, number> = {}
+      for (const metricName of ['post_impressions', 'post_impressions_unique', 'post_video_views']) {
+        try {
+          const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
+          const insightData = await insightResponse.json()
+          const value = insightData.data?.[0]?.values?.[0]?.value
+          if (!insightResponse.ok || insightData.error || value == null) metricsUnavailable += 1
+          else insights[metricName] = Number(value || 0)
+        } catch { metricsUnavailable += 1 }
+      }
+      for (const clickMetric of ['post_clicks', 'post_clicks_by_type']) {
+        if (insights.post_clicks || insights.post_clicks_by_type) break
+        try {
+          const clickResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=${clickMetric}&access_token=${encodeURIComponent(pageToken)}`)
+          const clickData = await clickResponse.json()
+          const value = clickData.data?.[0]?.values?.[0]?.value
+          if (clickResponse.ok && !clickData.error && value != null) insights[clickMetric] = typeof value === 'object' ? Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0) : Number(value || 0)
+        } catch { /* Try the alternate click metric. */ }
+      }
       const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? null, views: insights.post_video_views ?? null, clicks: insights.post_clicks ?? insights.post_clicks_by_type ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
       if (existing) {
         const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
