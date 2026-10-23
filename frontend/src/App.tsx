@@ -131,6 +131,7 @@ export default function App() {
   const [profile, setProfile] = useState({ first_name: '', surname: '', email: '', avatar_url: '', sales_code: '' })
   const [profileBusy, setProfileBusy] = useState(false)
   const [isAdministrator, setIsAdministrator] = useState(false)
+  const [appRole, setAppRole] = useState<'administrator' | 'salesperson' | 'manager' | 'other'>('other')
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -141,6 +142,8 @@ export default function App() {
     const { data } = await supabase.from('profiles').select('first_name,surname,email,avatar_url,sales_code').eq('id', user.id).maybeSingle()
     const roles = await supabase.from('profile_roles').select('role_id').eq('profile_id', user.id)
     setIsAdministrator((roles.data || []).some((role: any) => role.role_id === 'administrator'))
+    const roleIds = (roles.data || []).map((role: any) => role.role_id)
+    setAppRole(roleIds.includes('administrator') ? 'administrator' : data?.sales_code ? 'salesperson' : roleIds.includes('sales') ? 'manager' : 'other')
     setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
   }
 
@@ -225,6 +228,10 @@ export default function App() {
       setPage('Configuration'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.${detail ? ' Meta said: ' + detail : ''}`)
     }
   }, [key])
+
+  useEffect(() => {
+    if (appRole === 'salesperson' && ['Feed', 'Posts', 'Campaigns', 'Roadmap', 'Configuration', 'Parts Query', 'Stock Booking', 'Stock Reordering', 'Stock Control Configuration', 'Stock Control Roadmap', 'Returns & Claims', 'Returns & Claims Roadmap'].includes(page)) setPage('Apps')
+  }, [appRole, page])
 
   // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
   useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
@@ -658,11 +665,11 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
             <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>4 available</span></div>
             <div className="app-cards">
-              <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
+              {appRole !== 'salesperson' && <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
                 <div className="app-card-icon"><Megaphone size={25} /></div>
                 <div className="app-card-copy"><h3>Marketing</h3><p>Plan campaigns, organise content, and manage social publishing.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
-              </button>
+              </button>}
               <button className="app-card app-card-available" onClick={() => { setPage('RFQs'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Sales Desk</h3><p>Customer enquiries, RFQs, and sales follow-ups.</p></div>
@@ -678,16 +685,16 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                   <div className="app-card-footer"><span className="app-status-dot app-status-planned" /> Planned <span className="app-card-lock">Coming later</span></div>
                 </div>
               ))}
-              <button className="app-card app-card-available" onClick={() => { setPage('Returns & Claims'); setError(''); setNotice('') }}>
+              {appRole !== 'salesperson' && <button className="app-card app-card-available" onClick={() => { setPage('Returns & Claims'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Returns &amp; Claims</h3><p>Track returns, damage claims, and supplier outcomes.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
-              </button>
-              <button className="app-card app-card-available" onClick={() => { setPage('Stock Booking'); setError(''); setNotice('') }}>
+              </button>}
+              {appRole !== 'salesperson' && <button className="app-card app-card-available" onClick={() => { setPage('Stock Booking'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Compare stock, book branch transfers, and manage Parts Queries.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
-              </button>
+              </button>}
             </div>
           </section>
         )}
