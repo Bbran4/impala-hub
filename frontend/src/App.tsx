@@ -272,11 +272,12 @@ export default function App() {
     sessionStorage.setItem(KEY_STORAGE, trimmed)
     setKey(trimmed); setKeyEntry(''); setError(''); setNotice('API key set for this browser session.')
   }
-  function disconnectKey() {
-    if (supabase) void supabase.auth.signOut()
+  async function disconnectKey() {
+    if (supabase) await supabase.auth.signOut()
     localStorage.removeItem(KEY_STORAGE)
     sessionStorage.removeItem(KEY_STORAGE)
     setKey(''); setKeyEntry(''); setPosts([]); setCampaigns([]); setIntegrations([]); setNotice('')
+    window.location.reload()
   }
 
   const currentMonthPosts = useMemo(() => {
@@ -554,7 +555,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <div className="sidebar-bottom">
             <div className="connection-dot" /> <span>Local workspace</span>
           <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
-            {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
+            {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
           </div>
         )}
         {page !== 'Apps' && page !== 'Account' && (
@@ -579,7 +580,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <div className="sidebar-bottom">
               <div className="connection-dot" /> <span>Local workspace</span>
               <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
-              {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
+              {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
             </div>
           </>
         )}
