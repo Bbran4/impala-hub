@@ -325,6 +325,7 @@ export default function App() {
     try {
       const result = await api('/api/integrations/facebook/select-page', { method: 'POST', body: JSON.stringify({ page_id: selectedFacebookPage }) })
       setNotice('Connected Facebook Page: ' + result.page_name)
+      setIntegrations((items) => items.map((item) => item.provider === 'facebook' ? { ...item, status: 'connected', account_name: result.page_name, page_name: result.page_name, page_id: result.page_id, diagnostic_note: 'Facebook Page connection saved.' } : item))
       setFacebookPages([])
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
