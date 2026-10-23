@@ -169,8 +169,11 @@ async function supabaseApi(path: string, options: RequestInit) {
   }
   if (path === '/api/integrations/facebook/oauth-url' && method === 'POST') {
     const response = await fetch('/api/marketing/facebook/oauth-url', { method: 'POST', headers: { Authorization: `Bearer ${getKey()}` } })
-    const result = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(result.detail || 'Unable to start Facebook authorization.')
+    const raw = await response.text()
+    let result: { detail?: string } = {}
+    try { result = JSON.parse(raw) } catch { /* Vercel may return an HTML deployment error page. */ }
+    if (!response.ok) throw new Error(result.detail || `Facebook authorization endpoint failed (${response.status}).${raw ? ` ${raw.slice(0, 160)}` : ''}`)
+    if (!result || typeof (result as { url?: unknown }).url !== 'string') throw new Error('Facebook authorization endpoint returned no authorization URL.')
     return result
   }
   if (path === '/api/integrations/facebook/select-page' && method === 'POST') {
