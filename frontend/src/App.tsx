@@ -56,6 +56,7 @@ const SALES_ROADMAP_ROWS = [
   ['Send for approval', 'Approval handoff', 'Requires document number, attachment and Complete status; notifies RFQ administrators', 'Partial; needs testing'],
   ['Sales Desk dashboard', 'Not applicable', 'Team RFQ and sales metrics', 'Implemented; drill-downs planned'],
   ['Sales-code dashboard membership', 'Not applicable', 'Daily Sales and RFQ Performance use active profile sales codes; current figures are temporary test data', 'Partial; replace seed data with live sales source'],
+  ['Workspace permissions', 'Role-based application access', 'Salespeople currently see Sales Desk only; Supabase workspace permission contract added', 'Partial; enforce on every workspace backend'],
   ['RFQ analytics', 'Not applicable', 'Period-filtered analytics', 'Implemented; funnel improvements planned'],
   ['Search and filtering', 'Advanced search panels', 'Basic filters', 'Partial'],
   ['Notifications', 'Activities/messages', 'Not implemented', 'Missing'],

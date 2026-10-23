@@ -44,6 +44,7 @@ The Daily Sales and RFQ Performance tables currently contain temporary test data
 | User accounts | Implemented | Add admin user management |
 | Sales-code mapping | Implemented | Add reassignment history and validation |
 | Role-based access | Basic administrator/manager/salesperson rules | Expand permissions by action |
+| Workspace permissions | Salesperson visibility restricted to Sales Desk in the frontend; shared Supabase permission contract added | Enforce every workspace and endpoint server-side as migrations continue |
 | RFQ creation | Implemented | Add templates and duplicate detection |
 | RFQ editing | Implemented | Add field-level change permissions |
 | RFQ claiming | Implemented | Add claim queues and workload limits |
