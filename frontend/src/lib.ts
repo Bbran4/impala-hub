@@ -414,7 +414,31 @@ async function supabaseApi(path: string, options: RequestInit) {
         completed: rows.filter((r) => !!r.sales_desk_statuses?.is_closed && r.rfq_type === 'quotation').length,
         invoiced: rows.filter((r) => r.rfq_type === 'invoice').length,
       }
-      return { totals, series: [] }
+      const params = new URLSearchParams(path.split('?')[1] || '')
+      const period = params.get('period') || 'year'
+      const month = Number(params.get('month') || new Date().getMonth() + 1)
+      const year = new Date().getFullYear()
+      const filtered = rows.filter((row) => {
+        const date = new Date(row.created_at)
+        if (Number.isNaN(date.getTime()) || date.getFullYear() !== year) return false
+        if (period === 'month') return date.getMonth() + 1 === month
+        if (period === 'week') return Math.ceil((date.getDay() + 1 + Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / 86400000)) / 7) === Number(params.get('week') || 1)
+        return true
+      })
+      const groups = new Map<string, any>()
+      for (const row of filtered) {
+        const date = new Date(row.created_at)
+        const label = period === 'year' ? date.toLocaleString(undefined, { month: 'short' }) : date.toLocaleDateString()
+        const point = groups.get(label) || { label, claimed: 0, scrapped: 0, dropped: 0, completed: 0, invoiced: 0 }
+        const name = String(row.sales_desk_statuses?.name || '').toLowerCase()
+        if (row.status_id) point.claimed += 1
+        if (name.includes('scrap')) point.scrapped += 1
+        if (name.includes('drop')) point.dropped += 1
+        if (row.sales_desk_statuses?.is_closed && row.rfq_type === 'quotation') point.completed += 1
+        if (row.rfq_type === 'invoice') point.invoiced += 1
+        groups.set(label, point)
+      }
+      return { totals, series: [...groups.values()] }
     }
   }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
