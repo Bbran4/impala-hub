@@ -274,6 +274,7 @@ export default function App() {
   }
   function disconnectKey() {
     if (supabase) void supabase.auth.signOut()
+    localStorage.removeItem(KEY_STORAGE)
     sessionStorage.removeItem(KEY_STORAGE)
     setKey(''); setKeyEntry(''); setPosts([]); setCampaigns([]); setIntegrations([]); setNotice('')
   }
@@ -643,7 +644,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           </section>
         )}
 
-        {page === 'Apps' && (
+        {page === 'Apps' && key && (
           <section className="apps-dashboard">
             <div className="apps-intro">
               <span className="eyebrow">YOUR WORKSPACE</span>
