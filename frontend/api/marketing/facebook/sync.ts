@@ -26,14 +26,16 @@ export default async function handler(req: any, res: any) {
   try {
     const pageToken = decrypt(connection.token_ciphertext, encryptionKey)
     const version = process.env.FACEBOOK_API_VERSION || 'v22.0'
-    const fields = 'id,message,created_time,permalink_url,attachments{media,type,url},likes.limit(0).summary(true),comments.limit(0).summary(true),shares'
+    const fields = 'id,message,created_time,permalink_url,attachments{media,type,url,subattachments{data{media,type,url}}},likes.limit(0).summary(true),comments.limit(0).summary(true),shares'
     const response = await fetch(`https://graph.facebook.com/${version}/${connection.page_id}/published_posts?limit=100&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`)
     const result = await response.json()
     if (!response.ok) return res.status(502).json({ detail: 'Facebook rejected the sync request.' })
     let imported = 0
+    let metricsUnavailable = 0
     for (const item of result.data || []) {
       const { data: existing } = await admin.from('posts').select('id').contains('provider_ids', { facebook: item.id }).eq('created_by', user.user.id).maybeSingle()
-      const media = (item.attachments?.data || []).flatMap((attachment: any) => {
+      const attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
+      const media = attachments.flatMap((attachment: any) => {
         const image = attachment.media?.image?.src || attachment.url
         return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
       })
@@ -42,7 +44,7 @@ export default async function handler(req: any, res: any) {
         const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?metric=post_impressions,post_impressions_unique,post_video_views,post_clicks&access_token=${encodeURIComponent(pageToken)}`)
         const insightData = await insightResponse.json()
         for (const metric of insightData.data || []) insights[metric.name] = Number(metric.values?.[0]?.value || 0)
-      } catch { /* Metrics are optional; core post import still succeeds. */ }
+      } catch { metricsUnavailable += 1 }
       const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? null, views: insights.post_video_views ?? null, clicks: insights.post_clicks ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
       if (existing) {
         const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
@@ -53,6 +55,6 @@ export default async function handler(req: any, res: any) {
         imported += 1
       }
     }
-    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length })
+    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable })
   } catch { return res.status(502).json({ detail: 'Facebook sync failed.' }) }
 }
