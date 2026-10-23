@@ -32,6 +32,7 @@ export default async function handler(req: any, res: any) {
     if (!response.ok) return res.status(502).json({ detail: 'Facebook rejected the sync request.' })
     let imported = 0
     let metricsUnavailable = 0
+    const metricsErrors: string[] = []
     for (const item of result.data || []) {
       const { data: existing } = await admin.from('posts').select('id').contains('provider_ids', { facebook: item.id }).eq('created_by', user.user.id).maybeSingle()
       let attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
@@ -52,7 +53,10 @@ export default async function handler(req: any, res: any) {
           const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
           const insightData = await insightResponse.json()
           const value = insightData.data?.[0]?.values?.[0]?.value
-          if (!insightResponse.ok || insightData.error || value == null) metricsUnavailable += 1
+          if (!insightResponse.ok || insightData.error || value == null) {
+            metricsUnavailable += 1
+            if (metricsErrors.length < 3) metricsErrors.push(`${metricName}: ${insightData.error?.message || `HTTP ${insightResponse.status}`}`)
+          }
           else insights[metricName] = Number(value || 0)
         } catch { metricsUnavailable += 1 }
       }
@@ -75,6 +79,6 @@ export default async function handler(req: any, res: any) {
         imported += 1
       }
     }
-    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable })
+    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors })
   } catch { return res.status(502).json({ detail: 'Facebook sync failed.' }) }
 }
