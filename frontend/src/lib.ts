@@ -135,15 +135,16 @@ async function supabaseApi(path: string, options: RequestInit) {
     }
     return names.map((name: string, position: number) => ({ name, position }))
   }
-  if (path === '/api/media' && method === 'POST' && options.body instanceof FormData) {
-    const file = options.body.get('file')
-    if (!(file instanceof File)) throw new Error('Select a media file first.')
+  if (path === '/api/media' && method === 'POST' && options.body && typeof (options.body as FormData).get === 'function') {
+    const file = (options.body as FormData).get('file')
+    if (!file || typeof (file as File).arrayBuffer !== 'function') throw new Error('Select a media file first.')
     const user = (await client.auth.getUser()).data.user
-    const objectPath = `${user?.id || 'unknown'}/${crypto.randomUUID()}-${file.name}`
-    const { error } = await client.storage.from('marketing-media').upload(objectPath, file, { contentType: file.type || undefined, upsert: false })
+    const uploadFile = file as File
+    const objectPath = `${user?.id || 'unknown'}/${crypto.randomUUID()}-${uploadFile.name}`
+    const { error } = await client.storage.from('marketing-media').upload(objectPath, uploadFile, { contentType: uploadFile.type || undefined, upsert: false })
     if (error) throw new Error(error.message)
     const { data } = client.storage.from('marketing-media').getPublicUrl(objectPath)
-    return { id: objectPath, name: file.name, url: data.publicUrl, content_type: file.type, size: file.size }
+    return { id: objectPath, name: uploadFile.name, url: data.publicUrl, content_type: uploadFile.type, size: uploadFile.size }
   }
   const typeDelete = path.match(/^\/api\/campaign-types\/(.+)$/)
   if (typeDelete && method === 'DELETE') {
