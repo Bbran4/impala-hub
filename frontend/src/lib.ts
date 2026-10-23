@@ -163,7 +163,13 @@ async function supabaseApi(path: string, options: RequestInit) {
     return null
   }
   if (path === '/api/integrations' && method === 'GET') {
-    return [{ provider: 'facebook', status: 'not_connected' }, { provider: 'instagram', status: 'not_connected' }]
+    const response = await fetch('/api/marketing/status', { headers: { Authorization: `Bearer ${await currentSupabaseToken()}` } })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result.detail || 'Unable to load provider connections.')
+    return [
+      { provider: 'facebook', ...(result.providers?.facebook || { status: 'not_connected' }) },
+      { provider: 'instagram', ...(result.providers?.instagram || { status: 'not_connected' }) },
+    ]
   }
   if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
   if (path === '/api/integrations/sync' && method === 'POST') {
