@@ -136,7 +136,30 @@ async function supabaseApi(path: string, options: RequestInit) {
   if (path === '/api/integrations' && method === 'GET') {
     return [{ provider: 'facebook', status: 'not_connected' }, { provider: 'instagram', status: 'not_connected' }]
   }
-  if (path === '/api/posts' && method === 'GET') return []
+  const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
+  if (path === '/api/posts' || postMatch) {
+    if (method === 'GET') {
+      const { data, error } = await client.from('posts').select('*').order('updated_at', { ascending: false })
+      if (error) throw new Error(error.message)
+      return data || []
+    }
+    if (method === 'POST') {
+      const user = (await client.auth.getUser()).data.user
+      const { data, error } = await client.from('posts').insert({ ...body, created_by: user?.id }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    }
+    if (method === 'PATCH' && postMatch) {
+      const { data, error } = await client.from('posts').update(body).eq('id', postMatch[1]).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    }
+    if (method === 'DELETE' && postMatch) {
+      const { error } = await client.from('posts').delete().eq('id', postMatch[1])
+      if (error) throw new Error(error.message)
+      return null
+    }
+  }
   throw new Error('This Marketing action is not migrated to Supabase yet.')
 }
 
