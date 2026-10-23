@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ClipboardList, Download, Eye, GripVertical, Paperclip, Plus, Settings, Trash2, X } from 'lucide-react'
-import { API } from './lib'
+import { API, api, supabaseConfigured } from './lib'
 import './salesdesk.css'
 
 const FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx'
@@ -422,6 +422,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   useEffect(() => { localStorage.setItem('sales_desk_gp_percent_colors', JSON.stringify(gpPercentColors)) }, [gpPercentColors])
   useEffect(() => { localStorage.setItem('sales_desk_gp_milestone_colors', JSON.stringify(milestoneColors)) }, [milestoneColors])
   const request: Req = useCallback(async (path, init = {}) => {
+    if (supabaseConfigured) return api(path, init)
     const headers = new Headers(init.headers || {})
     if (token) headers.set('Authorization', `Bearer ${token}`)
     if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')

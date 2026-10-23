@@ -40,6 +40,7 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
+export { supabaseConfigured }
 export const KEY_STORAGE = 'impala_session_token'
 export const getKey = () => localStorage.getItem(KEY_STORAGE) || ''
 async function currentSupabaseToken() {
@@ -214,6 +215,59 @@ async function supabaseApi(path: string, options: RequestInit) {
   }
   if (path === '/api/integrations/instagram/oauth-url' && method === 'POST') {
     throw new Error('Instagram OAuth is the next provider migration and is not enabled yet.')
+  }
+  // Sales Desk RFQ foundation. This deliberately covers the read/create/edit path first;
+  // workflow actions and attachments remain on FastAPI until their Supabase equivalents land.
+  if (path.startsWith('/api/sales-desk/')) {
+    const user = (await client.auth.getUser()).data.user
+    if (!user) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
+    const profile = await client.from('profiles').select('display_name,active').eq('id', user.id).single()
+    if (profile.error || !profile.data?.active) throw new Error('Your Impala Hub profile is inactive.')
+    const roleRows = await client.from('profile_roles').select('role_id').eq('profile_id', user.id)
+    const roleIds = (roleRows.data || []).map((r: any) => r.role_id)
+    const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : roleIds.includes('sales') ? 'manager' : 'salesperson'
+    if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: null, is_active: true }
+    if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
+    if (path === '/api/sales-desk/config' && method === 'GET') {
+      const [media, statuses, codes] = await Promise.all([
+        client.from('sales_desk_media_platforms').select('*').order('sort_order').order('name'),
+        client.from('sales_desk_statuses').select('*').order('sort_order').order('name'),
+        client.from('sales_desk_sales_codes').select('*').order('code'),
+      ])
+      for (const result of [media, statuses, codes]) if (result.error) throw new Error(result.error.message)
+      return { media_platforms: media.data || [], statuses: statuses.data || [], sales_codes: codes.data || [], can_configure: role === 'administrator' }
+    }
+    const detailMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)$/)
+    if (path === '/api/sales-desk/rfqs' && method === 'GET' || detailMatch && method === 'GET') {
+      const query = client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)')
+      const result = detailMatch ? await query.eq('id', detailMatch[1]).single() : await query.order('received_at', { ascending: true }).limit(500)
+      if (result.error) throw new Error(result.error.message)
+      const normalize = (r: any) => ({ ...r, media_platform: r.media_platform?.name || null, status: r.status?.name || null, status_name: r.status?.name || null, status_is_closed: !!r.status?.is_closed, sales_code: r.sales_code?.code || null })
+      if (detailMatch) return normalize(result.data)
+      const items = (result.data || []).map(normalize)
+      return { items, total: items.length, limit: 500, offset: 0 }
+    }
+    if (path === '/api/sales-desk/rfqs' && method === 'POST') {
+      if (role === 'salesperson') throw new Error('Salespeople cannot create RFQs directly')
+      const seq = await client.rpc('next_sales_desk_rfq_number')
+      if (seq.error || !seq.data?.[0]) throw new Error(seq.error?.message || 'Unable to allocate an RFQ number.')
+      const n = seq.data[0]
+      const status = body.status_id || (await client.from('sales_desk_statuses').select('id').ilike('name', 'Unclaimed').eq('is_active', true).single()).data?.id
+      const result = await client.from('sales_desk_rfqs').insert({ ...body, rfq_no: n.rfq_no, business_date: n.business_date, daily_number: n.daily_number, status_id: status, created_by: user.id, updated_by: user.id }).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
+      if (result.error) throw new Error(result.error.message)
+      return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
+    }
+    if (detailMatch && method === 'PATCH') {
+      const result = await client.from('sales_desk_rfqs').update({ ...body, updated_by: user.id }).eq('id', detailMatch[1]).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
+      if (result.error) throw new Error(result.error.message)
+      return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
+    }
+    if (path === '/api/sales-desk/dashboard' && method === 'GET') {
+      const all = await client.from('sales_desk_rfqs').select('status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed)')
+      if (all.error) throw new Error(all.error.message)
+      const today = new Date().toISOString().slice(0, 10); const rows: any[] = all.data || []
+      return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length }
+    }
   }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   if (path === '/api/posts' || postMatch) {
