@@ -228,6 +228,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : roleIds.includes('sales') ? 'manager' : 'salesperson'
     if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: profile.data.sales_code || null, is_active: true }
     if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
+    if (path === '/api/sales-desk/auth/users' && method === 'GET') return []
     if (path === '/api/sales-desk/config' && method === 'GET') {
       const [media, statuses, codes] = await Promise.all([
         client.from('sales_desk_media_platforms').select('*').order('sort_order').order('name'),
@@ -235,7 +236,7 @@ async function supabaseApi(path: string, options: RequestInit) {
         client.from('sales_desk_sales_codes').select('*').order('code'),
       ])
       for (const result of [media, statuses, codes]) if (result.error) throw new Error(result.error.message)
-      return { media_platforms: media.data || [], statuses: statuses.data || [], sales_codes: codes.data || [], can_configure: role === 'administrator' }
+      return { media_platforms: (media.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), statuses: (statuses.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), sales_codes: codes.data || [], can_configure: role === 'administrator' }
     }
     const detailMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)$/)
     if (path === '/api/sales-desk/rfqs' && method === 'GET' || detailMatch && method === 'GET') {
