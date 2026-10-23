@@ -545,17 +545,17 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">I</div>
-          <div><b>IMPALA HUB</b>{page !== 'Apps' && <small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : 'Marketing workspace'}</small>}</div>
+          <div><b>IMPALA HUB</b>{page !== 'Apps' && page !== 'Account' && <small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : 'Marketing workspace'}</small>}</div>
         </div>
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
-        {page === 'Apps' && (
+        {(page === 'Apps' || page === 'Account') && (
           <div className="sidebar-bottom">
             <div className="connection-dot" /> <span>Local workspace</span>
             <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
             {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
           </div>
         )}
-        {page !== 'Apps' && (
+        {page !== 'Apps' && page !== 'Account' && (
           <>
             <div className="nav-label">WORKSPACE</div>
             {(isSalesDeskPage
@@ -585,7 +585,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">IMPALA SPARES / {page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : 'MARKETING'}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
+          <div><div className="eyebrow">{page === 'Account' ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
           {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && page !== 'Apps' && page !== 'Account' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
