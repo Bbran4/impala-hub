@@ -179,6 +179,9 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!response.ok) throw new Error(result.detail || 'Unable to save the Facebook Page connection.')
     return result
   }
+  if (path === '/api/integrations/instagram/oauth-url' && method === 'POST') {
+    throw new Error('Instagram OAuth is the next provider migration and is not enabled yet.')
+  }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   if (path === '/api/posts' || postMatch) {
     if (method === 'GET') {

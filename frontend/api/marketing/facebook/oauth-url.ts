@@ -10,7 +10,8 @@ export default async function handler(req: any, res: any) {
   const appId = process.env.META_APP_ID
   const redirectUri = process.env.FACEBOOK_OAUTH_REDIRECT_URI
   if (!url || !publishableKey || !serviceKey || !appId || !redirectUri) {
-    return res.status(503).json({ detail: 'Facebook OAuth server configuration is incomplete.' })
+    const missing = [!url && 'SUPABASE_URL', !publishableKey && 'SUPABASE_PUBLISHABLE_KEY', !serviceKey && 'SUPABASE_SERVICE_ROLE_KEY', !appId && 'META_APP_ID', !redirectUri && 'FACEBOOK_OAUTH_REDIRECT_URI'].filter(Boolean)
+    return res.status(503).json({ detail: `Facebook OAuth server configuration is incomplete. Missing: ${missing.join(', ')}` })
   }
   if (!token) return res.status(401).json({ detail: 'Authentication required.' })
   const authClient = createClient(url, publishableKey, { auth: { persistSession: false, autoRefreshToken: false } })
