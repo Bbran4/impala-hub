@@ -20,7 +20,7 @@ export default async function handler(req: any, res: any) {
   const state = crypto.randomBytes(32).toString('base64url')
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const { error } = await admin.from('oauth_states').insert({ state, provider: 'facebook', owner_id: user.user.id, redirect_uri: redirectUri, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
-  if (error) return res.status(500).json({ detail: 'Could not start Facebook authorization.' })
+  if (error) return res.status(500).json({ detail: `Could not create Facebook OAuth state. Apply the latest Supabase migration and retry. (${error.code || 'database error'})` })
   const params = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, state, response_type: 'code', scope: 'pages_show_list,pages_read_engagement,pages_manage_posts' })
   return res.status(200).json({ url: `https://www.facebook.com/dialog/oauth?${params.toString()}` })
 }
