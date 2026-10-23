@@ -243,6 +243,13 @@ async function supabaseApi(path: string, options: RequestInit) {
       return null
     }
   }
+  const publishMatch = path.match(/^\/api\/posts\/([^/]+)\/publish-now$/)
+  if (publishMatch && method === 'POST') {
+    const response = await fetch(`/api/marketing/facebook/publish?post_id=${encodeURIComponent(publishMatch[1])}`, { method: 'POST', headers: { Authorization: `Bearer ${await currentSupabaseToken()}` } })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result.detail || 'Facebook publishing failed.')
+    return result
+  }
   throw new Error('This Marketing action is not migrated to Supabase yet.')
 }
 
