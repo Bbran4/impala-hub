@@ -127,8 +127,55 @@ export default function App() {
   const [imageViewer, setImageViewer] = useState<{ images: Post['media']; index: number } | null>(null)
   const [view, setView] = useState<'list' | 'board' | 'calendar' | 'pivot'>('list')
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
+  const [profile, setProfile] = useState({ first_name: '', surname: '', email: '', avatar_url: '' })
+  const [profileBusy, setProfileBusy] = useState(false)
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
+
+  async function loadProfile() {
+    if (!supabase) return
+    const user = (await supabase.auth.getUser()).data.user
+    if (!user) return
+    const { data } = await supabase.from('profiles').select('first_name,surname,email,avatar_url').eq('id', user.id).maybeSingle()
+    setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '' })
+  }
+
+  async function saveProfile() {
+    if (!supabase) return
+    setProfileBusy(true); setError('')
+    try {
+      const user = (await supabase.auth.getUser()).data.user
+      if (!user) throw new Error('Your session has expired. Sign in again.')
+      const { error: updateError } = await supabase.from('profiles').update({ first_name: profile.first_name.trim(), surname: profile.surname.trim(), display_name: `${profile.first_name.trim()} ${profile.surname.trim()}`.trim(), avatar_url: profile.avatar_url || null }).eq('id', user.id)
+      if (updateError) throw new Error(updateError.message)
+      setNotice('Profile saved.')
+    } catch (e) { handleError(e) } finally { setProfileBusy(false) }
+  }
+
+  async function uploadAvatar(file: File) {
+    if (!supabase) return
+    const user = (await supabase.auth.getUser()).data.user
+    if (!user) return
+    setProfileBusy(true); setError('')
+    try {
+      const path = `${user.id}/avatar-${Date.now()}-${file.name}`
+      const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, file, { upsert: false, contentType: file.type })
+      if (uploadError) throw new Error(uploadError.message)
+      const { data } = supabase.storage.from('profile-avatars').getPublicUrl(path)
+      setProfile((current) => ({ ...current, avatar_url: data.publicUrl }))
+      setNotice('Profile picture uploaded. Click Save profile to keep it.')
+    } catch (e) { handleError(e) } finally { setProfileBusy(false) }
+  }
+
+  async function sendPasswordReset() {
+    if (!supabase || !profile.email) return
+    setProfileBusy(true); setError('')
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(profile.email, { redirectTo: window.location.origin })
+      if (resetError) throw new Error(resetError.message)
+      setNotice('A password reset link was sent to your email address.')
+    } catch (e) { handleError(e) } finally { setProfileBusy(false) }
+  }
 
   function handleError(e: unknown) {
     const message = (e as Error).message
@@ -151,6 +198,7 @@ export default function App() {
   useEffect(() => {
     if (!key) return
     void load()
+    void loadProfile()
     const params = new URLSearchParams(window.location.search)
     const fb = params.get('facebook_oauth')
     const ig = params.get('instagram_oauth')
@@ -521,7 +569,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             ))}
             <div className="sidebar-bottom">
               <div className="connection-dot" /> <span>Local workspace</span>
-              <small>{integrations.some((i) => i.status === 'connected') ? 'Facebook connected' : 'Publishing not connected'}</small>
+              <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
               {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
             </div>
           </>
@@ -563,6 +611,25 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <input type="password" aria-label="Password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void signIn() }} />
               <button className="primary" onClick={() => void signIn()}>Sign in</button>
               {supabaseConfigured && <p className="hint">Authentication is provided by Supabase. Marketing and Sales Desk data migration is still in progress.</p>}
+            </div>
+          </section>
+        )}
+
+        {page === 'Account' && key && (
+          <section className="account-page">
+            <div className="section-head"><div><span className="eyebrow">YOUR ACCOUNT</span><h2>Profile and security</h2><p>Manage your personal details and sign-in security.</p></div></div>
+            <div className="account-card">
+              <div className="avatar-panel">
+                {profile.avatar_url ? <img src={profile.avatar_url} alt="Profile" className="profile-avatar" /> : <div className="profile-avatar profile-avatar-empty">{(profile.first_name || profile.email || '?').slice(0, 1).toUpperCase()}</div>}
+                <label className="secondary avatar-upload">Change picture<input type="file" accept="image/png,image/jpeg,image/webp" disabled={profileBusy} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadAvatar(file); e.target.value = '' }} /></label>
+              </div>
+              <div className="account-fields">
+                <label>First name<input value={profile.first_name} onChange={(e) => setProfile({ ...profile, first_name: e.target.value })} /></label>
+                <label>Surname<input value={profile.surname} onChange={(e) => setProfile({ ...profile, surname: e.target.value })} /></label>
+                <label>Email address<input value={profile.email} disabled /></label>
+                <div className="password-reset"><div><b>Password</b><p>Your password is changed through a secure email link.</p></div><button className="secondary" disabled={profileBusy} onClick={() => void sendPasswordReset()}>Send reset link</button></div>
+                <div className="account-actions"><button className="primary" disabled={profileBusy} onClick={() => void saveProfile()}>Save profile</button></div>
+              </div>
             </div>
           </section>
         )}
