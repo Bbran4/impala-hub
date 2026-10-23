@@ -42,6 +42,16 @@ export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
 export const KEY_STORAGE = 'impala_session_token'
 export const getKey = () => localStorage.getItem(KEY_STORAGE) || ''
+async function currentSupabaseToken() {
+  if (supabase) {
+    const { data } = await supabase.auth.getSession()
+    if (data.session?.access_token) {
+      localStorage.setItem(KEY_STORAGE, data.session.access_token)
+      return data.session.access_token
+    }
+  }
+  return getKey()
+}
 
 export class AuthError extends Error {}
 
@@ -157,7 +167,7 @@ async function supabaseApi(path: string, options: RequestInit) {
   }
   if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
   if (path === '/api/integrations/sync' && method === 'POST') {
-    const token = getKey()
+    const token = await currentSupabaseToken()
     const response = await fetch('/api/marketing/status', { headers: { Authorization: `Bearer ${token}` } })
     const status = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(status.detail || 'Unable to check the Marketing server status.')
@@ -168,7 +178,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     ]
   }
   if (path === '/api/integrations/facebook/oauth-url' && method === 'POST') {
-    const response = await fetch('/api/marketing/facebook/oauth-url', { method: 'POST', headers: { Authorization: `Bearer ${getKey()}` } })
+    const response = await fetch('/api/marketing/facebook/oauth-url', { method: 'POST', headers: { Authorization: `Bearer ${await currentSupabaseToken()}` } })
     const raw = await response.text()
     let result: { detail?: string } = {}
     try { result = JSON.parse(raw) } catch { /* Vercel may return an HTML deployment error page. */ }
@@ -177,7 +187,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     return result
   }
   if (path === '/api/integrations/facebook/select-page' && method === 'POST') {
-    const response = await fetch('/api/marketing/facebook/select-page', { method: 'POST', headers: { Authorization: `Bearer ${getKey()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const response = await fetch('/api/marketing/facebook/select-page', { method: 'POST', headers: { Authorization: `Bearer ${await currentSupabaseToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const result = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(result.detail || 'Unable to save the Facebook Page connection.')
     return result
