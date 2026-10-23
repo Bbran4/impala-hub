@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
         return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
       })
       const insights: Record<string, number> = {}
-      for (const metricName of ['post_impressions', 'post_impressions_unique', 'post_video_views']) {
+      for (const metricName of ['post_impressions', 'post_impressions_unique', 'post_media_view', 'post_video_views']) {
         try {
           const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
           const insightData = await insightResponse.json()
@@ -65,7 +65,7 @@ export default async function handler(req: any, res: any) {
           if (clickResponse.ok && !clickData.error && value != null) insights[clickMetric] = typeof value === 'object' ? Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0) : Number(value || 0)
         } catch { /* Try the alternate click metric. */ }
       }
-      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? null, views: insights.post_video_views ?? null, clicks: insights.post_clicks ?? insights.post_clicks_by_type ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
+      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? null, views: insights.post_media_view ?? insights.post_video_views ?? insights.post_impressions ?? null, clicks: insights.post_clicks ?? insights.post_clicks_by_type ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
       if (existing) {
         const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
         if (updateError) return res.status(500).json({ detail: `Could not update imported Facebook post (${updateError.code || 'database error'}).` })
