@@ -167,6 +167,12 @@ async function supabaseApi(path: string, options: RequestInit) {
       { provider: 'instagram', status: providerStatus, diagnostic_note: status.message },
     ]
   }
+  if (path === '/api/integrations/facebook/oauth-url' && method === 'POST') {
+    const response = await fetch('/api/marketing/facebook/oauth-url', { method: 'POST', headers: { Authorization: `Bearer ${getKey()}` } })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result.detail || 'Unable to start Facebook authorization.')
+    return result
+  }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   if (path === '/api/posts' || postMatch) {
     if (method === 'GET') {
