@@ -173,6 +173,12 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!response.ok) throw new Error(result.detail || 'Unable to start Facebook authorization.')
     return result
   }
+  if (path === '/api/integrations/facebook/select-page' && method === 'POST') {
+    const response = await fetch('/api/marketing/facebook/select-page', { method: 'POST', headers: { Authorization: `Bearer ${getKey()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result.detail || 'Unable to save the Facebook Page connection.')
+    return result
+  }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   if (path === '/api/posts' || postMatch) {
     if (method === 'GET') {
