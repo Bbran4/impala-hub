@@ -54,28 +54,27 @@ export default async function handler(req: any, res: any) {
         return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
       })
       const insights: Record<string, number> = {}
-      for (const metricName of ['post_media_view', 'post_video_views']) {
+      const metricFallbacks: Array<[string, string[]]> = [
+        ['views', ['post_media_view', 'post_impressions']],
+        ['reach', ['post_total_media_view_unique', 'post_impressions_unique']],
+        ['clicks', ['post_clicks']],
+      ]
+      for (const [target, metricNames] of metricFallbacks) {
+        for (const metricName of metricNames) {
+          if (insights[target] != null) break
         try {
-          const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
+          const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
           const insightData = await insightResponse.json()
           const value = insightData.data?.[0]?.values?.[0]?.value
           if (!insightResponse.ok || insightData.error || value == null) {
             metricsUnavailable += 1
             if (metricsErrors.length < 3) metricsErrors.push(`${metricName}: ${insightData.error?.message || `HTTP ${insightResponse.status}`}`)
           }
-          else insights[metricName] = Number(value || 0)
+          else insights[target] = typeof value === 'object' ? Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0) : Number(value || 0)
         } catch { metricsUnavailable += 1 }
+        }
       }
-      for (const clickMetric of ['post_clicks', 'post_clicks_by_type']) {
-        if (insights.post_clicks || insights.post_clicks_by_type) break
-        try {
-          const clickResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=${clickMetric}&access_token=${encodeURIComponent(pageToken)}`)
-          const clickData = await clickResponse.json()
-          const value = clickData.data?.[0]?.values?.[0]?.value
-          if (clickResponse.ok && !clickData.error && value != null) insights[clickMetric] = typeof value === 'object' ? Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0) : Number(value || 0)
-        } catch { /* Try the alternate click metric. */ }
-      }
-      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: null, reach: null, views: insights.post_media_view ?? insights.post_video_views ?? null, clicks: insights.post_clicks ?? insights.post_clicks_by_type ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
+      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.views ?? null, reach: insights.reach ?? null, views: insights.views ?? null, clicks: insights.clicks ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
       if (existing) {
         const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
         if (updateError) return res.status(500).json({ detail: `Could not update imported Facebook post (${updateError.code || 'database error'}).` })
