@@ -34,7 +34,14 @@ export default async function handler(req: any, res: any) {
     let metricsUnavailable = 0
     for (const item of result.data || []) {
       const { data: existing } = await admin.from('posts').select('id').contains('provider_ids', { facebook: item.id }).eq('created_by', user.user.id).maybeSingle()
-      const attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
+      let attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
+      if (attachments.length < 2) {
+        try {
+          const attachmentResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/attachments?fields=media,type,url,subattachments{data{media,type,url}}&access_token=${encodeURIComponent(pageToken)}`)
+          const attachmentResult = await attachmentResponse.json()
+          attachments = (attachmentResult.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
+        } catch { /* Keep the attachment data returned by published_posts. */ }
+      }
       const media = attachments.flatMap((attachment: any) => {
         const image = attachment.media?.image?.src || attachment.url
         return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
@@ -43,6 +50,7 @@ export default async function handler(req: any, res: any) {
       try {
         const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?metric=post_impressions,post_impressions_unique,post_video_views,post_clicks&access_token=${encodeURIComponent(pageToken)}`)
         const insightData = await insightResponse.json()
+        if (!insightResponse.ok || insightData.error) metricsUnavailable += 1
         for (const metric of insightData.data || []) insights[metric.name] = Number(metric.values?.[0]?.value || 0)
       } catch { metricsUnavailable += 1 }
       const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? null, views: insights.post_video_views ?? null, clicks: insights.post_clicks ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
