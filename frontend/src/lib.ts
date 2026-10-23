@@ -331,9 +331,17 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
     }
     if (detailMatch && method === 'PATCH') {
+      const before = await client.from('sales_desk_rfqs').select('sales_code_id,sales_desk_sales_codes(code)').eq('id', detailMatch[1]).single()
+      if (before.error) throw new Error(before.error.message)
       const result = await client.from('sales_desk_rfqs').update({ ...body, updated_by: user.id }).eq('id', detailMatch[1]).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
       if (result.error) throw new Error(result.error.message)
-      await auditRfq(detailMatch[1], 'updated', { changed: Object.keys(body) })
+      if (Object.prototype.hasOwnProperty.call(body, 'sales_code_id')) {
+        const previous = before.data.sales_desk_sales_codes?.[0]?.code || null
+        const current = result.data.sales_code?.code || null
+        await auditRfq(detailMatch[1], current ? (previous ? 'reassigned' : 'assigned') : 'unassigned', { from_sales_code: previous, to_sales_code: current })
+      } else {
+        await auditRfq(detailMatch[1], 'updated', { changed: Object.keys(body) })
+      }
       return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
     }
     if (detailMatch && method === 'DELETE') {
