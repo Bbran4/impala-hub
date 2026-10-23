@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/marketing/facebook/publish-due",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
