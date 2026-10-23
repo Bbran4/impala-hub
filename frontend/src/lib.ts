@@ -268,6 +268,19 @@ async function supabaseApi(path: string, options: RequestInit) {
       const today = new Date().toISOString().slice(0, 10); const rows: any[] = all.data || []
       return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length }
     }
+    if (path.startsWith('/api/sales-desk/analytics') && method === 'GET') {
+      const result = await client.from('sales_desk_rfqs').select('rfq_type,status_id,created_at,sales_desk_statuses(name,is_closed)')
+      if (result.error) throw new Error(result.error.message)
+      const rows: any[] = result.data || []
+      const totals = {
+        claimed: rows.filter((r) => !!r.status_id).length,
+        scrapped: rows.filter((r) => String(r.sales_desk_statuses?.name || '').toLowerCase().includes('scrap')).length,
+        dropped: rows.filter((r) => String(r.sales_desk_statuses?.name || '').toLowerCase().includes('drop')).length,
+        completed: rows.filter((r) => !!r.sales_desk_statuses?.is_closed && r.rfq_type === 'quotation').length,
+        invoiced: rows.filter((r) => r.rfq_type === 'invoice').length,
+      }
+      return { totals, series: [] }
+    }
   }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   if (path === '/api/posts' || postMatch) {
