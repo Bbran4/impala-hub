@@ -155,6 +155,10 @@ async function supabaseApi(path: string, options: RequestInit) {
   if (path === '/api/integrations' && method === 'GET') {
     return [{ provider: 'facebook', status: 'not_connected' }, { provider: 'instagram', status: 'not_connected' }]
   }
+  if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
+  if (path === '/api/integrations/sync' && method === 'POST') {
+    return [{ provider: 'facebook', status: 'not_connected' }, { provider: 'instagram', status: 'not_connected' }]
+  }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   if (path === '/api/posts' || postMatch) {
     if (method === 'GET') {
