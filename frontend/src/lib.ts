@@ -381,7 +381,13 @@ async function supabaseApi(path: string, options: RequestInit) {
       const all = await client.from('sales_desk_rfqs').select('status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed)')
       if (all.error) throw new Error(all.error.message)
       const today = new Date().toISOString().slice(0, 10); const rows: any[] = all.data || []
-      return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length }
+      const [daily, performance] = await Promise.all([
+        client.from('sales_desk_daily_sales').select('*').eq('business_date', today).order('gross_sales', { ascending: false }),
+        client.from('sales_desk_rfq_performance').select('*').eq('business_date', today).order('sales_person'),
+      ])
+      if (daily.error) throw new Error(daily.error.message)
+      if (performance.error) throw new Error(performance.error.message)
+      return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length, daily_sales: daily.data || [], rfq_performance: performance.data || [] }
     }
     if (path.startsWith('/api/sales-desk/analytics') && method === 'GET') {
       const result = await client.from('sales_desk_rfqs').select('rfq_type,status_id,created_at,sales_desk_statuses(name,is_closed)')
