@@ -471,6 +471,10 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
     void act(() => request(`/api/sales-desk/rfqs/${r.id}/convert-to-invoice`, { method: 'POST' }), `Invoice ${r.rfq_no}INV created. The original quote was kept.`)
   }
   const claim = (r: any) => void act(() => request(`/api/sales-desk/rfqs/${r.id}/claim`, { method: 'POST' }), `Claimed ${r.rfq_no} for your sales code.`)
+  const removeRfq = (r: any) => {
+    if (!window.confirm(`Delete ${r.rfq_no}? It will be removed from active Sales Desk lists but retained for audit purposes.`)) return
+    void act(() => request(`/api/sales-desk/rfqs/${r.id}`, { method: 'DELETE' }), `RFQ ${r.rfq_no} deleted.`)
+  }
 
   async function reorder(kind: 'media-platforms' | 'statuses', key: 'media_platforms' | 'statuses', ids: string[]) {
     const byId = new Map<string, any>(config[key].map((o: any) => [o.id, o]))
@@ -570,6 +574,7 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                       <button className="secondary" onClick={() => setPanel({ mode: 'edit', id: r.id })}>View</button>
                       {canConvert(r) && <button className="secondary" disabled={busy} onClick={() => convert(r)}>Convert to invoice</button>}
                       {user?.role === 'salesperson' && !r.sales_code && <button className="primary" disabled={busy} onClick={() => claim(r)}>Claim</button>}
+                      {(isStaff) && <button className="icon-button" aria-label={`Delete ${r.rfq_no}`} title="Delete RFQ" onClick={() => removeRfq(r)}><Trash2 size={16} /></button>}
                     </td>
                   </tr>
                 )) : <tr><td colSpan={8}><div className="rfq-empty"><ClipboardList size={28} /><h3>{rfqs.length ? 'No matching RFQs' : 'No RFQs yet'}</h3><p>Incoming enquiries and manually captured RFQs will appear here.</p></div></td></tr>}</tbody>

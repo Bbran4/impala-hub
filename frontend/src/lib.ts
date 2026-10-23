@@ -295,7 +295,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     const detailMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)$/)
     if ((path === '/api/sales-desk/rfqs' || path.startsWith('/api/sales-desk/rfqs?')) && method === 'GET' || detailMatch && method === 'GET') {
       const query = client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)')
-      const result = detailMatch ? await query.eq('id', detailMatch[1]).single() : await query.order('received_at', { ascending: true }).limit(500)
+      const result = detailMatch ? await query.eq('id', detailMatch[1]).is('deleted_at', null).single() : await query.is('deleted_at', null).order('received_at', { ascending: true }).limit(500)
       if (result.error) throw new Error(result.error.message)
       const normalize = (r: any) => ({ ...r, media_platform: r.media_platform?.name || null, status: r.status?.name || null, status_name: r.status?.name || null, status_is_closed: !!r.status?.is_closed, sales_code: r.sales_code?.code || null })
       if (detailMatch) {
@@ -335,6 +335,13 @@ async function supabaseApi(path: string, options: RequestInit) {
       if (result.error) throw new Error(result.error.message)
       await auditRfq(detailMatch[1], 'updated', { changed: Object.keys(body) })
       return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
+    }
+    if (detailMatch && method === 'DELETE') {
+      if (role !== 'administrator' && role !== 'manager') throw new Error('Only managers and administrators can delete RFQs.')
+      const result = await client.from('sales_desk_rfqs').update({ deleted_at: new Date().toISOString(), deleted_by: user.id, updated_by: user.id }).eq('id', detailMatch[1]).is('deleted_at', null)
+      if (result.error) throw new Error(result.error.message)
+      await auditRfq(detailMatch[1], 'deleted', { soft_delete: true })
+      return null
     }
     const actionMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/(claim|send-for-approval|convert-to-invoice)$/)
     if (actionMatch && method === 'POST') {
