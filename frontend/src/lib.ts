@@ -204,6 +204,18 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!response.ok) throw new Error(result.detail || 'Unable to load Facebook Pages.')
     return result
   }
+  if (path === '/api/integrations/facebook/check' && method === 'POST') {
+    const response = await fetch('/api/marketing/facebook/connection', { method: 'POST', headers: { Authorization: `Bearer ${await currentSupabaseToken()}` } })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result.detail || 'Facebook connection check failed.')
+    return result
+  }
+  if (path === '/api/integrations/facebook/disconnect' && method === 'POST') {
+    const response = await fetch('/api/marketing/facebook/connection', { method: 'DELETE', headers: { Authorization: `Bearer ${await currentSupabaseToken()}` } })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result.detail || 'Facebook disconnect failed.')
+    return result
+  }
   if (path === '/api/integrations/instagram/oauth-url' && method === 'POST') {
     throw new Error('Instagram OAuth is the next provider migration and is not enabled yet.')
   }
