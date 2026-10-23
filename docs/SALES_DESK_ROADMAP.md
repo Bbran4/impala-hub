@@ -21,6 +21,10 @@ Implemented today:
 
 ## Improvement roadmap
 
+### Dashboard data integrity
+
+The Daily Sales and RFQ Performance tables currently contain temporary test data so the dashboard can be demonstrated. Before production use, both dashboards must be populated only from active user profiles with a configured sales code. Users without a sales code must not appear in either table. The temporary seed rows must be replaced by a live sales-data import or approved integration, with business-date and source timestamps retained for auditability.
+
 1. Add a dedicated RFQ Kanban with drag-and-drop status changes.
 2. Add bulk actions for assignment, claiming, status changes, and export.
 3. Add saved filters and advanced search by customer, salesperson, source, status, and date.
@@ -49,6 +53,7 @@ Implemented today:
 | Attachments | Implemented with no-delete protection | Add previews and virus scanning |
 | Sales Desk dashboard | Implemented | Add drill-downs and saved periods |
 | RFQ analytics | Implemented | Add conversion funnel and cohort comparisons |
+| Daily sales and RFQ performance membership | Temporary Supabase seed data | Restrict rows to active users with profile sales codes and replace test values with live sales data |
 | Search/filtering | Basic filters | Add advanced filters and saved views |
 | Send for approval | Partial; initial implementation with document, attachment and Complete-status guards | Test end-to-end administrator notification, then add approval queue and decision tracking |
 | Notifications | Approval notification persistence implemented | Add bell, unread count, and reminders |
