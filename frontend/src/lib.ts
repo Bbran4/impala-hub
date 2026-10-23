@@ -221,12 +221,12 @@ async function supabaseApi(path: string, options: RequestInit) {
   if (path.startsWith('/api/sales-desk/')) {
     const user = (await client.auth.getUser()).data.user
     if (!user) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
-    const profile = await client.from('profiles').select('display_name,active').eq('id', user.id).single()
+    const profile = await client.from('profiles').select('display_name,active,sales_code').eq('id', user.id).single()
     if (profile.error || !profile.data?.active) throw new Error('Your Impala Hub profile is inactive.')
     const roleRows = await client.from('profile_roles').select('role_id').eq('profile_id', user.id)
     const roleIds = (roleRows.data || []).map((r: any) => r.role_id)
     const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : roleIds.includes('sales') ? 'manager' : 'salesperson'
-    if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: null, is_active: true }
+    if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: profile.data.sales_code || null, is_active: true }
     if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
     if (path === '/api/sales-desk/config' && method === 'GET') {
       const [media, statuses, codes] = await Promise.all([

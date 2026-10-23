@@ -127,7 +127,7 @@ export default function App() {
   const [imageViewer, setImageViewer] = useState<{ images: Post['media']; index: number } | null>(null)
   const [view, setView] = useState<'list' | 'board' | 'calendar' | 'pivot'>('list')
   const [month, setMonth] = useState<Date | null>(() => startOfMonth()) // null = all months (list and board only)
-  const [profile, setProfile] = useState({ first_name: '', surname: '', email: '', avatar_url: '' })
+  const [profile, setProfile] = useState({ first_name: '', surname: '', email: '', avatar_url: '', sales_code: '' })
   const [profileBusy, setProfileBusy] = useState(false)
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
@@ -136,8 +136,8 @@ export default function App() {
     if (!supabase) return
     const user = (await supabase.auth.getUser()).data.user
     if (!user) return
-    const { data } = await supabase.from('profiles').select('first_name,surname,email,avatar_url').eq('id', user.id).maybeSingle()
-    setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '' })
+    const { data } = await supabase.from('profiles').select('first_name,surname,email,avatar_url,sales_code').eq('id', user.id).maybeSingle()
+    setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
   }
 
   async function saveProfile() {
@@ -146,7 +146,8 @@ export default function App() {
     try {
       const user = (await supabase.auth.getUser()).data.user
       if (!user) throw new Error('Your session has expired. Sign in again.')
-      const { error: updateError } = await supabase.from('profiles').update({ first_name: profile.first_name.trim(), surname: profile.surname.trim(), display_name: `${profile.first_name.trim()} ${profile.surname.trim()}`.trim(), avatar_url: profile.avatar_url || null }).eq('id', user.id)
+      const salesCode = profile.sales_code.trim().toUpperCase()
+      const { error: updateError } = await supabase.from('profiles').update({ first_name: profile.first_name.trim(), surname: profile.surname.trim(), display_name: `${profile.first_name.trim()} ${profile.surname.trim()}`.trim(), avatar_url: profile.avatar_url || null, sales_code: salesCode || null }).eq('id', user.id)
       if (updateError) throw new Error(updateError.message)
       setNotice('Profile saved.')
     } catch (e) { handleError(e) } finally { setProfileBusy(false) }
@@ -551,7 +552,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
         {(page === 'Apps' || page === 'Account') && (
           <div className="sidebar-bottom">
             <div className="connection-dot" /> <span>Local workspace</span>
-            <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
+          <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
             {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
           </div>
         )}
@@ -576,7 +577,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             ))}
             <div className="sidebar-bottom">
               <div className="connection-dot" /> <span>Local workspace</span>
-              <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
+              <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
               {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
             </div>
           </>
@@ -633,6 +634,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <div className="account-fields">
                 <label>First name<input value={profile.first_name} onChange={(e) => setProfile({ ...profile, first_name: e.target.value })} /></label>
                 <label>Surname<input value={profile.surname} onChange={(e) => setProfile({ ...profile, surname: e.target.value })} /></label>
+              <label>Sales code<input value={profile.sales_code} placeholder="e.g. BB01" onChange={(e) => setProfile({ ...profile, sales_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></label>
                 <label>Email address<input value={profile.email} disabled /></label>
                 <div className="password-reset"><div><b>Password</b><p>Your password is changed through a secure email link.</p></div><button className="secondary" disabled={profileBusy} onClick={() => void sendPasswordReset()}>Send reset link</button></div>
                 <div className="account-actions"><button className="primary" disabled={profileBusy} onClick={() => void saveProfile()}>Save profile</button></div>
