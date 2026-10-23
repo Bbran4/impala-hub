@@ -307,6 +307,13 @@ async function supabaseApi(path: string, options: RequestInit) {
         const names = new Map((actors.data || []).map((actor: any) => [actor.id, actor.display_name]))
         const item = normalize(result.data)
         item.audit_history = (history.data || []).map((entry: any) => ({ ...entry, changes: entry.changes || {}, actor_name: names.get(entry.actor_user_id) || entry.actor_user_id }))
+        const attachments = await client.from('sales_desk_rfq_attachments').select('id,original_name,storage_path,content_type,size,uploaded_by,created_at').eq('rfq_id', detailMatch[1]).order('created_at')
+        if (attachments.error) throw new Error(attachments.error.message)
+        const uploaders = [...new Set((attachments.data || []).map((entry: any) => entry.uploaded_by))]
+        const uploaderRows = uploaders.length ? await client.from('profiles').select('id,display_name').in('id', uploaders) : { data: [] as any[], error: null }
+        if (uploaderRows.error) throw new Error(uploaderRows.error.message)
+        const uploaderNames = new Map((uploaderRows.data || []).map((actor: any) => [actor.id, actor.display_name]))
+        item.attachments = (attachments.data || []).map((entry: any) => ({ ...entry, uploaded_by_name: uploaderNames.get(entry.uploaded_by) || 'Unknown' }))
         return item
       }
       const items = (result.data || []).map(normalize)
