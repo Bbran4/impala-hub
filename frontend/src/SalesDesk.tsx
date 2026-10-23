@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ClipboardList, Download, Eye, GripVertical, Paperclip, Plus, Settings, Trash2, X } from 'lucide-react'
-import { API, api, supabaseConfigured } from './lib'
+import { API, api, supabase, supabaseConfigured } from './lib'
 import './salesdesk.css'
 
 const FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx'
@@ -180,6 +180,8 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
   async function uploadAll(id: string, list: File[]) {
     let latest: any = null; const failed: string[] = []
     for (const file of list) {
+      if (file.size > 15 * 1024 * 1024) { failed.push(`${file.name}: maximum file size is 15 MB`); continue }
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(file.type)) { failed.push(`${file.name}: unsupported file type`); continue }
       const fd = new FormData(); fd.append('file', file)
       try { latest = await request(`/api/sales-desk/rfqs/${id}/attachments`, { method: 'POST', body: fd }) }
       catch (e) { failed.push(`${file.name}: ${(e as Error).message}`) }
@@ -246,6 +248,13 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
   async function openAttachment(att: any, inline: boolean) {
     const viewer = inline ? window.open('about:blank', '_blank') : null // opened first so the browser allows it
     try {
+      if (supabaseConfigured && supabase && att.storage_path) {
+        const signed = await supabase.storage.from('sales-desk-attachments').createSignedUrl(att.storage_path, 300)
+        if (signed.error || !signed.data?.signedUrl) throw new Error(signed.error?.message || 'Could not create a file link.')
+        if (viewer) viewer.location.href = signed.data.signedUrl
+        else { const a = document.createElement('a'); a.href = signed.data.signedUrl; a.download = att.original_name; document.body.appendChild(a); a.click(); a.remove() }
+        return
+      }
       const res = await fetch(`${API}/api/sales-desk/rfqs/${rfqId}/attachments/${att.id}?inline=${inline}`, { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `Could not open the file (${res.status})`)
       const url = URL.createObjectURL(await res.blob())

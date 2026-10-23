@@ -40,6 +40,7 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
+export { supabase }
 export { supabaseConfigured }
 export const KEY_STORAGE = 'impala_session_token'
 export const getKey = () => localStorage.getItem(KEY_STORAGE) || ''
@@ -228,6 +229,21 @@ async function supabaseApi(path: string, options: RequestInit) {
     const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : profile.data.sales_code ? 'salesperson' : roleIds.includes('sales') ? 'manager' : 'salesperson'
     if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: profile.data.sales_code || null, is_active: true }
     if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
+    const attachmentUpload = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/attachments$/)
+    if (attachmentUpload && method === 'POST' && options.body && typeof (options.body as FormData).get === 'function') {
+      const file = (options.body as FormData).get('file')
+      if (!file || typeof (file as File).arrayBuffer !== 'function') throw new Error('Select a file first.')
+      const uploadFile = file as File
+      if (uploadFile.size > 15 * 1024 * 1024) throw new Error('Maximum attachment size is 15 MB.')
+      const pathName = `${user.id}/${attachmentUpload[1]}/${crypto.randomUUID()}-${uploadFile.name}`
+      const upload = await client.storage.from('sales-desk-attachments').upload(pathName, uploadFile, { contentType: uploadFile.type || 'application/octet-stream', upsert: false })
+      if (upload.error) throw new Error(upload.error.message)
+      const row = await client.from('sales_desk_rfq_attachments').insert({ rfq_id: attachmentUpload[1], original_name: uploadFile.name, storage_path: pathName, content_type: uploadFile.type || 'application/octet-stream', size: uploadFile.size, uploaded_by: user.id }).select().single()
+      if (row.error) { await client.storage.from('sales-desk-attachments').remove([pathName]); throw new Error(row.error.message) }
+      const detail = await client.from('sales_desk_rfqs').select('*,sales_desk_rfq_attachments(*)').eq('id', attachmentUpload[1]).single()
+      if (detail.error) throw new Error(detail.error.message)
+      return detail.data
+    }
     if (path === '/api/sales-desk/auth/users' && method === 'GET') return []
     if (path === '/api/sales-desk/config' && method === 'GET') {
       const [media, statuses, codes] = await Promise.all([
