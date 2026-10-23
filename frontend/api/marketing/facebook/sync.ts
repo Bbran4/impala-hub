@@ -26,7 +26,7 @@ export default async function handler(req: any, res: any) {
   try {
     const pageToken = decrypt(connection.token_ciphertext, encryptionKey)
     const version = process.env.FACEBOOK_API_VERSION || 'v22.0'
-    const fields = 'id,message,created_time,permalink_url,attachments{media,type,url,subattachments{data{media,type,url}}},likes.limit(0).summary(true),comments.limit(0).summary(true),shares'
+    const fields = 'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments},likes.limit(0).summary(true),comments.limit(0).summary(true),shares'
     const response = await fetch(`https://graph.facebook.com/${version}/${connection.page_id}/published_posts?limit=100&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`)
     const result = await response.json()
     if (!response.ok) return res.status(502).json({ detail: 'Facebook rejected the sync request.' })
@@ -44,7 +44,7 @@ export default async function handler(req: any, res: any) {
       let attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
       if (attachments.length < 2) {
         try {
-          const attachmentResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/attachments?fields=media,type,url,subattachments{data{media,type,url}}&access_token=${encodeURIComponent(pageToken)}`)
+          const attachmentResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/attachments?fields=media,subattachments&access_token=${encodeURIComponent(pageToken)}`)
           const attachmentResult = await attachmentResponse.json()
           attachments = (attachmentResult.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
         } catch { /* Keep the attachment data returned by published_posts. */ }
@@ -53,6 +53,7 @@ export default async function handler(req: any, res: any) {
         const image = attachment.media?.image?.src || attachment.url
         return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
       })
+      if (!media.length && item.full_picture) media.push({ id: `${item.id}-1`, name: 'Facebook image', url: item.full_picture, content_type: 'image/*' })
       const insights: Record<string, number> = {}
       const metricFallbacks: Array<[string, string[]]> = [
         ['views', ['post_media_view', 'post_impressions']],
