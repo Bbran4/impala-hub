@@ -10,7 +10,7 @@ export default async function handler(req: any, res: any) {
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return res.status(401).json({ detail: 'Invalid or expired session.' })
-  const { data: connections } = await supabase.from('provider_connections').select('provider,status,account_name,page_name,last_checked_at,last_error')
+  const { data: connections } = await supabase.from('provider_connections').select('provider,status,account_name,page_name,followers_count,last_checked_at,last_error')
   const connected = new Map((connections || []).map((connection: any) => [connection.provider, connection]))
   return res.status(200).json({
     authenticated: true,

@@ -33,9 +33,10 @@ export default async function handler(req: any, res: any) {
     let imported = 0
     let audience: number | null = null
     try {
-      const pageResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(connection.page_id)}?fields=followers_count,fan_count&access_token=${encodeURIComponent(pageToken)}`)
+      const pageResponse = await fetch(`https://graph.facebook.com/${version}/me?fields=id,name,followers_count&access_token=${encodeURIComponent(pageToken)}`)
       const pageData = await pageResponse.json()
       audience = pageData.followers_count ?? pageData.fan_count ?? null
+      if (audience != null) await admin.from('provider_connections').update({ followers_count: audience }).eq('id', connection.id)
     } catch { /* Audience is optional. */ }
     let metricsUnavailable = 0
     const metricsErrors: string[] = []
