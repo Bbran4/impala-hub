@@ -171,12 +171,6 @@ async function supabaseApi(path: string, options: RequestInit) {
       { provider: 'instagram', ...(result.providers?.instagram || { status: 'not_connected' }) },
     ]
   }
-  if (path === '/api/posts' && method === 'GET') {
-    const response = await fetch('/api/marketing/posts', { headers: { Authorization: `Bearer ${await currentSupabaseToken()}` } })
-    const result = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(result.detail || 'Unable to load posts.')
-    return result
-  }
   if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
   if (path === '/api/integrations/sync' && method === 'POST') {
     const token = await currentSupabaseToken()
