@@ -34,8 +34,14 @@ export default async function handler(req: any, res: any) {
     for (const item of result.data || []) {
       const { data: existing } = await admin.from('posts').select('id').contains('provider_ids', { facebook: item.id }).eq('created_by', user.user.id).maybeSingle()
       const values = { title: '', caption: item.message || '', channels: ['facebook'], status: 'published', published_at: item.created_time, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
-      if (existing) await admin.from('posts').update(values).eq('id', existing.id)
-      else { await admin.from('posts').insert(values); imported += 1 }
+      if (existing) {
+        const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
+        if (updateError) return res.status(500).json({ detail: `Could not update imported Facebook post (${updateError.code || 'database error'}).` })
+      } else {
+        const { error: insertError } = await admin.from('posts').insert(values)
+        if (insertError) return res.status(500).json({ detail: `Could not save imported Facebook post (${insertError.code || 'database error'}).` })
+        imported += 1
+      }
     }
     return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length })
   } catch { return res.status(502).json({ detail: 'Facebook sync failed.' }) }
