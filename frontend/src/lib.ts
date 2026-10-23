@@ -239,7 +239,7 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { media_platforms: (media.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), statuses: (statuses.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), sales_codes: codes.data || [], can_configure: role === 'administrator' }
     }
     const detailMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)$/)
-    if (path === '/api/sales-desk/rfqs' && method === 'GET' || detailMatch && method === 'GET') {
+    if ((path === '/api/sales-desk/rfqs' || path.startsWith('/api/sales-desk/rfqs?')) && method === 'GET' || detailMatch && method === 'GET') {
       const query = client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)')
       const result = detailMatch ? await query.eq('id', detailMatch[1]).single() : await query.order('received_at', { ascending: true }).limit(500)
       if (result.error) throw new Error(result.error.message)
