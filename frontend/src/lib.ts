@@ -157,7 +157,15 @@ async function supabaseApi(path: string, options: RequestInit) {
   }
   if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
   if (path === '/api/integrations/sync' && method === 'POST') {
-    return [{ provider: 'facebook', status: 'not_connected' }, { provider: 'instagram', status: 'not_connected' }]
+    const token = getKey()
+    const response = await fetch('/api/marketing/status', { headers: { Authorization: `Bearer ${token}` } })
+    const status = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(status.detail || 'Unable to check the Marketing server status.')
+    const providerStatus = status.publishing ? 'connected' : 'not_connected'
+    return [
+      { provider: 'facebook', status: providerStatus, diagnostic_note: status.message },
+      { provider: 'instagram', status: providerStatus, diagnostic_note: status.message },
+    ]
   }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   if (path === '/api/posts' || postMatch) {

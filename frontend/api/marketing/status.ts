@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') return res.status(405).json({ detail: 'Method not allowed' })
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-  const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
   if (!url || !key) return res.status(503).json({ detail: 'Supabase server configuration is incomplete.' })
   if (!token) return res.status(401).json({ detail: 'Authentication required.' })
   const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
