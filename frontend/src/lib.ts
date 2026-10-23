@@ -374,11 +374,10 @@ async function supabaseApi(path: string, options: RequestInit) {
       } else {
         if (current.data.rfq_type === 'invoice') throw new Error('An invoice cannot be converted to another invoice.')
         if (!current.data.status?.is_closed) throw new Error('Only a closed RFQ can be converted to an invoice.')
-        const source = current.data
-        const invoice = await client.from('sales_desk_rfqs').insert({ rfq_no: `${source.rfq_no}INV`, business_date: source.business_date, daily_number: source.daily_number + 1000000, rfq_type: 'invoice', original_rfq_no: source.rfq_no, converted_at: new Date().toISOString(), media_platform_id: source.media_platform_id, customer_name: source.customer_name, contact_number: source.contact_number, email_address: source.email_address, query_information: source.query_information, sales_code_id: source.sales_code_id, claimed_at: source.claimed_at, received_at: source.received_at, remarks: source.remarks, status_id: source.status_id, document_number: source.document_number, created_by: user.id, updated_by: user.id }).select().single()
+        const invoice = await client.rpc('convert_sales_desk_rfq_to_invoice', { source_id: id })
         if (invoice.error) throw new Error(invoice.error.message)
         await auditRfq(id, 'invoice_copy_created', { to_rfq_no: invoice.data.rfq_no })
-        await auditRfq(invoice.data.id, 'created_from_quotation', { from_rfq_no: source.rfq_no })
+        await auditRfq(invoice.data.id, 'created_from_quotation', { from_rfq_no: current.data.rfq_no })
         return invoice.data
       }
       const refreshed = await client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').eq('id', id).single()
