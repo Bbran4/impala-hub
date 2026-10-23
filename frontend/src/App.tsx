@@ -548,6 +548,13 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <div><b>IMPALA HUB</b><small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : 'Marketing workspace'}</small></div>
         </div>
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
+        {page === 'Apps' && (
+          <div className="sidebar-bottom">
+            <div className="connection-dot" /> <span>Local workspace</span>
+            <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
+            {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); disconnectKey() }}>Log out</button>}
+          </div>
+        )}
         {page !== 'Apps' && (
           <>
             <div className="nav-label">WORKSPACE</div>
