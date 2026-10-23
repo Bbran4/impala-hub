@@ -225,7 +225,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (profile.error || !profile.data?.active) throw new Error('Your Impala Hub profile is inactive.')
     const roleRows = await client.from('profile_roles').select('role_id').eq('profile_id', user.id)
     const roleIds = (roleRows.data || []).map((r: any) => r.role_id)
-    const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : roleIds.includes('sales') ? 'manager' : 'salesperson'
+    const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : profile.data.sales_code ? 'salesperson' : roleIds.includes('sales') ? 'manager' : 'salesperson'
     if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: profile.data.sales_code || null, is_active: true }
     if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
     if (path === '/api/sales-desk/auth/users' && method === 'GET') return []
@@ -296,6 +296,37 @@ async function supabaseApi(path: string, options: RequestInit) {
       const result = await client.from('sales_desk_rfqs').update({ ...body, updated_by: user.id }).eq('id', detailMatch[1]).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
       if (result.error) throw new Error(result.error.message)
       return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
+    }
+    const actionMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/(claim|send-for-approval|convert-to-invoice)$/)
+    if (actionMatch && method === 'POST') {
+      const id = actionMatch[1]; const action = actionMatch[2]
+      const current = await client.from('sales_desk_rfqs').select('*,status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').eq('id', id).single()
+      if (current.error) throw new Error(current.error.message)
+      if (action === 'claim') {
+        if (role !== 'salesperson' || !profile.data.sales_code) throw new Error('Your account is not linked to a sales code.')
+        if (current.data.sales_code_id) throw new Error('This RFQ has already been claimed. Refresh the list.')
+        const code = await client.from('sales_desk_sales_codes').select('id').eq('code', profile.data.sales_code.toUpperCase()).eq('is_active', true).single()
+        if (code.error) throw new Error('Your configured sales code is inactive.')
+        const newStatus = await client.from('sales_desk_statuses').select('id').ilike('name', 'New').eq('is_active', true).single()
+        const updated = await client.from('sales_desk_rfqs').update({ sales_code_id: code.data.id, claimed_at: new Date().toISOString(), status_id: newStatus.data?.id || current.data.status_id, updated_by: user.id }).eq('id', id).is('sales_code_id', null).select().single()
+        if (updated.error) throw new Error(updated.error.message)
+      } else if (action === 'send-for-approval') {
+        if (!current.data.document_number?.trim()) throw new Error('A document number is required before sending for approval.')
+        if (!current.data.status?.is_closed) throw new Error('The RFQ status must be closed before sending for approval.')
+        const attachments = await client.from('sales_desk_rfq_attachments').select('id', { count: 'exact', head: true }).eq('rfq_id', id)
+        if ((attachments.count || 0) < 1) throw new Error('Add at least one attachment before sending for approval.')
+        return { sent: true, notified_admins: 0 }
+      } else {
+        if (current.data.rfq_type === 'invoice') throw new Error('An invoice cannot be converted to another invoice.')
+        if (!current.data.status?.is_closed) throw new Error('Only a closed RFQ can be converted to an invoice.')
+        const source = current.data
+        const invoice = await client.from('sales_desk_rfqs').insert({ rfq_no: `${source.rfq_no}INV`, business_date: source.business_date, daily_number: source.daily_number + 1000000, rfq_type: 'invoice', original_rfq_no: source.rfq_no, converted_at: new Date().toISOString(), media_platform_id: source.media_platform_id, customer_name: source.customer_name, contact_number: source.contact_number, email_address: source.email_address, query_information: source.query_information, sales_code_id: source.sales_code_id, claimed_at: source.claimed_at, received_at: source.received_at, remarks: source.remarks, status_id: source.status_id, document_number: source.document_number, created_by: user.id, updated_by: user.id }).select().single()
+        if (invoice.error) throw new Error(invoice.error.message)
+        return invoice.data
+      }
+      const refreshed = await client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').eq('id', id).single()
+      if (refreshed.error) throw new Error(refreshed.error.message)
+      return { ...refreshed.data, media_platform: refreshed.data.media_platform?.name, status: refreshed.data.status?.name, status_name: refreshed.data.status?.name, status_is_closed: !!refreshed.data.status?.is_closed, sales_code: refreshed.data.sales_code?.code || null }
     }
     if (path === '/api/sales-desk/dashboard' && method === 'GET') {
       const all = await client.from('sales_desk_rfqs').select('status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed)')
