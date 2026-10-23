@@ -238,6 +238,40 @@ async function supabaseApi(path: string, options: RequestInit) {
       for (const result of [media, statuses, codes]) if (result.error) throw new Error(result.error.message)
       return { media_platforms: (media.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), statuses: (statuses.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), sales_codes: codes.data || [], can_configure: role === 'administrator' }
     }
+    const mediaConfig = path.match(/^\/api\/sales-desk\/config\/media-platforms(?:\/([^/]+))?$/)
+    const statusConfig = path.match(/^\/api\/sales-desk\/config\/statuses(?:\/([^/]+))?$/)
+    const codeConfig = path.match(/^\/api\/sales-desk\/config\/sales-codes\/([^/]+)$/)
+    const configTable = mediaConfig ? 'sales_desk_media_platforms' : statusConfig ? 'sales_desk_statuses' : codeConfig ? 'sales_desk_sales_codes' : ''
+    const configId = mediaConfig?.[1] || statusConfig?.[1] || codeConfig?.[1]
+    if (configTable && method === 'POST') {
+      if (configTable === 'sales_desk_sales_codes') throw new Error('Sales codes are managed from user profiles.')
+      const result = await client.from(configTable).insert({ name: body.name, ...(configTable === 'sales_desk_statuses' ? { is_closed: !!body.is_closed } : {}), sort_order: 999 }).select().single()
+      if (result.error) throw new Error(result.error.message)
+      return result.data
+    }
+    if (configTable && configId && method === 'PATCH') {
+      const result = await client.from(configTable).update(body).eq('id', configId).select().single()
+      if (result.error) throw new Error(result.error.message)
+      return result.data
+    }
+    if (configTable && configId && method === 'DELETE') {
+      const usedColumn = configTable === 'sales_desk_media_platforms' ? 'media_platform_id' : configTable === 'sales_desk_statuses' ? 'status_id' : 'sales_code_id'
+      const used = await client.from('sales_desk_rfqs').select('id', { count: 'exact', head: true }).eq(usedColumn, configId)
+      if (used.error) throw new Error(used.error.message)
+      if ((used.count || 0) > 0) throw new Error('This option is used by an existing RFQ. Deactivate it instead of deleting it.')
+      const result = await client.from(configTable).delete().eq('id', configId)
+      if (result.error) throw new Error(result.error.message)
+      return { deleted: true }
+    }
+    const orderConfig = path.match(/^\/api\/sales-desk\/config\/(media-platforms|statuses)\/order$/)
+    if (orderConfig && method === 'PUT') {
+      const table = orderConfig[1] === 'media-platforms' ? 'sales_desk_media_platforms' : 'sales_desk_statuses'
+      for (const [sort_order, id] of (body.ids || []).entries()) {
+        const result = await client.from(table).update({ sort_order }).eq('id', id)
+        if (result.error) throw new Error(result.error.message)
+      }
+      return body.ids || []
+    }
     const detailMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)$/)
     if ((path === '/api/sales-desk/rfqs' || path.startsWith('/api/sales-desk/rfqs?')) && method === 'GET' || detailMatch && method === 'GET') {
       const query = client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)')

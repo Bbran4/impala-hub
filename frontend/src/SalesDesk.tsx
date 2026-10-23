@@ -225,6 +225,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
       setRfq(updated); const f = formFrom(updated); setInitial(f); setForm(f)
       setNotice('RFQ changes saved.')
       await onChanged()
+      onClose()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
 
@@ -637,26 +638,6 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
                   </div>
                 ))}
               </div>
-              {isAdmin && (
-                <div className="rfq-empty-card sd-form-card">
-                  <h3>Team accounts</h3><p>Create an account for each person. A salesperson's sales code is generated from their full name.</p>
-                  <div className="sd-form-grid">
-                    <label>Full name (first name and surname)<input value={newUser.display_name} onChange={(e) => setNewUser({ ...newUser, display_name: e.target.value })} /></label>
-                    <label>Username<input autoComplete="off" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} /></label>
-                    <label>Temporary password (14+ characters)<input type="password" autoComplete="new-password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /></label>
-                    <label>Role<select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}><option value="salesperson">Salesperson</option><option value="manager">Manager</option><option value="administrator">Administrator</option></select></label>
-                  </div>
-                  <div className="sd-actions"><button className="primary" disabled={busy || !newUser.display_name.trim() || newUser.username.trim().length < 3 || newUser.password.length < 14}
-                    onClick={() => void act(async () => {
-                      const created = await request('/api/sales-desk/auth/users', { method: 'POST', body: JSON.stringify(newUser) })
-                      setNewUser({ display_name: '', username: '', password: '', role: 'salesperson' })
-                      setNotice(`Account created for ${created.display_name}${created.sales_code ? `. Sales code ${created.sales_code} assigned.` : '.'}`)
-                    })}>Create account</button></div>
-                  {users.map((u: any) => (
-                    <div className="sd-config-row" key={u.id}><div><b>{u.display_name}</b><small>{u.username} · {u.role}{u.sales_code ? ` · ${u.sales_code}` : ''}</small></div></div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
       </>
