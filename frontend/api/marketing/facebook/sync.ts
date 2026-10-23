@@ -31,6 +31,12 @@ export default async function handler(req: any, res: any) {
     const result = await response.json()
     if (!response.ok) return res.status(502).json({ detail: 'Facebook rejected the sync request.' })
     let imported = 0
+    let audience: number | null = null
+    try {
+      const pageResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(connection.page_id)}?fields=followers_count,fan_count&access_token=${encodeURIComponent(pageToken)}`)
+      const pageData = await pageResponse.json()
+      audience = pageData.followers_count ?? pageData.fan_count ?? null
+    } catch { /* Audience is optional. */ }
     let metricsUnavailable = 0
     const metricsErrors: string[] = []
     for (const item of result.data || []) {
@@ -48,7 +54,7 @@ export default async function handler(req: any, res: any) {
         return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
       })
       const insights: Record<string, number> = {}
-      for (const metricName of ['post_impressions', 'post_impressions_unique', 'post_reach', 'post_media_view', 'post_video_views']) {
+      for (const metricName of ['post_media_view', 'post_video_views']) {
         try {
           const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
           const insightData = await insightResponse.json()
@@ -69,7 +75,7 @@ export default async function handler(req: any, res: any) {
           if (clickResponse.ok && !clickData.error && value != null) insights[clickMetric] = typeof value === 'object' ? Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0) : Number(value || 0)
         } catch { /* Try the alternate click metric. */ }
       }
-      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? insights.post_reach ?? insights.post_impressions ?? null, views: insights.post_media_view ?? insights.post_video_views ?? insights.post_impressions ?? null, clicks: insights.post_clicks ?? insights.post_clicks_by_type ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
+      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: null, reach: null, views: insights.post_media_view ?? insights.post_video_views ?? null, clicks: insights.post_clicks ?? insights.post_clicks_by_type ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
       if (existing) {
         const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
         if (updateError) return res.status(500).json({ detail: `Could not update imported Facebook post (${updateError.code || 'database error'}).` })
@@ -79,6 +85,6 @@ export default async function handler(req: any, res: any) {
         imported += 1
       }
     }
-    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors })
+    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors, audience })
   } catch { return res.status(502).json({ detail: 'Facebook sync failed.' }) }
 }

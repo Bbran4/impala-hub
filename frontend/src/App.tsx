@@ -271,6 +271,7 @@ export default function App() {
       const fb = r.facebook?.status === 'error' ? `Facebook error: ${r.facebook.detail || 'unknown error'}` : r.facebook?.status === 'not_connected' ? 'Facebook not connected' : `Facebook synced (${r.facebook.items || 0} new, ${r.facebook.fetched || 0} checked${r.facebook.metricsUnavailable ? `; metrics unavailable for ${r.facebook.metricsUnavailable}${r.facebook.metricsErrors?.[0] ? `: ${r.facebook.metricsErrors[0]}` : ''}` : ''})`
       const ig = r.instagram?.status === 'synced' ? `Instagram synced (${r.instagram.items} items)` : r.instagram?.status === 'not_connected' ? 'Instagram not connected' : `Instagram error: ${r.instagram?.detail || 'unknown error'}`
       setNotice(`${fb}; ${ig}.`)
+      if (r.facebook?.audience != null) setIntegrations((items) => items.map((item) => item.provider === 'facebook' ? { ...item, followers_count: r.facebook.audience } : item))
       if (r.facebook?.status === 'synced') setMonth(null)
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
