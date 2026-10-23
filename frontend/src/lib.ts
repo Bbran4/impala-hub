@@ -127,6 +127,24 @@ async function supabaseApi(path: string, options: RequestInit) {
       return data
     }
   }
+  if (path === '/api/campaign-types/order' && method === 'PUT') {
+    const names = Array.isArray(body?.names) ? body.names : []
+    for (const [position, name] of names.entries()) {
+      const { error } = await client.from('campaign_types').update({ position }).eq('name', name)
+      if (error) throw new Error(error.message)
+    }
+    return names.map((name: string, position: number) => ({ name, position }))
+  }
+  if (path === '/api/media' && method === 'POST' && options.body instanceof FormData) {
+    const file = options.body.get('file')
+    if (!(file instanceof File)) throw new Error('Select a media file first.')
+    const user = (await client.auth.getUser()).data.user
+    const objectPath = `${user?.id || 'unknown'}/${crypto.randomUUID()}-${file.name}`
+    const { error } = await client.storage.from('marketing-media').upload(objectPath, file, { contentType: file.type || undefined, upsert: false })
+    if (error) throw new Error(error.message)
+    const { data } = client.storage.from('marketing-media').getPublicUrl(objectPath)
+    return { id: objectPath, name: file.name, url: data.publicUrl, content_type: file.type, size: file.size }
+  }
   const typeDelete = path.match(/^\/api\/campaign-types\/(.+)$/)
   if (typeDelete && method === 'DELETE') {
     const { error } = await client.from('campaign_types').delete().eq('name', decodeURIComponent(typeDelete[1]))
