@@ -48,12 +48,16 @@ export default async function handler(req: any, res: any) {
       })
       let insights: Record<string, number> = {}
       try {
-        const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?metric=post_impressions,post_impressions_unique,post_video_views,post_clicks&access_token=${encodeURIComponent(pageToken)}`)
+        const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?period=lifetime&metric=post_impressions,post_impressions_unique,post_video_views,post_clicks,post_clicks_by_type&access_token=${encodeURIComponent(pageToken)}`)
         const insightData = await insightResponse.json()
         if (!insightResponse.ok || insightData.error) metricsUnavailable += 1
-        for (const metric of insightData.data || []) insights[metric.name] = Number(metric.values?.[0]?.value || 0)
+        for (const metric of insightData.data || []) {
+          const value = metric.values?.[0]?.value
+          if (typeof value === 'object' && value !== null) insights[metric.name] = Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0)
+          else insights[metric.name] = Number(value || 0)
+        }
       } catch { metricsUnavailable += 1 }
-      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? null, views: insights.post_video_views ?? null, clicks: insights.post_clicks ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
+      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.post_impressions ?? null, reach: insights.post_impressions_unique ?? null, views: insights.post_video_views ?? null, clicks: insights.post_clicks ?? insights.post_clicks_by_type ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
       if (existing) {
         const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
         if (updateError) return res.status(500).json({ detail: `Could not update imported Facebook post (${updateError.code || 'database error'}).` })
