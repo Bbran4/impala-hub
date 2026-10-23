@@ -349,6 +349,12 @@ async function supabaseApi(path: string, options: RequestInit) {
     }
   }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
+  const postHistoryMatch = path.match(/^\/api\/posts\/([^/]+)\/history$/)
+  if (postHistoryMatch && method === 'GET') {
+    const { data, error } = await client.from('audit_log').select('id,action,details,created_at').eq('entity_type', 'post').eq('entity_id', postHistoryMatch[1]).order('id', { ascending: false })
+    if (error) throw new Error(error.message)
+    return (data || []).map((entry: any) => ({ id: entry.id, action: entry.action, details: entry.details || {}, created_at: entry.created_at }))
+  }
   if (path === '/api/posts' || postMatch) {
     if (method === 'GET') {
       const { data, error } = await client.from('posts').select('*').order('updated_at', { ascending: false })
