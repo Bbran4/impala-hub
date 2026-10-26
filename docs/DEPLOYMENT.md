@@ -74,6 +74,18 @@ After migration `0038_smart_stock_parts_queries.sql` and its matching frontend a
 - Management: confirm the create, save, archive, supplier and Add Development Status controls are unavailable.
 - Sales, unrelated-role, inactive and signed-out users: confirm direct table and RPC requests remain denied.
 
+### Smart Stock configuration cutover checks
+
+After migration `0039_smart_stock_configuration.sql` and its matching frontend are deployed:
+
+- Administrator: create and edit a location, deactivate and reactivate it, and delete an unused location.
+- Confirm the database refuses to deactivate or delete locations when doing so would leave fewer than two active locations.
+- Save shared slow-mover and A&B-mover thresholds, reload on another browser, and confirm the values are shared rather than stored locally.
+- Create an unused Development Status and delete it. Assign another status to a Parts Query and confirm it can be deactivated but not deleted.
+- Confirm every successful configuration change produces a `stock_audit` row with the administrator as actor.
+- Stock and Management users: confirm configuration is readable but the configuration page and all mutation functions are unavailable.
+- Signed-out users: confirm configuration tables and mutation functions remain inaccessible.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.

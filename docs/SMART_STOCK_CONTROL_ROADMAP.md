@@ -7,7 +7,7 @@
 | 1 | Evidence-backed behavior, permissions and acceptance contract | Implemented; verification pending |
 | 2 | Supabase tables, constraints, RLS, actor attribution and audit foundation | Implemented; deployment pending |
 | 3 | Parts Query frontend and transactional supplier workflow | Implemented; deployment pending |
-| 4 | Shared configuration and administrator controls | Planned |
+| 4 | Shared configuration and administrator controls | Implemented; deployment pending |
 | 5 | Versioned stock-import pipeline | Planned |
 | 6 | CSV/XLSX import and validation UI | Planned |
 | 7 | Stock Booking, persisted transfer batches and Evolve export | Planned |
@@ -19,7 +19,9 @@
 
 The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sql`. It does not switch the current screens away from FastAPI. That cutover begins with Parts Queries in stage 3 after the migration is applied and verified.
 
-Stage 3 is defined in `supabase/migrations/0038_smart_stock_parts_queries.sql` and the `PartsQueries` frontend. It moves Parts Query reads, atomic create/update with complete supplier replacement, audited archival, active Sales Code selection, role-aware editing and named history to Supabase. Stock Booking, Stock Reordering and Stock Control Configuration remain on FastAPI until their respective stages.
+Stage 3 is defined in `supabase/migrations/0038_smart_stock_parts_queries.sql` and the `PartsQueries` frontend. It moves Parts Query reads, atomic create/update with complete supplier replacement, audited archival, active Sales Code selection, role-aware editing and named history to Supabase.
+
+Stage 4 is defined in `supabase/migrations/0039_smart_stock_configuration.sql` and the `StockConfiguration` frontend. Locations, shared mover thresholds and Parts Query Development Statuses now load from Supabase. Administrator-only database functions perform all changes, audit triggers retain the history, used statuses must be deactivated instead of deleted, and at least two locations must remain active. Stock Booking and Stock Reordering remain on FastAPI until stages 7 and 8; those stages will consume this shared configuration directly.
 
 ### Permission contract
 
@@ -53,7 +55,7 @@ These rules are enforced through Supabase Row Level Security. Frontend visibilit
 - Stock Booking workspace with branch stock comparison and one Book quantity per part.
 - Stock Reordering workspace with franchise, alternatives, branch/warehouse QOH, safety stock, sales, supplier and reorder metrics.
 - Stock Reordering filters for supplier, part number, description, alternative number and supplier category.
-- Configurable From/To locations with optional descriptions, vehicles, branch mappings and highlight colors.
+- Supabase-backed administrator configuration for locations, optional descriptions, vehicles, branch mappings, highlight colors, mover thresholds and Parts Query Development Statuses.
 - From restricted to `10 — Warehouse`; To restricted to `ERBAKKIE` and `PTABAKKIE`.
 - Calculated branch supply values: `Max - QOH - On Picking Slip`, with descending ER/PT supply sorting.
 - Stock-state highlighting for picking slips, warehouse shortages and branch/warehouse comparisons.

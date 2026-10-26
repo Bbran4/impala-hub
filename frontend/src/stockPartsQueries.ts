@@ -167,9 +167,9 @@ export async function archiveStockPartsQuery(client: SupabaseClient, queryId: st
 }
 
 export async function createStockDevelopmentStatus(client: SupabaseClient, name: string) {
-  const result = await client.from('stock_development_statuses').insert({ name: name.trim(), sort_order: 999 }).select('name').single()
+  const result = await client.rpc('create_stock_development_status', { p_name: name.trim() })
   if (result.error) throw new Error(result.error.message)
-  return result.data.name as string
+  return result.data as string
 }
 
 export async function loadStockPartsQueryHistory(client: SupabaseClient, queryId: string) {
