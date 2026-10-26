@@ -49,6 +49,19 @@ The project and GitHub Actions both use the pinned Supabase CLI version from `fr
 - Validation: reject an unsupported file, a file over 15 MB and an eleventh attachment.
 - Reporting: check due-soon/overdue counts and compare filtered CSV and XLSX exports with visible records.
 
+## Smart Stock foundation checks
+
+Migration `0037_smart_stock_foundation.sql` creates the Smart Stock data boundary but does not switch the existing Smart Stock screens away from FastAPI.
+
+- Confirm the migration seeds `10 — Warehouse`, `ERBAKKIE` and `PTABAKKIE` location mappings, the four development statuses and shared mover thresholds of `2` and `10`.
+- Administrator: confirm configuration and import foundation rows are writable.
+- Stock employee: confirm Parts Queries are writable while settings, locations and import batches are read-only.
+- Management: confirm all Smart Stock foundation data is read-only.
+- Sales, unrelated-role, inactive and signed-out users: confirm direct table requests return no Smart Stock rows and all writes are rejected.
+- Confirm Parts Query and supplier actors are assigned by the database and corresponding audit records are created automatically.
+- Confirm staged snapshot rows are visible only to administrators and become visible to Stock/Management users only after their import batch is validated and activated.
+- Do not remove the FastAPI Smart Stock routes until stages 3–8 have passed their production smoke checks.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.

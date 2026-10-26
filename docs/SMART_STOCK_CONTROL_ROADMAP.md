@@ -1,5 +1,45 @@
 # Smart Stock Control Roadmap
 
+## Supabase migration status
+
+| Stage | Scope | Status |
+|---|---|---|
+| 1 | Evidence-backed behavior, permissions and acceptance contract | Implemented; verification pending |
+| 2 | Supabase tables, constraints, RLS, actor attribution and audit foundation | Implemented; deployment pending |
+| 3 | Parts Query frontend and transactional supplier workflow | Planned |
+| 4 | Shared configuration and administrator controls | Planned |
+| 5 | Versioned stock-import pipeline | Planned |
+| 6 | CSV/XLSX import and validation UI | Planned |
+| 7 | Stock Booking, persisted transfer batches and Evolve export | Planned |
+| 8 | Stock Reordering and shared calculations | Planned |
+| 9 | Google Sheets or Qlik ingestion | Planned |
+| 10 | Historical SQLite reconciliation | Planned |
+| 11 | Full frontend and database acceptance suite | Planned |
+| 12 | Production cutover and retirement of Smart Stock FastAPI routes | Planned |
+
+The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sql`. It does not switch the current screens away from FastAPI. That cutover begins with Parts Queries in stage 3 after the migration is applied and verified.
+
+### Permission contract
+
+- Administrators have full operational, configuration and import access.
+- Stock users can operate Parts Queries and, in later stages, create validated booking exports. They cannot change shared configuration or replace stock snapshots.
+- Management users have read-only access.
+- Salesperson and unrelated workspace roles cannot access Smart Stock data.
+- Inactive and signed-out users have no access.
+
+These rules are enforced through Supabase Row Level Security. Frontend visibility is a usability measure, not the security boundary.
+
+### Foundation data contract
+
+- Parts Queries use a UUID internally and receive a concurrent-safe human reference beginning with `PQ-`.
+- Query deletion is an audited archive; physical deletion is not available to browser users.
+- Supplier quantity, cost, MSRP and notes are stored as query children and retain actor/timestamp information.
+- Stock imports are versioned batches with source, checksum, row counts, validation results and activation state.
+- Booking and reordering rows always belong to an import batch, allowing a failed import to leave the current snapshot unchanged.
+- Reordering thresholds are shared database settings rather than per-browser values.
+- Locations can be deactivated later without erasing historical references.
+- Stock audit rows are written by database triggers and cannot be forged by browser clients.
+
 ## Current workspace
 
 - Parts Query records with generated date/time and editable part details.
@@ -27,6 +67,8 @@
 | 4 | Approval workflow | Approve queries and supplier selections | Planned |
 | 5 | Supplier history | Reuse supplier performance and pricing history | Planned |
 | 6 | Reorder recommendations | Turn approved queries into stock actions | Planned |
+
+Feature expansion remains behind migration parity. Supplier response, approval, supplier-history and recommendation work starts only after the existing Parts Query, Booking and Reordering workflows have passed the Supabase cutover checks.
 
 ## Acceptance direction
 
