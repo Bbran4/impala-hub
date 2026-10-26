@@ -515,22 +515,16 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (method === 'POST') {
       const result = await client.from('returns_claims').insert({ ...claimBody, created_by: currentUser.id, updated_by: currentUser.id }).select().single()
       if (result.error) throw new Error(result.error.message)
-      const audit = await client.from('returns_claims_audit').insert({ claim_id: result.data.id, actor_user_id: currentUser.id, action: 'created', changes: { status: result.data.status } })
-      if (audit.error) throw new Error(audit.error.message)
       return result.data
     }
     if (match && method === 'PATCH') {
       const result = await client.from('returns_claims').update({ ...claimBody, updated_by: currentUser.id, updated_at: new Date().toISOString() }).eq('id', match[1]).select().single()
       if (result.error) throw new Error(result.error.message)
-      const audit = await client.from('returns_claims_audit').insert({ claim_id: match[1], actor_user_id: currentUser.id, action: 'updated', changes: { changed: Object.keys(claimBody) } })
-      if (audit.error) throw new Error(audit.error.message)
       return result.data
     }
     if (match && method === 'DELETE') {
-      const result = await client.from('returns_claims').update({ deleted_at: new Date().toISOString(), deleted_by: currentUser.id, updated_by: currentUser.id }).eq('id', match[1]).is('deleted_at', null)
+      const result = await client.from('returns_claims').update({ deleted_at: new Date().toISOString(), deleted_by: currentUser.id, updated_by: currentUser.id }).eq('id', match[1]).is('deleted_at', null).select('id').single()
       if (result.error) throw new Error(result.error.message)
-      const audit = await client.from('returns_claims_audit').insert({ claim_id: match[1], actor_user_id: currentUser.id, action: 'deleted', changes: {} })
-      if (audit.error) throw new Error(audit.error.message)
       return null
     }
   }

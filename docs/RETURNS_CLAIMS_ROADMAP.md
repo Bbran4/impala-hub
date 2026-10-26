@@ -17,6 +17,7 @@
 - Supplier tracking includes supplier response/date, credit reference/amount/received date, replacement reference/quantity/received date, and pickup/drop-off status, dates, contact and notes.
 - Supported attachments: JPEG, PNG, GIF, WebP, PDF, Word (.doc/.docx), Excel (.xls/.xlsx). Maximum 10 per claim and 15 MB per file.
 - Controlled status transitions prevent incomplete claims from being completed and record rejection, reopening and status-change reasons in history.
+- Automated pgTAP coverage verifies workspace roles, RLS, claim creation/editing/soft deletion, attachments, audit events and signed-out privileges in an isolated local Supabase stack.
 
 ## Next priorities
 
@@ -28,6 +29,7 @@
 | 4 | Customer and invoice search | Faster investigation of claims | Planned |
 | 5 | Return ageing and SLA reporting | Identify due-soon and overdue claims using an adjustable 7-day default | Implemented |
 | 6 | Exports and audit history | Current-filter CSV/XLSX reports plus named activity history | Implemented |
+| 7 | Automated security and lifecycle tests | Local and CI verification of RLS, CRUD, attachments, audit and signed-out access | Implemented |
 
 ## Acceptance direction
 
@@ -35,7 +37,7 @@ New records may be created before an outcome is known. Outcome Request remains u
 
 ## Deployment and verification
 
-Apply migrations through 0035 before deploying the updated frontend. Migration 0033 assigns readable references to existing claims and adds supplier workflow fields. Migration 0034 enables permission-checked attachment deletion for both workspaces. Migration 0035 adds SLA fields, closed timestamps, transition validation and explicit status/SLA audit events. It deliberately stops with a list of values if legacy records contain unsupported statuses, so those records can be corrected instead of silently becoming uneditable. Applying these migrations does not delete existing attachments. Missing employee profiles are shown as Former employee.
+Apply migrations through 0036 before deploying the updated frontend. Migration 0033 assigns readable references to existing claims and adds supplier workflow fields. Migration 0034 enables permission-checked attachment deletion for both workspaces. Migration 0035 adds SLA fields, closed timestamps, transition validation and explicit status/SLA audit events. It deliberately stops with a list of values if legacy records contain unsupported statuses, so those records can be corrected instead of silently becoming uneditable. Migration 0036 makes create/edit/delete audits and actor attribution atomic, blocks browser hard-deletes and scopes attachment uploads to the caller and active claim. Applying these migrations does not delete existing attachments. Missing employee profiles are shown as Former employee.
 
 Attachment deletion removes the stored object through the Storage API first, then removes metadata and records the audit event in one database transaction. If Storage removal fails, metadata remains. If metadata finalization fails after the file was removed, retry Delete to complete the operation. Only users permitted to manage the parent record may delete its files. This operation is permanent; the audit entry retains the filename and actor.
 
@@ -47,7 +49,9 @@ SLA calculations use Johannesburg calendar dates. The default target is 7 calend
 
 CSV and XLSX reports contain only records matching the current search and filters. The workbook includes a summary sheet, status and company breakdowns, and a detailed Claims sheet. Numeric values remain numeric and text is protected from spreadsheet-formula execution. Supabase claim retrieval is paged so reports are not silently limited to the first 1,000 permitted records.
 
-Local checks: `npm.cmd run build` and `node --experimental-strip-types --test tests/returnsAttachments.test.mjs tests/returnsWorkflow.test.mjs tests/recordAttachments.test.mjs tests/returnsReporting.test.mjs` from `frontend/`. The 26 tests cover formats, sizes, combined attachment counts, supplier receipt validation, handover scheduling/completion, deletion authorization, parent scoping, Storage failure, operation ordering and retry handling, permitted status changes, SLA boundaries, date filters, summaries, CSV safety and XLSX round-tripping. Database migrations, concurrency and signed links require verification against a Supabase test project:
+Local checks: `npm.cmd test` and `npm.cmd run build` from `frontend/`, plus `npx.cmd --prefix frontend supabase test db` from the repository root while the local Supabase stack is running. The 26 frontend tests cover formats, sizes, combined attachment counts, supplier receipt validation, handover scheduling/completion, deletion authorization, parent scoping, Storage failure, operation ordering and retry handling, permitted status changes, SLA boundaries, date filters, summaries, CSV safety and XLSX round-tripping. The database suite creates temporary local identities for administrator, management, returns, sales and inactive roles, exercises RLS and lifecycle behavior, and rolls the entire test transaction back. GitHub Actions runs both suites and the production build.
+
+The automated database suite covers table and RPC privileges, active-role workspace access, create/edit/soft-delete operations, atomic lifecycle and status/SLA audit triggers, private attachment Storage policies, metadata validation, the 15 MB and 10-file limits, attachment deletion and signed-out denial. Hosted signed-URL delivery, browser previews/downloads and production configuration remain smoke-test responsibilities:
 
 - Open an existing record and confirm history, uploader names and dates appear.
 - Open an image in a new tab and preview a PDF inside the panel; download a document and check its filename.
