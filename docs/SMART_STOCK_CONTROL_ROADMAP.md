@@ -8,7 +8,7 @@
 | 2 | Supabase tables, constraints, RLS, actor attribution and audit foundation | Implemented; deployment pending |
 | 3 | Parts Query frontend and transactional supplier workflow | Implemented; deployment pending |
 | 4 | Shared configuration and administrator controls | Implemented; deployment pending |
-| 5 | Versioned stock-import pipeline | Planned |
+| 5 | Versioned stock-import pipeline | Implemented; deployment pending |
 | 6 | CSV/XLSX import and validation UI | Planned |
 | 7 | Stock Booking, persisted transfer batches and Evolve export | Planned |
 | 8 | Stock Reordering and shared calculations | Planned |
@@ -22,6 +22,10 @@ The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sq
 Stage 3 is defined in `supabase/migrations/0038_smart_stock_parts_queries.sql` and the `PartsQueries` frontend. It moves Parts Query reads, atomic create/update with complete supplier replacement, audited archival, active Sales Code selection, role-aware editing and named history to Supabase.
 
 Stage 4 is defined in `supabase/migrations/0039_smart_stock_configuration.sql` and the `StockConfiguration` frontend. Locations, shared mover thresholds and Parts Query Development Statuses now load from Supabase. Administrator-only database functions perform all changes, audit triggers retain the history, used statuses must be deactivated instead of deleted, and at least two locations must remain active. Stock Booking and Stock Reordering remain on FastAPI until stages 7 and 8; those stages will consume this shared configuration directly.
+
+Stage 5 is defined in `supabase/migrations/0040_smart_stock_import_pipeline.sql`. It adds administrator-only, chunked staging functions for Booking and Reordering rows, database-derived row counts and branch supply, SHA-256 source identity, retained validation diagnostics, semantic import audit events and serialized transactional activation. A new valid snapshot supersedes the previous active version in the same database transaction; validation or activation failure leaves the previous version active. The short-lived `validating` and `committing` states from the behavior specification are transaction-internal rather than externally visible, so clients see only `staged`, `validated`, `active`, `rejected` or `superseded`.
+
+CSV/XLSX parsing and the administrator import screen remain Stage 6. Background Google Sheets/Qlik execution and its service-job actor model remain Stage 9; Stage 5 requires an authenticated administrator as the immutable initiating actor.
 
 ### Permission contract
 
@@ -39,6 +43,9 @@ These rules are enforced through Supabase Row Level Security. Frontend visibilit
 - Query deletion is an audited archive; physical deletion is not available to browser users.
 - Supplier quantity, cost, MSRP and notes are stored as query children and retain actor/timestamp information.
 - Stock imports are versioned batches with source, checksum, row counts, validation results and activation state.
+- Browser clients upload no more than 2,000 rows per staging call; the frontend helper defaults to 500-row chunks.
+- Every import requires both Booking and Reordering rows and a 64-character SHA-256 checksum.
+- Booking branch supply is derived during staging as `max(0, Max - QOH - On Picking Slip)` rather than trusting a supplied value.
 - Booking and reordering rows always belong to an import batch, allowing a failed import to leave the current snapshot unchanged.
 - Reordering thresholds are shared database settings rather than per-browser values.
 - Locations can be deactivated later without erasing historical references.

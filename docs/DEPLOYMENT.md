@@ -86,6 +86,20 @@ After migration `0039_smart_stock_configuration.sql` and its matching frontend a
 - Stock and Management users: confirm configuration is readable but the configuration page and all mutation functions are unavailable.
 - Signed-out users: confirm configuration tables and mutation functions remain inaccessible.
 
+### Versioned Smart Stock import checks
+
+After migration `0040_smart_stock_import_pipeline.sql` is applied:
+
+- Administrator: create a staged batch with a SHA-256 checksum and upload Booking and Reordering rows in multiple chunks.
+- Confirm duplicate checksums, blank source names, unsupported source types and chunks above 2,000 rows are rejected.
+- Upload an invalid numeric value or duplicate part/franchise key and confirm the complete chunk rolls back while the batch retains its validation message.
+- Confirm validation derives stored row counts, requires both datasets and rejects any batch with diagnostics.
+- Activate one valid batch, then activate a second. Confirm the first becomes `superseded`, the second becomes the sole `active` batch and Stock/Management users see only the second snapshot.
+- Attempt to activate a rejected or staged batch and confirm the existing active snapshot remains unchanged.
+- Confirm direct browser writes to import batches and snapshot rows fail, including for administrators.
+- Confirm `stock_audit` contains semantic staging, validation, activation, supersession and rejection events with the administrator actor.
+- Do not expose CSV/XLSX controls until Stage 6 parsing and column-mapping tests pass.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.

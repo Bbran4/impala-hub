@@ -20,14 +20,14 @@ insert into public.profile_roles (profile_id, role_id) values
   ('11000000-0000-0000-0000-000000000005','stock');
 update public.profiles set active = false where id = '11000000-0000-0000-0000-000000000005';
 
-select ok(has_table('public','stock_parts_queries'), 'Parts Query table exists');
-select ok(has_table('public','stock_parts_query_suppliers'), 'supplier table exists');
-select ok(has_table('public','stock_locations'), 'location table exists');
-select ok(has_table('public','stock_settings'), 'shared settings table exists');
-select ok(has_table('public','stock_import_batches'), 'import batch table exists');
-select ok(has_table('public','stock_booking_items'), 'booking snapshot table exists');
-select ok(has_table('public','stock_reordering_items'), 'reordering snapshot table exists');
-select ok(has_table('public','stock_audit'), 'stock audit table exists');
+select has_table('public','stock_parts_queries', 'Parts Query table exists');
+select has_table('public','stock_parts_query_suppliers', 'supplier table exists');
+select has_table('public','stock_locations', 'location table exists');
+select has_table('public','stock_settings', 'shared settings table exists');
+select has_table('public','stock_import_batches', 'import batch table exists');
+select has_table('public','stock_booking_items', 'booking snapshot table exists');
+select has_table('public','stock_reordering_items', 'reordering snapshot table exists');
+select has_table('public','stock_audit', 'stock audit table exists');
 
 select ok(not has_table_privilege('anon','public.stock_parts_queries','select'), 'signed-out users cannot read Parts Queries');
 select ok(not has_table_privilege('anon','public.stock_locations','select'), 'signed-out users cannot read stock configuration');
@@ -62,9 +62,9 @@ select throws_ok($sql$
   insert into public.stock_import_batches (source_type,source_name,imported_by)
   values ('manual_csv','blocked.csv','11000000-0000-0000-0000-000000000001')
 $sql$, '42501', null, 'stock role cannot create import batches');
-select is((with changed as (
-  update public.stock_settings set slow_max_avg_sales = 3 where singleton returning singleton
-) select count(*) from changed), 0::bigint, 'stock role cannot change configuration');
+select throws_ok($sql$
+  update public.stock_settings set slow_max_avg_sales = 3 where singleton
+$sql$, '42501', null, 'stock role cannot change configuration');
 select throws_ok($sql$
   insert into public.stock_audit (entity_type,entity_id,actor_user_id,action)
   values ('parts_query','spoofed','11000000-0000-0000-0000-000000000002','spoofed')
@@ -116,69 +116,62 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"11000000-0000-0000-0000-000000000002","role":"authenticated"}';
 select ok(public.can_administer_stock_control(), 'administrator can administer Smart Stock');
 select lives_ok($sql$
-  update public.stock_settings set slow_max_avg_sales = 3, ab_min_avg_sales = 12 where singleton
+  select public.save_stock_thresholds(3,12)
 $sql$, 'administrator can update shared thresholds');
 select lives_ok($sql$
-  update public.stock_locations set description = 'Main warehouse' where name = '10'
+  select public.save_stock_location((select id from public.stock_locations where name='10'),'10','Main warehouse','','','#dff7ff')
 $sql$, 'administrator can update locations');
 select lives_ok($sql$
-  update public.stock_locations set is_active = false where name = 'ER'
+  select public.set_stock_location_active((select id from public.stock_locations where name='ER'),false)
 $sql$, 'administrator can deactivate a location while two remain active');
 select throws_ok($sql$
-  update public.stock_locations set is_active = false where name = 'PTA'
+  select public.set_stock_location_active((select id from public.stock_locations where name='PTA'),false)
 $sql$, 'P0001', 'At least two active stock locations are required', 'database preserves two active stock locations');
 select lives_ok($sql$
-  update public.stock_locations set is_active = true where name = 'ER'
+  select public.set_stock_location_active((select id from public.stock_locations where name='ER'),true)
 $sql$, 'administrator can reactivate a location');
 select lives_ok($sql$
-  update public.stock_development_statuses set is_active = false where name = 'Rejected'
+  select public.set_stock_development_status_active('Rejected',false)
 $sql$, 'administrator can deactivate an unused development status');
 select lives_ok($sql$
-  insert into public.stock_import_batches
-    (id,source_type,source_name,source_checksum,status,imported_by)
-  values
-    ('23000000-0000-0000-0000-000000000001','manual_csv','stock-test.csv','test-checksum','staged',auth.uid())
+  select public.create_stock_import_batch('manual_csv','stock-test.csv',repeat('e',64))
 $sql$, 'administrator can create a staged import');
 select lives_ok($sql$
-  insert into public.stock_booking_items
-    (id,import_batch_id,franchise,part_number,description,qoh_er,max_er,qoh_pta,max_pta,qoh_wh,max_wh,bin_er,bin_pta,bin_wh)
-  values
-    ('24000000-0000-0000-0000-000000000001','23000000-0000-0000-0000-000000000001','generic','33215','Test part',4,10,2,10,25,30,'er14','pt14','s3-04-25')
+  select public.append_stock_booking_items(
+    (select id from public.stock_import_batches where source_checksum=repeat('e',64)),
+    '[{"id":"legacy-booking","franchise":"generic","part_number":"33215","description":"Test part","qoh_er":4,"max_er":10,"qoh_pta":2,"max_pta":10,"qoh_wh":25,"max_wh":30,"bin_er":"er14","bin_pta":"pt14","bin_wh":"s3-04-25"}]'::jsonb)
 $sql$, 'administrator can stage booking rows');
 select lives_ok($sql$
-  insert into public.stock_reordering_items
-    (id,import_batch_id,franchise,part_number,description,qoh_er,qoh_pta,qoh_wh,global_safety,supplier_type)
-  values
-    ('25000000-0000-0000-0000-000000000001','23000000-0000-0000-0000-000000000001','generic','33215','Test part',10,15,25,100,'local')
+  select public.append_stock_reordering_items(
+    (select id from public.stock_import_batches where source_checksum=repeat('e',64)),
+    '[{"id":"legacy-reordering","franchise":"generic","part_number":"33215","description":"Test part","qoh_er":10,"qoh_pta":15,"qoh_wh":25,"global_safety":100,"supplier_type":"local"}]'::jsonb)
 $sql$, 'administrator can stage reordering rows');
 select throws_ok($sql$
   update public.stock_import_batches set status = 'active'
-  where id = '23000000-0000-0000-0000-000000000001'
-$sql$, 'P0001', 'Invalid stock import status transition from staged to active', 'an import cannot bypass validation');
+  where source_checksum=repeat('e',64)
+$sql$, '42501', null, 'an administrator cannot bypass the import RPCs');
 select lives_ok($sql$
-  update public.stock_import_batches set status = 'validated'
-  where id = '23000000-0000-0000-0000-000000000001'
+  select public.validate_stock_import((select id from public.stock_import_batches where source_checksum=repeat('e',64)))
 $sql$, 'administrator can validate a staged import');
 select lives_ok($sql$
-  update public.stock_import_batches set status = 'active'
-  where id = '23000000-0000-0000-0000-000000000001'
+  select public.activate_stock_import((select id from public.stock_import_batches where source_checksum=repeat('e',64)))
 $sql$, 'administrator can activate a validated import');
-select is((with changed as (
-  update public.stock_booking_items set description = 'Blocked active edit'
-  where id = '24000000-0000-0000-0000-000000000001' returning id
-) select count(*) from changed), 0::bigint, 'active snapshot rows are immutable through browser access');
 select throws_ok($sql$
-  update public.stock_settings set slow_max_avg_sales = 20, ab_min_avg_sales = 10 where singleton
+  update public.stock_booking_items set description = 'Blocked active edit'
+  where part_number='33215'
+$sql$, '42501', null, 'active snapshot rows are immutable through browser access');
+select throws_ok($sql$
+  select public.save_stock_thresholds(20,10)
 $sql$, '23514', null, 'threshold constraints reject overlapping classifications');
 reset role;
 
-select is((select imported_by from public.stock_import_batches where id = '23000000-0000-0000-0000-000000000001'),
+select is((select imported_by from public.stock_import_batches where source_checksum=repeat('e',64)),
   '11000000-0000-0000-0000-000000000002'::uuid, 'database attributes an import to the administrator');
-select is((select activated_by from public.stock_import_batches where id = '23000000-0000-0000-0000-000000000001'),
+select is((select activated_by from public.stock_import_batches where source_checksum=repeat('e',64)),
   '11000000-0000-0000-0000-000000000002'::uuid, 'database attributes import activation to the administrator');
-select is((select bin_wh from public.stock_booking_items where id = '24000000-0000-0000-0000-000000000001'),
+select is((select bin_wh from public.stock_booking_items where part_number='33215'),
   's3-04-25', 'booking snapshot preserves warehouse bins');
-select is((select (qoh_er + qoh_pta + qoh_wh) / nullif(global_safety,0) * 100 from public.stock_reordering_items where id = '25000000-0000-0000-0000-000000000001'),
+select is((select (qoh_er + qoh_pta + qoh_wh) / nullif(global_safety,0) * 100 from public.stock_reordering_items where part_number='33215'),
   50.0000000000000000::numeric, 'reordering snapshot reproduces the supply percentage example');
 select is((select count(*) from public.stock_audit where entity_type = 'settings' and action = 'updated'),
   1::bigint, 'configuration changes are audited');
