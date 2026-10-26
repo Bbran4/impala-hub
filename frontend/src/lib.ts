@@ -469,7 +469,14 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (method === 'GET') {
       const result = match ? await client.from('returns_claims').select('*').is('deleted_at', null).eq('id', match[1]).single() : await client.from('returns_claims').select('*').is('deleted_at', null).order('date', { ascending: false }).order('created_at', { ascending: false })
       if (result.error) throw new Error(result.error.message)
-      return match ? result.data : result.data || []
+      if (!match) return result.data || []
+      const [attachments, audit] = await Promise.all([
+        client.from('returns_claim_attachments').select('id,original_name,storage_path,content_type,size,uploaded_by,created_at').eq('claim_id', match[1]).order('created_at'),
+        client.from('returns_claims_audit').select('id,action,changes,actor_user_id,created_at').eq('claim_id', match[1]).order('id', { ascending: false }),
+      ])
+      if (attachments.error) throw new Error(attachments.error.message)
+      if (audit.error) throw new Error(audit.error.message)
+      return { ...result.data, stored_attachments: attachments.data || [], audit_history: audit.data || [] }
     }
     if (method === 'POST') {
       const result = await client.from('returns_claims').insert({ ...body, created_by: currentUser.id, updated_by: currentUser.id }).select().single()
