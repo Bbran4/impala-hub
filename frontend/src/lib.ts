@@ -40,6 +40,7 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
+import { claimFileType } from './returnsAttachments'
 export { supabase }
 export { supabaseConfigured }
 export const KEY_STORAGE = 'impala_session_token'
@@ -454,15 +455,20 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!currentUser) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
     const allowed = (await client.from('profile_roles').select('role_id').eq('profile_id', currentUser.id)).data || []
     if (!allowed.some((r: any) => ['administrator', 'management', 'returns'].includes(r.role_id))) throw new Error('You do not have access to Returns & Claims.')
+    const fields = ['date','company','rfc_book_number','customer','contact_person','contact_number','invoice_number','invoice_date','reason','part_number','description','qty','outcome_request','returned_by','received_by','supplier_received','comments','status']
+    const claimBody = Object.fromEntries(fields.filter(field => body && Object.prototype.hasOwnProperty.call(body, field)).map(field => [field, body[field]]))
     const attachmentMatch = path.match(/^\/api\/returns-claims\/([^/]+)\/attachments$/)
     if (attachmentMatch && method === 'POST' && options.body && typeof (options.body as FormData).get === 'function') {
       const file = (options.body as FormData).get('file') as File | null
       if (!file || typeof file.arrayBuffer !== 'function') throw new Error('Select a file first.')
-      if (file.size > 15 * 1024 * 1024) throw new Error('Maximum attachment size is 15 MB.')
+      const contentType = claimFileType(file)
+      const count = await client.from('returns_claim_attachments').select('id', { count: 'exact', head: true }).eq('claim_id', attachmentMatch[1])
+      if (count.error) throw new Error(count.error.message)
+      if ((count.count || 0) >= 10) throw new Error('A claim can have at most 10 attachments.')
       const storagePath = `${currentUser.id}/${attachmentMatch[1]}/${crypto.randomUUID()}-${file.name}`
-      const upload = await client.storage.from('returns-claim-attachments').upload(storagePath, file, { contentType: file.type || 'application/octet-stream' })
+      const upload = await client.storage.from('returns-claim-attachments').upload(storagePath, file, { contentType })
       if (upload.error) throw new Error(upload.error.message)
-      const row = await client.from('returns_claim_attachments').insert({ claim_id: attachmentMatch[1], original_name: file.name, storage_path: storagePath, content_type: file.type || 'application/octet-stream', size: file.size, uploaded_by: currentUser.id }).select().single()
+      const row = await client.from('returns_claim_attachments').insert({ claim_id: attachmentMatch[1], original_name: file.name, storage_path: storagePath, content_type: contentType, size: file.size, uploaded_by: currentUser.id }).select().single()
       if (row.error) { await client.storage.from('returns-claim-attachments').remove([storagePath]); throw new Error(row.error.message) }
       return row.data
     }
@@ -476,19 +482,25 @@ async function supabaseApi(path: string, options: RequestInit) {
       ])
       if (attachments.error) throw new Error(attachments.error.message)
       if (audit.error) throw new Error(audit.error.message)
-      return { ...result.data, stored_attachments: attachments.data || [], audit_history: audit.data || [] }
+      const people = await client.rpc('returns_claim_people', { target_claim_id: match[1] })
+      if (people.error) throw new Error(people.error.message)
+      const names = new Map((people.data || []).map((person: any) => [person.id, person.display_name]))
+      return { ...result.data,
+        stored_attachments: (attachments.data || []).map((a: any) => ({ ...a, uploader_name: names.get(a.uploaded_by) || 'Former employee' })),
+        audit_history: (audit.data || []).map((a: any) => ({ ...a, actor_name: names.get(a.actor_user_id) || 'Former employee' })),
+      }
     }
     if (method === 'POST') {
-      const result = await client.from('returns_claims').insert({ ...body, created_by: currentUser.id, updated_by: currentUser.id }).select().single()
+      const result = await client.from('returns_claims').insert({ ...claimBody, created_by: currentUser.id, updated_by: currentUser.id }).select().single()
       if (result.error) throw new Error(result.error.message)
       const audit = await client.from('returns_claims_audit').insert({ claim_id: result.data.id, actor_user_id: currentUser.id, action: 'created', changes: { status: result.data.status } })
       if (audit.error) throw new Error(audit.error.message)
       return result.data
     }
     if (match && method === 'PATCH') {
-      const result = await client.from('returns_claims').update({ ...body, updated_by: currentUser.id }).eq('id', match[1]).select().single()
+      const result = await client.from('returns_claims').update({ ...claimBody, updated_by: currentUser.id, updated_at: new Date().toISOString() }).eq('id', match[1]).select().single()
       if (result.error) throw new Error(result.error.message)
-      const audit = await client.from('returns_claims_audit').insert({ claim_id: match[1], actor_user_id: currentUser.id, action: 'updated', changes: { changed: Object.keys(body) } })
+      const audit = await client.from('returns_claims_audit').insert({ claim_id: match[1], actor_user_id: currentUser.id, action: 'updated', changes: { changed: Object.keys(claimBody) } })
       if (audit.error) throw new Error(audit.error.message)
       return result.data
     }
