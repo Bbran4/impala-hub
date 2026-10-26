@@ -462,7 +462,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!currentUser) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
     const allowed = (await client.from('profile_roles').select('role_id').eq('profile_id', currentUser.id)).data || []
     if (!allowed.some((r: any) => ['administrator', 'management', 'returns'].includes(r.role_id))) throw new Error('You do not have access to Returns & Claims.')
-    const fields = ['date','company','rfc_book_number','customer','contact_person','contact_number','invoice_number','invoice_date','reason','part_number','description','qty','outcome_request','returned_by','received_by','supplier_received','comments','status', ...supplierWorkflowFields]
+    const fields = ['date','company','rfc_book_number','customer','contact_person','contact_number','invoice_number','invoice_date','reason','part_number','description','qty','outcome_request','returned_by','received_by','supplier_received','comments','status','sla_days','status_change_reason', ...supplierWorkflowFields]
     const claimBody = Object.fromEntries(fields.filter(field => body && Object.prototype.hasOwnProperty.call(body, field)).map(field => [field, body[field]]))
     if (body) Object.assign(claimBody, prepareSupplierWorkflow(body))
     const attachmentDelete = path.match(/^\/api\/returns-claims\/([^/]+)\/attachments\/([^/]+)$/)
@@ -486,6 +486,15 @@ async function supabaseApi(path: string, options: RequestInit) {
       return row.data
     }
     if (method === 'GET') {
+      if (path === '/api/returns-claims') {
+        const rows: any[] = []
+        for (let offset = 0; ; offset += 500) {
+          const page = await client.from('returns_claims').select('*').is('deleted_at', null).order('date', { ascending: false }).order('created_at', { ascending: false }).order('id').range(offset, offset + 499)
+          if (page.error) throw new Error(page.error.message)
+          rows.push(...(page.data || []))
+          if ((page.data || []).length < 500) return rows
+        }
+      }
       const result = match ? await client.from('returns_claims').select('*').is('deleted_at', null).eq('id', match[1]).single() : await client.from('returns_claims').select('*').is('deleted_at', null).order('date', { ascending: false }).order('created_at', { ascending: false })
       if (result.error) throw new Error(result.error.message)
       if (!match) return result.data || []

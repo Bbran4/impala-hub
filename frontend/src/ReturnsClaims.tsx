@@ -4,6 +4,7 @@ import { API, api, supabase, supabaseConfigured } from "./lib";
 import { CLAIM_FILE_ACCEPT, validateClaimFiles } from './returnsAttachments';
 import './returnsclaims.css';
 import ReturnSupplierWorkflow from './ReturnSupplierWorkflow';
+import { allowedClaimStatuses, validateClaimStatus, johannesburgDate, claimTiming, matchesClaimDates, summarizeClaims, claimReportRows, claimsCsv } from './returnsReporting';
 const companies = ["Warehouse", "Eastrand", "Pretoria"],
   reasons = ["Core", "Goods Damaged", "Incorrect Goods Supplied", "Claim"],
   outcomes = ["Credit", "Replacement Part"],
@@ -53,18 +54,26 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     [outcomeFilter, setOutcomeFilter] = useState(""),
     [companyFilter, setCompanyFilter] = useState(""),
     [reasonFilter, setReasonFilter] = useState(""),
+    [dateFrom, setDateFrom] = useState(''),
+    [dateTo, setDateTo] = useState(''),
+    [slaFilter, setSlaFilter] = useState(''),
+    [today, setToday] = useState(johannesburgDate()),
+    [originalRecord, setOriginalRecord] = useState<Record<string, any> | null>(null),
+    [exporting, setExporting] = useState(false),
     [busy, setBusy] = useState(false),
     [detailLoading, setDetailLoading] = useState(false),
     [preview, setPreview] = useState<{ url: string; name: string; type: string } | null>(null);
+  const statusReasonRequired = Boolean(originalRecord && form.status !== originalRecord.status &&
+    (form.status === 'Rejected' || ['Completed','Rejected'].includes(originalRecord.status)));
   const blank = () => ({
-    date: new Date().toISOString().slice(0, 10),
+    date: johannesburgDate(),
     company: "Warehouse",
     rfc_book_number: "",
     customer: "",
     contact_person: "",
     contact_number: "",
     invoice_number: "",
-    invoice_date: new Date().toISOString().slice(0, 10),
+    invoice_date: johannesburgDate(),
     reason: "Core",
     part_number: "",
     description: "",
@@ -77,6 +86,8 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     status: "In Progress",
     handover_method: 'Not required',
     handover_status: 'Not required',
+    sla_days: 7,
+    status_change_reason: '',
   });
   const load = async () => {
     try {
@@ -89,15 +100,22 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
   useEffect(() => {
     void load();
   }, [token]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setToday(johannesburgDate()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
   const open = async (row?: any) => {
     setReadOnly(false);
     setPreview(null);
     setForm(row ? { ...row } : blank());
+    setOriginalRecord(row || null);
     setPanel(true);
     if (row?.id && supabaseConfigured) {
       setDetailLoading(true);
       try {
-        setForm(await req<any>(token, `/api/returns-claims/${row.id}`));
+        const loaded = await req<any>(token, `/api/returns-claims/${row.id}`);
+        setForm(loaded);
+        setOriginalRecord(loaded);
       } catch (e) {
         setError((e as Error).message);
         setPanel(false);
@@ -169,6 +187,8 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
         .map((a: any) => a.file);
       const body = { ...form };
       if (supabaseConfigured) {
+        validateClaimStatus(originalRecord, form);
+        body.sla_days = Number(form.sla_days ?? 7);
         delete body.attachments;
         delete body.stored_attachments;
         delete body.audit_history;
@@ -180,6 +200,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
         { method: editing ? "PATCH" : "POST", body: JSON.stringify(body) },
       );
       if (supabaseConfigured) {
+        setOriginalRecord(saved);
         // Retain the saved ID and remove each successful file, making retries safe.
         setForm((current: any) => ({ ...current, id: saved.id, claim_no: saved.claim_no }));
         for (const file of files) {
@@ -224,8 +245,30 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
           ? !r.outcome_request
           : r.outcome_request === outcomeFilter)) &&
       (!companyFilter || r.company === companyFilter) &&
-      (!reasonFilter || r.reason === reasonFilter),
+      (!reasonFilter || r.reason === reasonFilter) &&
+      !(dateFrom && dateTo && dateFrom > dateTo) &&
+      matchesClaimDates(r, dateFrom, dateTo, slaFilter, today),
   );
+  const reportSummary = summarizeClaims(visible, today);
+  const filterDescription = `Claim date: ${dateFrom || 'Any'} to ${dateTo || 'Any'}; status: ${statusFilter || 'Any'}; outcome: ${outcomeFilter || 'Any'}; company: ${companyFilter || 'Any'}; reason: ${reasonFilter || 'Any'}; SLA: ${slaFilter || 'Any'}; search: ${search || 'None'}`;
+  const exportReport = async (format: 'csv' | 'xlsx') => {
+    setExporting(true);
+    try {
+      let blob: Blob;
+      if (format === 'csv') blob = new Blob([claimsCsv(claimReportRows(visible, today))], { type: 'text/csv;charset=utf-8' });
+      else {
+        const { createClaimsWorkbook } = await import('./returnsExport');
+        const bytes = await createClaimsWorkbook(visible, today, filterDescription);
+        blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = `returns-claims-${today}.${format}`;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice(`Exported ${visible.length} matching claims.`);
+    } catch (e) { setError((e as Error).message); }
+    finally { setExporting(false); }
+  };
   const field = (n: string, l: string, type = "text", required = false) => (
     <label className="editor-field">
       <span>
@@ -256,7 +299,25 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
           <button className="active">Returns & Claims</button>
         </div>
       </div>
+      <div className="returns-report-summary" aria-label="Filtered claim report">
+        <span><b>{reportSummary.total}</b> matching claims</span><span><b>{reportSummary.open}</b> open</span>
+        <span><b>{reportSummary.overdue}</b> overdue</span><span><b>{reportSummary.dueSoon}</b> due within 2 days</span>
+        <span><b>{reportSummary.completed}</b> completed</span><span><b>{reportSummary.rejected}</b> rejected</span>
+        <span><b>{reportSummary.averageAge}</b> average age (days)</span><span><b>R{reportSummary.creditReceived.toFixed(2)}</b> credits received</span>
+        <button className="secondary" disabled={exporting || !visible.length} onClick={() => void exportReport('csv')}><Download size={14} /> CSV</button>
+        <button className="secondary" disabled={exporting || !visible.length} onClick={() => void exportReport('xlsx')}><Download size={14} /> XLSX report</button>
+        <details className="claim-report-breakdown"><summary>Report breakdown</summary>
+          <h4>By status</h4>{statuses.map(status => <span key={status}>{status}: <b>{visible.filter(row => row.status === status).length}</b> </span>)}
+          <h4>By company</h4>{companies.map(company => <span key={company}>{company}: <b>{visible.filter(row => row.company === company).length}</b> </span>)}
+        </details>
+      </div>
       <div className="rfq-toolbar returns-claims-toolbar">
+        <label>Claim date from<input type="date" value={dateFrom} max={dateTo || undefined} onChange={event => setDateFrom(event.target.value)} /></label>
+        <label>Claim date to<input type="date" value={dateTo} min={dateFrom || undefined} onChange={event => setDateTo(event.target.value)} /></label>
+        <label>SLA filter<select value={slaFilter} onChange={event => setSlaFilter(event.target.value)}>
+          <option value="">All claims</option><option value="open">Open claims</option><option value="overdue">Overdue</option><option value="due-soon">Due within 2 days (including today)</option>
+        </select></label>
+        <button className="secondary" onClick={() => { setDateFrom(''); setDateTo(''); setSlaFilter(''); setSearch(''); setStatusFilter(''); setOutcomeFilter(''); setCompanyFilter(''); setReasonFilter(''); }}>Clear filters</button>
         <label className="rfq-search">
           Search Returns & Claims
           <input
@@ -315,6 +376,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
           </select>
         </label>
       </div>
+      {dateFrom && dateTo && dateFrom > dateTo && <p role="alert">The start date must be on or before the end date.</p>}
       <div className="rfq-table-wrap">
         <table className="rfq-table">
           <thead>
@@ -327,6 +389,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
               <th>Part Number</th>
               <th>Qty</th>
               <th>Status</th>
+              <th>Age / SLA</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -341,6 +404,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                 <td>{r.part_number}</td>
                 <td>{r.qty}</td>
                 <td>{r.status}</td>
+                <td><span className={`claim-sla ${claimTiming(r, today).tone}`}>{claimTiming(r, today).label}</span><small className="claim-sla-detail">{claimTiming(r, today).age_days} days old · due {claimTiming(r, today).due_on}</small></td>
                 <td className="sd-actions-cell">
                   <button className="secondary" onClick={() => open(r)}>
                     View
@@ -353,7 +417,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
             ))}
             {!visible.length && (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <div className="rfq-empty">
                     <ClipboardList size={28} />
                     <h3>No records found</h3>
@@ -536,15 +600,19 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                   <select
                     disabled={readOnly}
                     value={form.status}
-                    onChange={(e) =>
-                      setForm({ ...form, status: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, status: e.target.value, status_change_reason: '' })}
                   >
-                    {statuses.map((x) => (
+                    {(supabaseConfigured ? allowedClaimStatuses(originalRecord?.status) : statuses).map((x) => (
                       <option key={x}>{x}</option>
                     ))}
                   </select>
                 </label>
+                {supabaseConfigured && <>
+                  <label className="editor-field"><span>Reason for rejection / reopening{statusReasonRequired && <b className="required-mark"> *</b>}</span><textarea disabled={busy || detailLoading || !statusReasonRequired} value={form.status_change_reason || ''} onChange={event => setForm({ ...form, status_change_reason: event.target.value })} /></label>
+                  <label className="editor-field"><span>SLA target (calendar days)</span><input type="number" min="1" max="365" disabled={busy || detailLoading} value={form.sla_days ?? 7} onChange={event => setForm({ ...form, sla_days: event.target.value })} /></label>
+                  {form.date && <p><b>{claimTiming(form, today).label}</b> · {claimTiming(form, today).age_days} calendar days old · due {claimTiming(form, today).due_on}</p>}
+                  <p className="hint">Default: 7 calendar days from the claim date. Warning in the final 2 days. Closed-claim age stops at closure. Reopen closed claims to In Progress and record a reason.</p>
+                </>}
               </div>
               {supabaseConfigured && <ReturnSupplierWorkflow form={form} disabled={busy || detailLoading || readOnly} onChange={changes => setForm((current: any) => ({ ...current, ...changes }))} />}
               {form.id && <div className="editor-section sd-history">
@@ -554,6 +622,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                   {h.changes?.file && <span> · {h.changes.file}</span>}
                   {h.changes?.changed?.length > 0 && <span> · Fields: {h.changes.changed.map((field: string) => field.replaceAll('_', ' ')).join(', ')}</span>}
                   {h.action === 'supplier_workflow_updated' && <span> · {Object.entries(h.changes || {}).map(([field, change]: [string, any]) => `${field.replaceAll('_', ' ')}: ${change.from ?? '—'} → ${change.to ?? '—'}`).join('; ')}</span>}
+                  {(h.action === 'status_changed' || h.action === 'sla_changed') && <span> · {h.changes.from} → {h.changes.to}{h.changes.reason ? ` · ${h.changes.reason}` : ''}</span>}
                 </p>)}
               </div>}
             </div>
