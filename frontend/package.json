@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "format": "prettier --write src",
-    "test": "node --experimental-strip-types --test tests/returnsAttachments.test.mjs tests/returnsWorkflow.test.mjs tests/recordAttachments.test.mjs tests/returnsReporting.test.mjs"
+    "test": "node --experimental-strip-types --test tests/returnsAttachments.test.mjs tests/returnsWorkflow.test.mjs tests/recordAttachments.test.mjs tests/returnsReporting.test.mjs tests/stockPartsQueries.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

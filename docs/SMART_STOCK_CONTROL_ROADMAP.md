@@ -6,7 +6,7 @@
 |---|---|---|
 | 1 | Evidence-backed behavior, permissions and acceptance contract | Implemented; verification pending |
 | 2 | Supabase tables, constraints, RLS, actor attribution and audit foundation | Implemented; deployment pending |
-| 3 | Parts Query frontend and transactional supplier workflow | Planned |
+| 3 | Parts Query frontend and transactional supplier workflow | Implemented; deployment pending |
 | 4 | Shared configuration and administrator controls | Planned |
 | 5 | Versioned stock-import pipeline | Planned |
 | 6 | CSV/XLSX import and validation UI | Planned |
@@ -18,6 +18,8 @@
 | 12 | Production cutover and retirement of Smart Stock FastAPI routes | Planned |
 
 The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sql`. It does not switch the current screens away from FastAPI. That cutover begins with Parts Queries in stage 3 after the migration is applied and verified.
+
+Stage 3 is defined in `supabase/migrations/0038_smart_stock_parts_queries.sql` and the `PartsQueries` frontend. It moves Parts Query reads, atomic create/update with complete supplier replacement, audited archival, active Sales Code selection, role-aware editing and named history to Supabase. Stock Booking, Stock Reordering and Stock Control Configuration remain on FastAPI until their respective stages.
 
 ### Permission contract
 

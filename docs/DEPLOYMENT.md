@@ -62,6 +62,18 @@ Migration `0037_smart_stock_foundation.sql` creates the Smart Stock data boundar
 - Confirm staged snapshot rows are visible only to administrators and become visible to Stock/Management users only after their import batch is validated and activated.
 - Do not remove the FastAPI Smart Stock routes until stages 3–8 have passed their production smoke checks.
 
+### Parts Query cutover checks
+
+After migration `0038_smart_stock_parts_queries.sql` and its matching frontend are deployed:
+
+- Administrator and Stock employee: create a query with no suppliers, then create one with multiple suppliers.
+- Edit part details, requested quantity, status, Development Status, Sales Code and the complete supplier set in one save.
+- Submit one deliberately invalid supplier quantity and confirm the parent and previous supplier set remain unchanged.
+- Confirm supplier unit-cost comparison uses cost divided by quote quantity.
+- Archive a query and confirm it disappears from the active list while its named history remains available.
+- Management: confirm the create, save, archive, supplier and Add Development Status controls are unavailable.
+- Sales, unrelated-role, inactive and signed-out users: confirm direct table and RPC requests remain denied.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.

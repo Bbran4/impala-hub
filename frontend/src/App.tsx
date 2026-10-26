@@ -8,7 +8,7 @@ import PostBoard from './PostBoard'
 import PostCalendar from './PostCalendar'
 import MonthNav from './MonthNav'
 import SalesDesk from './SalesDesk'
-import Buyouts from './Buyouts'
+import PartsQueries from './PartsQueries'
 import StockBooking from './StockBooking'
 import StockControlConfig from './StockControlConfig'
 import StockReordering from './StockReordering'
@@ -132,7 +132,11 @@ export default function App() {
   const [profile, setProfile] = useState({ first_name: '', surname: '', email: '', avatar_url: '', sales_code: '' })
   const [profileBusy, setProfileBusy] = useState(false)
   const [isAdministrator, setIsAdministrator] = useState(false)
-  const [appRole, setAppRole] = useState<'administrator' | 'salesperson' | 'manager' | 'other'>('other')
+  const [assignedRoles, setAssignedRoles] = useState<string[]>([])
+  const canAccessMarketing = isAdministrator || assignedRoles.includes('marketing') || assignedRoles.includes('management')
+  const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('management') || Boolean(profile.sales_code)
+  const canAccessReturns = isAdministrator || assignedRoles.includes('returns') || assignedRoles.includes('management')
+  const canAccessStock = isAdministrator || assignedRoles.includes('stock') || assignedRoles.includes('management')
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -144,7 +148,7 @@ export default function App() {
     const roles = await supabase.from('profile_roles').select('role_id').eq('profile_id', user.id)
     setIsAdministrator((roles.data || []).some((role: any) => role.role_id === 'administrator'))
     const roleIds = (roles.data || []).map((role: any) => role.role_id)
-    setAppRole(roleIds.includes('administrator') ? 'administrator' : data?.sales_code ? 'salesperson' : roleIds.includes('sales') ? 'manager' : 'other')
+    setAssignedRoles(roleIds)
     setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
   }
 
@@ -206,7 +210,6 @@ export default function App() {
   }
   useEffect(() => {
     if (!key) return
-    void load()
     void loadProfile()
     const params = new URLSearchParams(window.location.search)
     const fb = params.get('facebook_oauth')
@@ -231,8 +234,18 @@ export default function App() {
   }, [key])
 
   useEffect(() => {
-    if (appRole === 'salesperson' && ['Feed', 'Posts', 'Campaigns', 'Roadmap', 'Configuration', 'Parts Query', 'Stock Booking', 'Stock Reordering', 'Stock Control Configuration', 'Stock Control Roadmap', 'Returns & Claims', 'Returns & Claims Roadmap'].includes(page)) setPage('Apps')
-  }, [appRole, page])
+    if (key && canAccessMarketing) void load()
+  }, [key, canAccessMarketing])
+
+  useEffect(() => {
+    const marketingPages = ['Feed', 'Posts', 'Post', 'Campaigns', 'Roadmap', 'Configuration']
+    const salesPages = ['RFQs', 'RFQ Configuration', 'RFQ Roadmap']
+    const stockPages = ['Parts Query', 'Stock Booking', 'Stock Reordering', 'Stock Control Configuration', 'Stock Control Roadmap']
+    const returnsPages = ['Returns & Claims', 'Returns & Claims Roadmap']
+    const adminPages = ['Configuration', 'RFQ Configuration', 'Stock Control Configuration']
+    if ((adminPages.includes(page) && !isAdministrator) || (marketingPages.includes(page) && !canAccessMarketing) || (salesPages.includes(page) && !canAccessSalesDesk)
+      || (stockPages.includes(page) && !canAccessStock) || (returnsPages.includes(page) && !canAccessReturns)) setPage('Apps')
+  }, [page, isAdministrator, canAccessMarketing, canAccessSalesDesk, canAccessStock, canAccessReturns])
 
   // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
   useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
@@ -549,7 +562,7 @@ export default function App() {
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
   const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims with RC date/sequence references','Implemented'],['Outcome handling','Unknown until decided','Validated status transitions, rejection/reopen reasons and receipt checks','Implemented'],['Attachments','Evidence files','New-tab images, PDF previews, downloads and audited permanent deletion','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response, dated credit/replacement receipts and pickup/drop-off tracking','Implemented'],['Ageing and SLA','Claim ageing reports','7-day calendar SLA, 2-day warning, date-range/overdue filters and closure age','Implemented'],['Exports and audit','Traceable reporting','Filtered CSV/XLSX reports, summary breakdowns and named audit history','Implemented'],['Wildcard search','Search','Wildcard matching across claim fields','Planned']]
-const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Part details and supplier quotes','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','ER/PTA stock comparison, Book quantities and export','Implemented'],['Stock Reordering','Inventory planning','Stock, safety, sales, supplier and reorder metrics','Implemented'],['Location configuration','Locations and vehicles','Descriptions, vehicles, supply mappings and colors','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['Qlik/Google Sheets import','Live inventory feed','Refresh stock data from source sheet','Planned'],['Supplier response workflow','Quote lifecycle','Track quote requests and supplier responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Wildcard search','Search','Wildcard matching across parts, suppliers and sales codes','Implemented']]
+const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Supabase CRUD, atomic supplier replacement, archival and named history','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','ER/PTA stock comparison, Book quantities and export','Implemented'],['Stock Reordering','Inventory planning','Stock, safety, sales, supplier and reorder metrics','Implemented'],['Location configuration','Locations and vehicles','Descriptions, vehicles, supply mappings and colors','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['Qlik/Google Sheets import','Live inventory feed','Refresh stock data from source sheet','Planned'],['Supplier response workflow','Quote lifecycle','Track quote requests and supplier responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Wildcard search','Search','Wildcard matching across parts, suppliers and sales codes','Implemented']]
 
 const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
   const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Reordering' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
@@ -576,10 +589,10 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             {(isSalesDeskPage
               ? ([['RFQs', ClipboardList], ...(isAdministrator ? [['RFQ Configuration', Settings] as const] : []), ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
-              ? ([['Stock Booking', PackageCheck], ['Stock Reordering', PackageCheck], ['Parts Query', ClipboardList], ['Stock Control Configuration', Settings], ['Stock Control Roadmap', Map]] as const)
+              ? ([['Stock Booking', PackageCheck], ['Stock Reordering', PackageCheck], ['Parts Query', ClipboardList], ...(isAdministrator ? [['Stock Control Configuration', Settings] as const] : []), ['Stock Control Roadmap', Map]] as const)
                 : isReturnsClaimsPage
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
-                : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ['Configuration', Settings]] as const)
+                : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ...(isAdministrator ? [['Configuration', Settings] as const] : [])] as const)
             ).map(([label, Icon]) => (
               <button
                 key={label}
@@ -664,18 +677,18 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <h2>Welcome to Impala Hub</h2>
               <p>Choose an application to get started. More tools will appear here as they become available.</p>
             </div>
-            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>4 available</span></div>
+            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>{[canAccessMarketing, canAccessSalesDesk, canAccessReturns, canAccessStock].filter(Boolean).length} available</span></div>
             <div className="app-cards">
-              {appRole !== 'salesperson' && <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
+              {canAccessMarketing && <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
                 <div className="app-card-icon"><Megaphone size={25} /></div>
                 <div className="app-card-copy"><h3>Marketing</h3><p>Plan campaigns, organise content, and manage social publishing.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>}
-              <button className="app-card app-card-available" onClick={() => { setPage('RFQs'); setError(''); setNotice('') }}>
+              {canAccessSalesDesk && <button className="app-card app-card-available" onClick={() => { setPage('RFQs'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Sales Desk</h3><p>Customer enquiries, RFQs, and sales follow-ups.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
-              </button>
+              </button>}
               {[
                 { title: 'Fleet Management', description: 'Fleet visibility and vehicle activity.' },
                 { title: 'E-commerce', description: 'Shopify orders, catalogue, and integration health.' },
@@ -686,12 +699,12 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                   <div className="app-card-footer"><span className="app-status-dot app-status-planned" /> Planned <span className="app-card-lock">Coming later</span></div>
                 </div>
               ))}
-              {appRole !== 'salesperson' && <button className="app-card app-card-available" onClick={() => { setPage('Returns & Claims'); setError(''); setNotice('') }}>
+              {canAccessReturns && <button className="app-card app-card-available" onClick={() => { setPage('Returns & Claims'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Returns &amp; Claims</h3><p>Track returns, damage claims, and supplier outcomes.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>}
-              {appRole !== 'salesperson' && <button className="app-card app-card-available" onClick={() => { setPage('Stock Booking'); setError(''); setNotice('') }}>
+              {canAccessStock && <button className="app-card app-card-available" onClick={() => { setPage('Stock Booking'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><ClipboardList size={25} /></div>
                 <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Compare stock, book branch transfers, and manage Parts Queries.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
@@ -718,7 +731,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
-        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Reordering' ? <StockReordering token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <Buyouts token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
+        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Reordering' ? <StockReordering token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <PartsQueries token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">
