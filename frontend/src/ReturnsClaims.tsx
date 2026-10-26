@@ -3,6 +3,7 @@ import { ClipboardList, Download, Eye, Plus, Trash2, X } from "lucide-react";
 import { API, api, supabase, supabaseConfigured } from "./lib";
 import { CLAIM_FILE_ACCEPT, validateClaimFiles } from './returnsAttachments';
 import './returnsclaims.css';
+import ReturnSupplierWorkflow from './ReturnSupplierWorkflow';
 const companies = ["Warehouse", "Eastrand", "Pretoria"],
   reasons = ["Core", "Goods Damaged", "Incorrect Goods Supplied", "Claim"],
   outcomes = ["Credit", "Replacement Part"],
@@ -74,6 +75,8 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     supplier_received: "No",
     comments: "",
     status: "In Progress",
+    handover_method: 'Not required',
+    handover_status: 'Not required',
   });
   const load = async () => {
     try {
@@ -105,10 +108,16 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
   };
   const openStored = async (a: any, download = false) => {
     if (!supabase || !a.storage_path) return;
+    const imageWindow = !download && a.content_type?.startsWith('image/') ? window.open('about:blank', '_blank') : null;
+    if (imageWindow) imageWindow.opener = null;
     try {
       const result = await supabase.storage.from('returns-claim-attachments').createSignedUrl(a.storage_path, 300, download ? { download: a.original_name } : undefined);
       if (result.error || !result.data?.signedUrl) throw new Error(result.error?.message || 'Unable to open attachment.');
-      if (!download) {
+      if (imageWindow) {
+        imageWindow.location.href = result.data.signedUrl;
+      } else if (!download && a.content_type?.startsWith('image/')) {
+        throw new Error('Allow pop-ups for this site to open images in a new tab.');
+      } else if (!download) {
         setPreview({ url: result.data.signedUrl, name: a.original_name, type: a.content_type });
       } else {
         const response = await fetch(result.data.signedUrl);
@@ -120,8 +129,21 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
     } catch (e) {
+      imageWindow?.close();
       setError((e as Error).message);
     }
+  };
+  const deleteStored = async (attachment: any) => {
+    if (!window.confirm(`Permanently delete ${attachment.original_name}? This removes the file and its database entry. The audit history is retained.`)) return;
+    setBusy(true);
+    try {
+      await req(token, `/api/returns-claims/${form.id}/attachments/${attachment.id}`, { method: 'DELETE' });
+      const updated = await req<any>(token, `/api/returns-claims/${form.id}`);
+      setForm((current: any) => ({ ...current, stored_attachments: updated.stored_attachments, audit_history: updated.audit_history }));
+      setPreview(null);
+      setNotice('Attachment permanently deleted.');
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
   };
   const addFiles = async (selected: File[]) => {
     try {
@@ -159,7 +181,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
       );
       if (supabaseConfigured) {
         // Retain the saved ID and remove each successful file, making retries safe.
-        setForm((current: any) => ({ ...current, id: saved.id }));
+        setForm((current: any) => ({ ...current, id: saved.id, claim_no: saved.claim_no }));
         for (const file of files) {
           const fd = new FormData();
           fd.append("file", file);
@@ -183,7 +205,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     }
   };
   const del = async (row: any) => {
-    if (!confirm(`Delete ${row.id}?`)) return;
+    if (!confirm(`Delete ${row.claim_no || row.id}?`)) return;
     try {
       await req(token, `/api/returns-claims/${row.id}`, { method: "DELETE" });
       await load();
@@ -297,7 +319,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
         <table className="rfq-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <th>Reference</th>
               <th>Date</th>
               <th>Company</th>
               <th>RFC Book</th>
@@ -311,7 +333,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
           <tbody>
             {visible.map((r) => (
               <tr className="rfq-data-row" key={r.id}>
-                <td>{r.id}</td>
+                <td>{r.claim_no || r.id}</td>
                 <td>{r.date}</td>
                 <td>{r.company}</td>
                 <td>{r.rfc_book_number}</td>
@@ -355,7 +377,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                 <span className="eyebrow">
                   {form.id ? "RETURNS & CLAIMS" : "NEW RETURNS & CLAIMS"}
                 </span>
-                <h2>{form.id || "New Record"}</h2>
+                <h2>{form.claim_no || form.id || "New Record"}</h2>
               </div>
               <button className="icon-button" onClick={() => setPanel(false)}>
                 <X size={20} />
@@ -430,6 +452,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                     <small>{Math.round(a.size / 1024)} KB · {a.uploader_name || 'Employee'} · {new Date(a.created_at).toLocaleString()}</small>
                     {(a.content_type?.startsWith('image/') || a.content_type === 'application/pdf') && <button type="button" className="secondary" onClick={() => void openStored(a)}><Eye size={14} /> Preview</button>}
                     <button type="button" className="secondary" onClick={() => void openStored(a, true)}><Download size={14} /> Download</button>
+                    <button type="button" className="secondary" disabled={busy || detailLoading} onClick={() => void deleteStored(a)}><Trash2 size={14} /> Delete</button>
                   </div>
                 ))}
                 {preview && <div className="claim-attachment-preview">
@@ -482,11 +505,11 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                 {field("returned_by", "Returned by")}
                 {field("received_by", "Received By")}
                 <label className="editor-field">
-                  <span>Credit/Replacement Received from Supplier</span>
+                  <span>Credit/Replacement Received from Supplier {supabaseConfigured && '(tracked below)'}</span>
                   <input
-                    disabled={readOnly}
+                    disabled={readOnly || supabaseConfigured}
                     type="checkbox"
-                    checked={form.supplier_received === "Yes"}
+                    checked={!!form.credit_received_on || !!form.replacement_received_on || form.supplier_received === "Yes"}
                     onChange={(e) =>
                       setForm({
                         ...form,
@@ -523,12 +546,14 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                   </select>
                 </label>
               </div>
+              {supabaseConfigured && <ReturnSupplierWorkflow form={form} disabled={busy || detailLoading || readOnly} onChange={changes => setForm((current: any) => ({ ...current, ...changes }))} />}
               {form.id && <div className="editor-section sd-history">
                 <h3>Record history</h3>
                 {detailLoading ? <p>Loading history…</p> : !(form.audit_history || []).length ? <p>No history recorded.</p> : form.audit_history.map((h: any) => <p key={h.id}>
                   <b>{new Date(h.created_at).toLocaleString()}</b> · {h.actor_name || 'Former employee'} · {h.action.replaceAll('_', ' ')}
                   {h.changes?.file && <span> · {h.changes.file}</span>}
                   {h.changes?.changed?.length > 0 && <span> · Fields: {h.changes.changed.map((field: string) => field.replaceAll('_', ' ')).join(', ')}</span>}
+                  {h.action === 'supplier_workflow_updated' && <span> · {Object.entries(h.changes || {}).map(([field, change]: [string, any]) => `${field.replaceAll('_', ' ')}: ${change.from ?? '—'} → ${change.to ?? '—'}`).join('; ')}</span>}
                 </p>)}
               </div>}
             </div>

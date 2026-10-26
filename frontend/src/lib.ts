@@ -41,6 +41,8 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
 import { claimFileType } from './returnsAttachments'
+import { deleteRecordAttachment } from './recordAttachments'
+import { supplierWorkflowFields, prepareSupplierWorkflow } from './returnsWorkflow'
 export { supabase }
 export { supabaseConfigured }
 export const KEY_STORAGE = 'impala_session_token'
@@ -235,6 +237,11 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: profile.data.sales_code || null, is_active: true }
     if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
     const attachmentUpload = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/attachments$/)
+    const attachmentDelete = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/attachments\/([^/]+)$/)
+    if (attachmentDelete && method === 'DELETE') {
+      await deleteRecordAttachment(client, 'rfq', attachmentDelete[1], attachmentDelete[2])
+      return null
+    }
     if (attachmentUpload && method === 'POST' && options.body && typeof (options.body as FormData).get === 'function') {
       const file = (options.body as FormData).get('file')
       if (!file || typeof (file as File).arrayBuffer !== 'function') throw new Error('Select a file first.')
@@ -245,7 +252,7 @@ async function supabaseApi(path: string, options: RequestInit) {
       if (upload.error) throw new Error(upload.error.message)
       const row = await client.from('sales_desk_rfq_attachments').insert({ rfq_id: attachmentUpload[1], original_name: uploadFile.name, storage_path: pathName, content_type: uploadFile.type || 'application/octet-stream', size: uploadFile.size, uploaded_by: user.id }).select().single()
       if (row.error) { await client.storage.from('sales-desk-attachments').remove([pathName]); throw new Error(row.error.message) }
-      const detail = await client.from('sales_desk_rfqs').select('*,sales_desk_rfq_attachments(*)').eq('id', attachmentUpload[1]).single()
+      const detail = await client.from('sales_desk_rfqs').select('*,attachments:sales_desk_rfq_attachments(*)').eq('id', attachmentUpload[1]).single()
       if (detail.error) throw new Error(detail.error.message)
       return detail.data
     }
@@ -455,8 +462,14 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!currentUser) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
     const allowed = (await client.from('profile_roles').select('role_id').eq('profile_id', currentUser.id)).data || []
     if (!allowed.some((r: any) => ['administrator', 'management', 'returns'].includes(r.role_id))) throw new Error('You do not have access to Returns & Claims.')
-    const fields = ['date','company','rfc_book_number','customer','contact_person','contact_number','invoice_number','invoice_date','reason','part_number','description','qty','outcome_request','returned_by','received_by','supplier_received','comments','status']
+    const fields = ['date','company','rfc_book_number','customer','contact_person','contact_number','invoice_number','invoice_date','reason','part_number','description','qty','outcome_request','returned_by','received_by','supplier_received','comments','status', ...supplierWorkflowFields]
     const claimBody = Object.fromEntries(fields.filter(field => body && Object.prototype.hasOwnProperty.call(body, field)).map(field => [field, body[field]]))
+    if (body) Object.assign(claimBody, prepareSupplierWorkflow(body))
+    const attachmentDelete = path.match(/^\/api\/returns-claims\/([^/]+)\/attachments\/([^/]+)$/)
+    if (attachmentDelete && method === 'DELETE') {
+      await deleteRecordAttachment(client, 'return', attachmentDelete[1], attachmentDelete[2])
+      return null
+    }
     const attachmentMatch = path.match(/^\/api\/returns-claims\/([^/]+)\/attachments$/)
     if (attachmentMatch && method === 'POST' && options.body && typeof (options.body as FormData).get === 'function') {
       const file = (options.body as FormData).get('file') as File | null

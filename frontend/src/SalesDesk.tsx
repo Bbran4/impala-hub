@@ -112,6 +112,7 @@ function describeHistory(h: any): string {
       return `${h.action[0].toUpperCase() + h.action.slice(1)}: ${shorten(c.from_sales_code)} → ${shorten(c.to_sales_code)}`
     case 'converted_to_invoice': return `Converted to invoice: ${c.from_rfq_no} → ${c.to_rfq_no}`
     case 'attachment_added': return `Attachment added: ${c.file}`
+    case 'attachment_deleted': return `Attachment deleted: ${c.file}`
     case 'updated':
       return Object.entries(c).map(([k, v]: [string, any]) => {
         const stamp = k === 'received_at' || k === 'claimed_at'
@@ -264,6 +265,19 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
     } catch (e) { viewer?.close(); setError((e as Error).message) }
   }
 
+  async function deleteAttachment(att: any) {
+    if (!window.confirm(`Permanently delete ${att.original_name}? This removes the file and its database entry. The audit history is retained.`)) return
+    setBusy(true); setError('')
+    try {
+      await request(`/api/sales-desk/rfqs/${rfqId}/attachments/${att.id}`, { method: 'DELETE' })
+      const updated = await request(`/api/sales-desk/rfqs/${rfqId}`)
+      setRfq(updated)
+      await onChanged()
+      setNotice('Attachment permanently deleted.')
+    } catch (e) { setError((e as Error).message) }
+    finally { setBusy(false) }
+  }
+
   async function claim() {
     setBusy(true); setError('')
     try {
@@ -348,7 +362,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
             <input id="rfq-doc" disabled={disabled} maxLength={120} value={form.document_number} onChange={(e) => set({ document_number: e.target.value })} />
 
             <div className="editor-label-row">
-              <label id="lbl-attach">Attachments <span>Images, PDF, Word or Excel, up to 15 MB each. Once added, attachments cannot be removed.</span></label>
+              <label id="lbl-attach">Attachments <span>Images, PDF, Word or Excel, up to 15 MB each.{supabaseConfigured ? ' Files can be permanently deleted; audit history is retained.' : ''}</span></label>
               {!readOnly && (
                 <label className="upload-button">
                   <Paperclip size={16} /> Add files
@@ -371,6 +385,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
                     <button className="secondary" onClick={() => void openAttachment(a, true)}><Eye size={14} /> View</button>
                   )}
                   <button className="secondary" onClick={() => void openAttachment(a, false)}><Download size={14} /> Download</button>
+                  {supabaseConfigured && !readOnly && (user?.role === 'administrator' || user?.role === 'manager' || isSales) && <button className="secondary" disabled={busy} onClick={() => void deleteAttachment(a)}><Trash2 size={14} /> Delete</button>}
                 </li>
               ))}
               {!files.length && !(rfq?.attachments || []).length && <li className="sd-no-files">No attachments</li>}
