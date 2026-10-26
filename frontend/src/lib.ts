@@ -256,7 +256,15 @@ async function supabaseApi(path: string, options: RequestInit) {
         client.from('sales_desk_sales_codes').select('*').order('code'),
       ])
       for (const result of [media, statuses, codes]) if (result.error) throw new Error(result.error.message)
-      return { media_platforms: (media.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), statuses: (statuses.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), sales_codes: codes.data || [], can_configure: role === 'administrator' }
+      const rfqCounts = await client.from('sales_desk_rfqs').select('sales_code_id').is('deleted_at', null)
+      if (rfqCounts.error) throw new Error(rfqCounts.error.message)
+      const countByCode = new Map<string, number>()
+      for (const row of rfqCounts.data || []) if (row.sales_code_id) countByCode.set(row.sales_code_id, (countByCode.get(row.sales_code_id) || 0) + 1)
+      const codeValues = (codes.data || []).map((item: any) => item.code)
+      const owners = codeValues.length ? await client.rpc('sales_desk_code_owners') : { data: [] as any[], error: null }
+      if (owners.error) throw new Error(owners.error.message)
+      const ownerByCode = new Map((owners.data || []).map((item: any) => [String(item.sales_code).toUpperCase(), item.display_name]))
+      return { media_platforms: (media.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), statuses: (statuses.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), sales_codes: (codes.data || []).map((item: any) => ({ ...item, consultant_name: ownerByCode.get(String(item.code).toUpperCase()) || null, rfq_count: countByCode.get(item.id) || 0 })), can_configure: role === 'administrator' }
     }
     const mediaConfig = path.match(/^\/api\/sales-desk\/config\/media-platforms(?:\/([^/]+))?$/)
     const statusConfig = path.match(/^\/api\/sales-desk\/config\/statuses(?:\/([^/]+))?$/)
