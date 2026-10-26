@@ -455,23 +455,29 @@ async function supabaseApi(path: string, options: RequestInit) {
     const allowed = (await client.from('profile_roles').select('role_id').eq('profile_id', currentUser.id)).data || []
     if (!allowed.some((r: any) => ['administrator', 'management', 'returns'].includes(r.role_id))) throw new Error('You do not have access to Returns & Claims.')
     if (method === 'GET') {
-      const result = match ? await client.from('returns_claims').select('*').eq('id', match[1]).single() : await client.from('returns_claims').select('*').order('date', { ascending: false }).order('created_at', { ascending: false })
+      const result = match ? await client.from('returns_claims').select('*').is('deleted_at', null).eq('id', match[1]).single() : await client.from('returns_claims').select('*').is('deleted_at', null).order('date', { ascending: false }).order('created_at', { ascending: false })
       if (result.error) throw new Error(result.error.message)
       return match ? result.data : result.data || []
     }
     if (method === 'POST') {
       const result = await client.from('returns_claims').insert({ ...body, created_by: currentUser.id, updated_by: currentUser.id }).select().single()
       if (result.error) throw new Error(result.error.message)
+      const audit = await client.from('returns_claims_audit').insert({ claim_id: result.data.id, actor_user_id: currentUser.id, action: 'created', changes: { status: result.data.status } })
+      if (audit.error) throw new Error(audit.error.message)
       return result.data
     }
     if (match && method === 'PATCH') {
       const result = await client.from('returns_claims').update({ ...body, updated_by: currentUser.id }).eq('id', match[1]).select().single()
       if (result.error) throw new Error(result.error.message)
+      const audit = await client.from('returns_claims_audit').insert({ claim_id: match[1], actor_user_id: currentUser.id, action: 'updated', changes: { changed: Object.keys(body) } })
+      if (audit.error) throw new Error(audit.error.message)
       return result.data
     }
     if (match && method === 'DELETE') {
-      const result = await client.from('returns_claims').delete().eq('id', match[1])
+      const result = await client.from('returns_claims').update({ deleted_at: new Date().toISOString(), deleted_by: currentUser.id, updated_by: currentUser.id }).eq('id', match[1]).is('deleted_at', null)
       if (result.error) throw new Error(result.error.message)
+      const audit = await client.from('returns_claims_audit').insert({ claim_id: match[1], actor_user_id: currentUser.id, action: 'deleted', changes: {} })
+      if (audit.error) throw new Error(audit.error.message)
       return null
     }
   }
