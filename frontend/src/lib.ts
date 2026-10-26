@@ -454,6 +454,18 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!currentUser) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
     const allowed = (await client.from('profile_roles').select('role_id').eq('profile_id', currentUser.id)).data || []
     if (!allowed.some((r: any) => ['administrator', 'management', 'returns'].includes(r.role_id))) throw new Error('You do not have access to Returns & Claims.')
+    const attachmentMatch = path.match(/^\/api\/returns-claims\/([^/]+)\/attachments$/)
+    if (attachmentMatch && method === 'POST' && options.body && typeof (options.body as FormData).get === 'function') {
+      const file = (options.body as FormData).get('file') as File | null
+      if (!file || typeof file.arrayBuffer !== 'function') throw new Error('Select a file first.')
+      if (file.size > 15 * 1024 * 1024) throw new Error('Maximum attachment size is 15 MB.')
+      const storagePath = `${currentUser.id}/${attachmentMatch[1]}/${crypto.randomUUID()}-${file.name}`
+      const upload = await client.storage.from('returns-claim-attachments').upload(storagePath, file, { contentType: file.type || 'application/octet-stream' })
+      if (upload.error) throw new Error(upload.error.message)
+      const row = await client.from('returns_claim_attachments').insert({ claim_id: attachmentMatch[1], original_name: file.name, storage_path: storagePath, content_type: file.type || 'application/octet-stream', size: file.size, uploaded_by: currentUser.id }).select().single()
+      if (row.error) { await client.storage.from('returns-claim-attachments').remove([storagePath]); throw new Error(row.error.message) }
+      return row.data
+    }
     if (method === 'GET') {
       const result = match ? await client.from('returns_claims').select('*').is('deleted_at', null).eq('id', match[1]).single() : await client.from('returns_claims').select('*').is('deleted_at', null).order('date', { ascending: false }).order('created_at', { ascending: false })
       if (result.error) throw new Error(result.error.message)
