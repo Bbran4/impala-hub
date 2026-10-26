@@ -448,6 +448,33 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { totals, series: [...groups.values()] }
     }
   }
+  if (path === '/api/returns-claims' || path.startsWith('/api/returns-claims/')) {
+    const match = path.match(/^\/api\/returns-claims\/([^/]+)$/)
+    const currentUser = (await client.auth.getUser()).data.user
+    if (!currentUser) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
+    const allowed = (await client.from('profile_roles').select('role_id').eq('profile_id', currentUser.id)).data || []
+    if (!allowed.some((r: any) => ['administrator', 'management', 'returns'].includes(r.role_id))) throw new Error('You do not have access to Returns & Claims.')
+    if (method === 'GET') {
+      const result = match ? await client.from('returns_claims').select('*').eq('id', match[1]).single() : await client.from('returns_claims').select('*').order('date', { ascending: false }).order('created_at', { ascending: false })
+      if (result.error) throw new Error(result.error.message)
+      return match ? result.data : result.data || []
+    }
+    if (method === 'POST') {
+      const result = await client.from('returns_claims').insert({ ...body, created_by: currentUser.id, updated_by: currentUser.id }).select().single()
+      if (result.error) throw new Error(result.error.message)
+      return result.data
+    }
+    if (match && method === 'PATCH') {
+      const result = await client.from('returns_claims').update({ ...body, updated_by: currentUser.id }).eq('id', match[1]).select().single()
+      if (result.error) throw new Error(result.error.message)
+      return result.data
+    }
+    if (match && method === 'DELETE') {
+      const result = await client.from('returns_claims').delete().eq('id', match[1])
+      if (result.error) throw new Error(result.error.message)
+      return null
+    }
+  }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
   const postHistoryMatch = path.match(/^\/api\/posts\/([^/]+)\/history$/)
   if (postHistoryMatch && method === 'GET') {
