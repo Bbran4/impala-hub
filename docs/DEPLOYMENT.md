@@ -100,6 +100,20 @@ After migration `0040_smart_stock_import_pipeline.sql` is applied:
 - Confirm `stock_audit` contains semantic staging, validation, activation, supersession and rejection events with the administrator actor.
 - Do not expose CSV/XLSX controls until Stage 6 parsing and column-mapping tests pass.
 
+### CSV/XLSX Stock Data Import checks
+
+After migration `0041_stock_import_retry_support.sql` and the Stage 6 frontend are deployed:
+
+- Confirm only administrators can see **Stock Data Import** in the Smart Stock sidebar.
+- Load CSV and XLSX sources containing both Booking and Reordering data. Confirm the correct worksheets and common header aliases are selected.
+- Correct one automatic mapping manually and confirm the preview and validation update immediately.
+- Confirm malformed CSV, invalid UTF-8, hidden-only workbooks, Excel formulas, duplicate normalized headers, unsupported formats and files above 25 MB fail before any Supabase batch is created.
+- Confirm invalid integers, numeric precision, negative constrained values, supplier types, 121-character part numbers and duplicate Franchise/Part Number pairs block staging.
+- Confirm the UI displays individual file hashes, a combined SHA-256 identity, bounded preview rows and bounded validation messages.
+- Stage a valid pair and confirm the batch is `validated` but does not become active automatically.
+- Activate it separately and confirm Stock Booking and Stock Reordering still show the previous snapshot until activation succeeds.
+- Interrupt or reject an attempted import, reject its retained staged batch, then retry the same files and confirm both attempts remain in history.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.

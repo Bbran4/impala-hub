@@ -359,6 +359,35 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .config-row small { color: #687386; font-size: 12px; }
 .stock-config-actions { display: flex; align-items: center; gap: 8px; }
 .stock-config-inactive { opacity: .62; }
+.stock-import-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.stock-import-dataset { min-width: 0; }
+.stock-import-title { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+.stock-import-title p { margin: 4px 0 0; color: #71808d; font-size: 12px; }
+.stock-import-file { position: relative; cursor: pointer; }
+.stock-import-file input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.stock-import-empty { min-height: 130px; border: 1px dashed #cfd9e1; border-radius: 9px; display: grid; place-content: center; justify-items: center; gap: 9px; color: #7b8994; font-size: 12px; }
+.stock-import-file-meta { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; padding: 12px; border-radius: 8px; background: #f3f6f8; font-size: 11px; }
+.stock-import-file-meta b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.stock-import-file-meta span { color: #6f7e89; }
+.stock-import-file-meta code { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: #61717e; font-size: 10px; }
+.stock-import-mapping { margin-top: 14px; border: 1px solid #dde4e9; border-radius: 8px; background: #fafbfc; }
+.stock-import-mapping summary { cursor: pointer; padding: 11px 13px; font-size: 12px; font-weight: 700; }
+.stock-import-map-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 0 13px 13px; }
+.stock-import-map-grid label { min-width: 0; font-size: 10px; font-weight: 700; color: #526270; }
+.stock-import-map-grid select { display: block; width: 100%; margin-top: 5px; border: 1px solid #d7e0e7; border-radius: 7px; background: white; padding: 8px; font-size: 11px; }
+.stock-import-validation { display: flex; align-items: center; gap: 8px; margin-top: 14px; border-radius: 8px; padding: 10px 12px; font-size: 11px; }
+.stock-import-validation.valid { background: #eaf6ee; color: #2b7547; }
+.stock-import-validation.invalid { background: #fff0ed; color: #a34130; }
+.stock-import-errors { max-height: 180px; overflow: auto; padding-left: 28px; color: #8e3d30; font-size: 11px; line-height: 1.55; }
+.stock-import-preview { margin-top: 12px; max-height: 250px; }
+.stock-import-preview .rfq-table { min-width: 600px; }
+.stock-import-submit { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin: 16px 0; padding: 16px 18px; border: 1px solid #dce4e9; border-radius: 10px; background: white; }
+.stock-import-submit b,.stock-import-submit small { display: block; }
+.stock-import-submit small { margin-top: 4px; color: #7a8994; font-size: 11px; }
+.stock-import-history { max-width: none; }
+.stock-import-error-text { color: #a34130 !important; }
+@media(max-width:1000px){.stock-import-grid{grid-template-columns:1fr}}
+@media(max-width:680px){.stock-import-title,.stock-import-submit{align-items:stretch;flex-direction:column}.stock-import-map-grid{grid-template-columns:1fr}.stock-import-file-meta{grid-template-columns:1fr}.stock-import-file-meta code{grid-column:1;grid-row:auto}.stock-import-submit .primary{width:100%}}
 .stock-supply-highlight { background: #fff4c2; font-weight: 700; box-shadow: inset 0 -2px 0 #d49b00; }
 .stock-cell-picking-slip { background: #e5e7eb !important; color: #4b5563; }
 .stock-cell-short { background: #ffedd5 !important; color: #9a3412; font-weight: 700; }

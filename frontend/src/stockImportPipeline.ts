@@ -65,6 +65,27 @@ export const validateStockImport = (client: SupabaseClient, batchId: string) => 
 export const activateStockImport = (client: SupabaseClient, batchId: string) => rpc<boolean>(client, 'activate_stock_import', { p_batch_id: batchId })
 export const rejectStockImport = (client: SupabaseClient, batchId: string, reason: string) => rpc<boolean>(client, 'reject_stock_import', { p_batch_id: batchId, p_reason: reason.trim() })
 
+export async function stageAndValidateStockImport(client: SupabaseClient, input: {
+  sourceType: StockImportSourceType
+  sourceName: string
+  checksum: string
+  bookingRows: Record<string, unknown>[]
+  reorderingRows: Record<string, unknown>[]
+  chunkSize?: number
+}) {
+  const batchId=await createStockImportBatch(client,input.sourceType,input.sourceName,input.checksum)
+  try {
+    await appendStockBookingRows(client,batchId,input.bookingRows,input.chunkSize)
+    await appendStockReorderingRows(client,batchId,input.reorderingRows,input.chunkSize)
+  } catch(error) {
+    try { await validateStockImport(client,batchId) } catch { /* Retain the staged batch for administrator recovery. */ }
+    throw error
+  }
+  const valid=await validateStockImport(client,batchId)
+  if(!valid)throw new Error('Supabase rejected the staged import. Review its validation errors before continuing.')
+  return batchId
+}
+
 export async function loadStockImportBatches(client: SupabaseClient) {
   const result = await client.from('stock_import_batches').select('*').order('created_at', { ascending: false })
   if (result.error) throw new Error(result.error.message)

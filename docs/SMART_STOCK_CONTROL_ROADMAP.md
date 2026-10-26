@@ -9,7 +9,7 @@
 | 3 | Parts Query frontend and transactional supplier workflow | Implemented; deployment pending |
 | 4 | Shared configuration and administrator controls | Implemented; deployment pending |
 | 5 | Versioned stock-import pipeline | Implemented; deployment pending |
-| 6 | CSV/XLSX import and validation UI | Planned |
+| 6 | CSV/XLSX import and validation UI | Implemented; deployment pending |
 | 7 | Stock Booking, persisted transfer batches and Evolve export | Planned |
 | 8 | Stock Reordering and shared calculations | Planned |
 | 9 | Google Sheets or Qlik ingestion | Planned |
@@ -25,7 +25,9 @@ Stage 4 is defined in `supabase/migrations/0039_smart_stock_configuration.sql` a
 
 Stage 5 is defined in `supabase/migrations/0040_smart_stock_import_pipeline.sql`. It adds administrator-only, chunked staging functions for Booking and Reordering rows, database-derived row counts and branch supply, SHA-256 source identity, retained validation diagnostics, semantic import audit events and serialized transactional activation. A new valid snapshot supersedes the previous active version in the same database transaction; validation or activation failure leaves the previous version active. The short-lived `validating` and `committing` states from the behavior specification are transaction-internal rather than externally visible, so clients see only `staged`, `validated`, `active`, `rejected` or `superseded`.
 
-CSV/XLSX parsing and the administrator import screen remain Stage 6. Background Google Sheets/Qlik execution and its service-job actor model remain Stage 9; Stage 5 requires an authenticated administrator as the immutable initiating actor.
+Stage 6 adds the administrator-only `Stock Data Import` screen. It reads UTF-8 CSV/TSV and XLSX files locally, selects matching worksheets, auto-maps known headers, allows explicit mapping corrections, blocks Excel formulas and unsafe formula-like text, validates database precision and duplicate part/franchise keys, previews a bounded sample, hashes the exact file pair and uploads sequential chunks to the Stage 5 pipeline. Staging/validation and activation remain separate confirmations. Rejected attempts remain auditable and may be retried with the same source checksum through `supabase/migrations/0041_stock_import_retry_support.sql`.
+
+The import requires one Booking dataset and one Reordering dataset. Use either two CSV/TSV files or two XLSX files; a single XLSX workbook may be selected twice when it contains matching Booking and Reordering worksheets. Source mappings are documented in `docs/SMART_STOCK_IMPORT_FORMAT.md`. Background Google Sheets/Qlik execution and its service-job actor model remain Stage 9.
 
 ### Permission contract
 

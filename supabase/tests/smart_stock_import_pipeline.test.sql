@@ -64,6 +64,9 @@ select throws_ok($sql$select public.create_stock_import_batch('manual_csv','dupl
 select lives_ok($sql$select public.create_stock_import_batch('qlik','cancelled job',repeat('d',64))$sql$, 'administrator can create a batch for manual rejection');
 select ok(public.reject_stock_import((select id from public.stock_import_batches where source_checksum=repeat('d',64)),'Source extract was incomplete'), 'staged batch can be rejected with a reason');
 select is((select status from public.stock_import_batches where source_checksum=repeat('d',64)), 'rejected', 'manual rejection is terminal');
+select lives_ok($sql$select public.create_stock_import_batch('qlik','retry job',repeat('d',64))$sql$, 'rejected source files can be retried without deleting their evidence');
+select is((select count(*) from public.stock_import_batches where source_checksum=repeat('d',64)), 2::bigint, 'retry retains both import attempts');
+select ok(public.reject_stock_import((select id from public.stock_import_batches where source_checksum=repeat('d',64) and status='staged'),'Retry test complete'), 'retried staged batch remains controllable');
 select throws_ok($sql$insert into public.stock_import_batches(source_type,source_name,source_checksum,imported_by) values ('manual_csv','bypass.csv',repeat('f',64),auth.uid())$sql$, '42501', null, 'even administrators cannot bypass import RPCs');
 select ok((select count(*) >= 9 from public.stock_audit where entity_type='import_batch' and actor_user_id='14000000-0000-0000-0000-000000000001'), 'batch creation and state changes are audited');
 reset role;
