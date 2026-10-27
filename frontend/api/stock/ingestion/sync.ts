@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { fetchStockSource, type StockIngestionSource } from './sourceAdapters'
-import { safeStockIngestionError } from './safeError'
+import { fetchStockSource, type StockIngestionSource } from '../../../server/stock/ingestion/sourceAdapters'
+import { safeStockIngestionError } from '../../../server/stock/ingestion/safeError'
 
 const CHUNK_SIZE = 2_000
 

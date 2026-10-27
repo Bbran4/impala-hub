@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildGoogleSheetImport, checksumGoogleStockRows, extractGoogleSpreadsheetId } from '../src/googleSheetsStock.ts'
-import { safeStockIngestionError } from '../api/stock/ingestion/safeError.ts'
+import { safeStockIngestionError } from '../server/stock/ingestion/safeError.ts'
 
 const bookingHeaders=['Source ID','Franchise','Part Number','Description','Unit Size','On Picking Slip ER','QOH ER','Max ER','On Picking Slip PTA','QOH PTA','Max PTA','QOH WH','Max WH','Bin ER','Bin PTA','Bin WH']
 const reorderingHeaders=['Source ID','Franchise','Part Number','Description','Alternative 1','Alternative 2','Alternative 3','Alternative 4','QOH ER','Safety ER','QOH PTA','Safety PTA','QOH WH','Safety WH','Global Safety','Qty on Order','Qty to Order','Lead Time','Average Sales','Sales This Month','Gauge','Supplier','Last Cost','Supplier Type']
