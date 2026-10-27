@@ -11,7 +11,7 @@
 | 5 | Versioned stock-import pipeline | Implemented; deployment pending |
 | 6 | CSV/XLSX import and validation UI | Implemented; deployment pending |
 | 7 | Stock Booking, persisted transfer batches and Evolve export | Implemented; deployment pending |
-| 8 | Stock Reordering and shared calculations | Planned |
+| 8 | Stock Reordering and shared calculations | Implemented; deployment pending |
 | 9 | Google Sheets or Qlik ingestion | Planned |
 | 10 | Historical SQLite reconciliation | Planned |
 | 11 | Full frontend and database acceptance suite | Planned |
@@ -21,7 +21,7 @@ The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sq
 
 Stage 3 is defined in `supabase/migrations/0038_smart_stock_parts_queries.sql` and the `PartsQueries` frontend. It moves Parts Query reads, atomic create/update with complete supplier replacement, audited archival, active Sales Code selection, role-aware editing and named history to Supabase.
 
-Stage 4 is defined in `supabase/migrations/0039_smart_stock_configuration.sql` and the `StockConfiguration` frontend. Locations, shared mover thresholds and Parts Query Development Statuses now load from Supabase. Administrator-only database functions perform all changes, audit triggers retain the history, used statuses must be deactivated instead of deleted, and at least two locations must remain active. Stock Booking and Stock Reordering remain on FastAPI until stages 7 and 8; those stages will consume this shared configuration directly.
+Stage 4 is defined in `supabase/migrations/0039_smart_stock_configuration.sql` and the `StockConfiguration` frontend. Locations, shared mover thresholds and Parts Query Development Statuses now load from Supabase. Administrator-only database functions perform all changes, audit triggers retain the history, used statuses must be deactivated instead of deleted, and at least two locations must remain active. Stages 7 and 8 now consume this shared configuration directly.
 
 Stage 5 is defined in `supabase/migrations/0040_smart_stock_import_pipeline.sql`. It adds administrator-only, chunked staging functions for Booking and Reordering rows, database-derived row counts and branch supply, SHA-256 source identity, retained validation diagnostics, semantic import audit events and serialized transactional activation. A new valid snapshot supersedes the previous active version in the same database transaction; validation or activation failure leaves the previous version active. The short-lived `validating` and `committing` states from the behavior specification are transaction-internal rather than externally visible, so clients see only `staged`, `validated`, `active`, `rejected` or `superseded`.
 
@@ -30,6 +30,8 @@ Stage 6 adds the administrator-only `Stock Data Import` screen. It reads UTF-8 C
 The import requires one Booking dataset and one Reordering dataset. Use either two CSV/TSV files or two XLSX files; a single XLSX workbook may be selected twice when it contains matching Booking and Reordering worksheets. Source mappings are documented in `docs/SMART_STOCK_IMPORT_FORMAT.md`. Background Google Sheets/Qlik execution and its service-job actor model remain Stage 9.
 
 Stage 7 is defined in `supabase/migrations/0042_stock_booking_transfers.sql` and the Supabase Stock Booking frontend. The workspace reads only the active import snapshot and active location configuration. Stock operators and administrators can save a warehouse-to-ER/PTA transfer through one database function that validates the active snapshot, destination, whole-number quantity and remaining warehouse availability across earlier exports from that snapshot. Transfer creation is serialized to prevent concurrent overbooking. Every transfer receives a concurrent-safe `ST-` reference, retains its source and destination bins, appears in export history, can be downloaded again and writes an audit event before the browser downloads the Excel-compatible Evolve CSV. Management remains read-only and direct browser writes are denied.
+
+Stage 8 is defined in `supabase/migrations/0043_stock_reordering_workspace.sql` and the Supabase Stock Reordering frontend. A security-invoker database view selects only the active snapshot and calculates supply percentage plus inclusive slow-mover and A&B-mover flags from the shared thresholds. The frontend loads large snapshots in bounded pages, searches parts, descriptions, suppliers and alternative numbers, retains supplier/mover/supply filters and performs stable numeric sorting. Visible results are paginated to keep the browser responsive. Signed-out, inactive, Sales and unrelated roles remain outside the underlying Row Level Security boundary.
 
 ### Permission contract
 

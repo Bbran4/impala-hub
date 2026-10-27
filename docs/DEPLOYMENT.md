@@ -128,6 +128,20 @@ After migration `0042_stock_booking_transfers.sql` and the Stage 7 frontend are 
 - Management: confirm Booking data and export history are readable but quantity, location, comment and export controls are unavailable.
 - Sales, unrelated-role, inactive and signed-out users: confirm transfer tables and the creation function remain inaccessible.
 
+### Stock Reordering cutover checks
+
+After migration `0043_stock_reordering_workspace.sql` and the Stage 8 frontend are deployed:
+
+- Activate an import and confirm Stock Reordering shows only that snapshot for Stock, Management and administrator users.
+- Compare representative supply percentages with `(QOH ER + QOH PTA + QOH WH) / Global Safety × 100`; confirm zero Global Safety produces `0.0%`.
+- Change the shared slow and A&B thresholds in configuration, refresh Reordering and confirm the filter labels and matching records change together.
+- Test inclusive threshold boundaries, Local/International supplier filters and the 25%/50% supply filters.
+- Search by part number, description, supplier and each alternative-number field.
+- Sort numeric columns containing values such as 2 and 10 and confirm numeric rather than alphabetic ordering.
+- Import more than 1,000 Reordering rows and confirm all records load in bounded requests while only 200 rows render per visible page.
+- Confirm administrators do not see staged, rejected or superseded rows mixed into the active workspace.
+- Sales, unrelated-role, inactive and signed-out users: confirm the workspace view returns no records or is inaccessible.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.

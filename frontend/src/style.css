@@ -344,6 +344,8 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .stock-mover-actions { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
 .stock-mover-actions span { width: 100%; color: #687386; font-size: 12px; }
 .stock-mover-actions .active { background: #e8eefb; border-color: #3776db; color: #1d4f9e; }
+.stock-results-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0; color:#687386; font-size:12px; }
+.stock-pagination { display:flex; align-items:center; gap:8px; }
 .settings-card { max-width: 1180px; padding: 24px; background: #fff; border: 1px solid var(--line, #d7dce5); border-radius: 14px; }
 .settings-card h3 { margin-top: 0; }
 .stock-config-form { flex-wrap: wrap; align-items: stretch; gap: 10px; }
