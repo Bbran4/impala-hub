@@ -114,6 +114,20 @@ After migration `0041_stock_import_retry_support.sql` and the Stage 6 frontend a
 - Activate it separately and confirm Stock Booking and Stock Reordering still show the previous snapshot until activation succeeds.
 - Interrupt or reject an attempted import, reject its retained staged batch, then retry the same files and confirm both attempts remain in history.
 
+### Stock Booking cutover checks
+
+After migration `0042_stock_booking_transfers.sql` and the Stage 7 frontend are deployed:
+
+- Activate a stock import and confirm Stock Booking shows only that snapshot, including imported bins and database-derived ER/PTA supply.
+- Stock employee and administrator: choose `10 — Warehouse`, select ERBAKKIE or PTABAKKIE, enter comments and whole-number Book quantities, then select **Save and export**.
+- Confirm Supabase creates one `ST-` transfer batch and the matching item rows before the CSV downloads.
+- Open the CSV in Excel and verify the Evolve columns, UTF-8 characters, bins, quantities, remarks and timestamped ER/PT filename.
+- Attempt a decimal, zero-only selection, quantity above remaining warehouse stock, stale snapshot ID and inactive location. Confirm no partial transfer is retained, and confirm two concurrent exports cannot overbook the same part.
+- Confirm recent exports remain visible after refreshing and `stock_audit` contains the exporting user.
+- Download a saved transfer again from history and confirm it reproduces the persisted rows without creating a duplicate transfer batch.
+- Management: confirm Booking data and export history are readable but quantity, location, comment and export controls are unavailable.
+- Sales, unrelated-role, inactive and signed-out users: confirm transfer tables and the creation function remain inaccessible.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.

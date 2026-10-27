@@ -10,7 +10,7 @@
 | 4 | Shared configuration and administrator controls | Implemented; deployment pending |
 | 5 | Versioned stock-import pipeline | Implemented; deployment pending |
 | 6 | CSV/XLSX import and validation UI | Implemented; deployment pending |
-| 7 | Stock Booking, persisted transfer batches and Evolve export | Planned |
+| 7 | Stock Booking, persisted transfer batches and Evolve export | Implemented; deployment pending |
 | 8 | Stock Reordering and shared calculations | Planned |
 | 9 | Google Sheets or Qlik ingestion | Planned |
 | 10 | Historical SQLite reconciliation | Planned |
@@ -28,6 +28,8 @@ Stage 5 is defined in `supabase/migrations/0040_smart_stock_import_pipeline.sql`
 Stage 6 adds the administrator-only `Stock Data Import` screen. It reads UTF-8 CSV/TSV and XLSX files locally, selects matching worksheets, auto-maps known headers, allows explicit mapping corrections, blocks Excel formulas and unsafe formula-like text, validates database precision and duplicate part/franchise keys, previews a bounded sample, hashes the exact file pair and uploads sequential chunks to the Stage 5 pipeline. Staging/validation and activation remain separate confirmations. Rejected attempts remain auditable and may be retried with the same source checksum through `supabase/migrations/0041_stock_import_retry_support.sql`.
 
 The import requires one Booking dataset and one Reordering dataset. Use either two CSV/TSV files or two XLSX files; a single XLSX workbook may be selected twice when it contains matching Booking and Reordering worksheets. Source mappings are documented in `docs/SMART_STOCK_IMPORT_FORMAT.md`. Background Google Sheets/Qlik execution and its service-job actor model remain Stage 9.
+
+Stage 7 is defined in `supabase/migrations/0042_stock_booking_transfers.sql` and the Supabase Stock Booking frontend. The workspace reads only the active import snapshot and active location configuration. Stock operators and administrators can save a warehouse-to-ER/PTA transfer through one database function that validates the active snapshot, destination, whole-number quantity and remaining warehouse availability across earlier exports from that snapshot. Transfer creation is serialized to prevent concurrent overbooking. Every transfer receives a concurrent-safe `ST-` reference, retains its source and destination bins, appears in export history, can be downloaded again and writes an audit event before the browser downloads the Excel-compatible Evolve CSV. Management remains read-only and direct browser writes are denied.
 
 ### Permission contract
 
