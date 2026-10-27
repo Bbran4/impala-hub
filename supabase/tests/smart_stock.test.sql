@@ -17,7 +17,8 @@ insert into public.profile_roles (profile_id, role_id) values
   ('11000000-0000-0000-0000-000000000002','administrator'),
   ('11000000-0000-0000-0000-000000000003','management'),
   ('11000000-0000-0000-0000-000000000004','sales'),
-  ('11000000-0000-0000-0000-000000000005','stock');
+  ('11000000-0000-0000-0000-000000000005','stock'),
+  ('11000000-0000-0000-0000-000000000005','administrator');
 update public.profiles set active = false where id = '11000000-0000-0000-0000-000000000005';
 
 select has_table('public','stock_parts_queries', 'Parts Query table exists');
@@ -28,6 +29,8 @@ select has_table('public','stock_import_batches', 'import batch table exists');
 select has_table('public','stock_booking_items', 'booking snapshot table exists');
 select has_table('public','stock_reordering_items', 'reordering snapshot table exists');
 select has_table('public','stock_audit', 'stock audit table exists');
+select has_table('public','stock_ingestion_sources', 'private ingestion source table exists');
+select has_table('public','stock_ingestion_runs', 'ingestion run history table exists');
 
 select ok(not has_table_privilege('anon','public.stock_parts_queries','select'), 'signed-out users cannot read Parts Queries');
 select ok(not has_table_privilege('anon','public.stock_locations','select'), 'signed-out users cannot read stock configuration');
@@ -35,6 +38,11 @@ select ok(not has_table_privilege('anon','public.stock_booking_items','select'),
 select ok(not has_table_privilege('anon','public.stock_audit','select'), 'signed-out users cannot read audit history');
 select ok(not has_function_privilege('anon','public.can_operate_stock_control()','execute'), 'signed-out users cannot call the stock operator helper');
 select ok(not has_function_privilege('anon','public.can_administer_stock_control()','execute'), 'signed-out users cannot call the stock admin helper');
+select ok(not has_table_privilege('anon','public.stock_ingestion_sources','select'), 'signed-out users cannot read ingestion sources');
+select ok(not has_function_privilege('authenticated','public.claim_stock_ingestion_run(uuid,text,uuid)','execute'), 'browser users cannot claim ingestion runs');
+select ok(has_function_privilege('service_role','public.claim_stock_ingestion_run(uuid,text,uuid)','execute'), 'service role can claim ingestion runs');
+select ok(not has_function_privilege('authenticated','public.service_validate_and_finish_stock_ingestion(uuid,uuid,uuid,text,integer,integer)','execute'),
+  'browser users cannot finalize automated stock ingestion');
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"11000000-0000-0000-0000-000000000001","role":"authenticated"}';
@@ -210,6 +218,133 @@ select is((select deleted_by from public.stock_parts_queries where id = '2100000
   '11000000-0000-0000-0000-000000000001'::uuid, 'archive stores the acting user');
 select is((select count(*) from public.stock_audit where parts_query_id = '21000000-0000-0000-0000-000000000001' and action = 'archived'),
   1::bigint, 'Parts Query archival is audited');
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11000000-0000-0000-0000-000000000002","role":"authenticated"}';
+select lives_ok($sql$
+  select public.save_stock_ingestion_source(
+    null, 'google_sheets', 'Primary stock sheet',
+    '{"spreadsheet_id":"1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789","booking_tab":"Stock Booking","reordering_tab":"Stock Reordering"}'::jsonb,
+    true, true
+  )
+$sql$, 'administrator can save a non-secret Google Sheets source');
+select is((select count(*) from public.stock_ingestion_sources), 1::bigint, 'administrator can read ingestion sources');
+select is((select count(*) from public.stock_audit where entity_type='ingestion_source' and action='created'),
+  1::bigint, 'ingestion source creation is audited without storing credentials');
+select throws_ok($sql$
+  select public.save_stock_ingestion_source(
+    null, 'google_sheets', 'Leaky source',
+    '{"spreadsheet_id":"1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789","booking_tab":"Booking","reordering_tab":"Reordering","api_key":"do-not-store"}'::jsonb,
+    true, false
+  )
+$sql$, 'P0001', 'Google Sheets configuration contains unsupported fields', 'source configuration rejects secret-shaped extra fields');
+select throws_ok($sql$
+  select public.save_stock_ingestion_source(null, 'qlik', 'Future Qlik', '{}'::jsonb, true, false)
+$sql$, 'P0001', 'This ingestion provider is reserved for a future implementation', 'future providers cannot be activated prematurely');
+select throws_ok($sql$
+  insert into public.stock_ingestion_sources(name,provider,is_active,configuration,configured_by)
+  values ('Bypass','google_sheets',false,'{}','11000000-0000-0000-0000-000000000002')
+$sql$, '42501', null, 'browser administrators cannot bypass the narrow source RPC');
+reset role;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select is((select count(*) from public.stock_ingestion_sources), 0::bigint, 'non-admin stock users cannot read ingestion sources');
+select is((select count(*) from public.stock_ingestion_runs), 0::bigint, 'non-admin stock users cannot read ingestion runs');
+select throws_ok($sql$
+  select public.save_stock_ingestion_source(null, 'google_sheets', 'Blocked',
+    '{"spreadsheet_id":"1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789","booking_tab":"Booking","reordering_tab":"Reordering"}'::jsonb,
+    false, false)
+$sql$, '42501', 'Administrator access is required to change ingestion sources', 'non-admin users cannot save ingestion sources');
+reset role;
+
+set local role service_role;
+select isnt(public.claim_stock_ingestion_run(
+  (select id from public.stock_ingestion_sources where name='Primary stock sheet'),'scheduled',null
+), null::uuid, 'service role claims a scheduled ingestion run');
+select is(public.claim_stock_ingestion_run(
+  (select id from public.stock_ingestion_sources where name='Primary stock sheet'),'scheduled',null
+), null::uuid, 'a source cannot have concurrent ingestion runs');
+select throws_ok(format(
+  $sql$select public.service_create_stock_import_batch(%L,%L,'google_sheets','blocked actor',%L)$sql$,
+  '11000000-0000-0000-0000-000000000001',
+  (select id from public.stock_ingestion_runs where status='running'), repeat('1',64)
+), '42501', 'An active administrator actor is required', 'service wrappers reject non-administrator actors');
+select throws_ok(format(
+  $sql$select public.service_create_stock_import_batch(%L,%L,'google_sheets','inactive actor',%L)$sql$,
+  '11000000-0000-0000-0000-000000000005',
+  (select id from public.stock_ingestion_runs where status='running'), repeat('2',64)
+), '42501', 'An active administrator actor is required', 'service wrappers reject inactive administrators');
+select lives_ok(format(
+  $sql$select public.service_create_stock_import_batch(%L,%L,'google_sheets','Primary stock sheet',%L)$sql$,
+  '11000000-0000-0000-0000-000000000002',
+  (select id from public.stock_ingestion_runs where status='running'), repeat('f',64)
+), 'service role creates a batch attributed to the verified administrator');
+select is(public.service_create_stock_import_batch(
+  '11000000-0000-0000-0000-000000000002',
+  (select id from public.stock_ingestion_runs where status='running'),
+  'google_sheets','Primary stock sheet',repeat('f',64)
+), (select id from public.stock_import_batches where source_checksum=repeat('f',64)),
+  'batch creation is idempotent when a committed response is retried');
+select is((select count(*) from public.stock_import_batches where source_checksum=repeat('f',64)),
+  1::bigint, 'idempotent creation retains one batch');
+select is(auth.uid(), '11000000-0000-0000-0000-000000000001'::uuid,
+  'service wrapper restores the caller auth uid after impersonation');
+select is(public.service_append_stock_booking_items(
+  '11000000-0000-0000-0000-000000000002',
+  (select id from public.stock_import_batches where source_checksum=repeat('f',64)),
+  '[{"franchise":"generic","part_number":"SCHEDULED-1","description":"Scheduled booking","qoh_wh":10,"max_wh":20}]'::jsonb
+), 1, 'service wrapper preserves booking-row staging behavior');
+select is(public.service_append_stock_reordering_items(
+  '11000000-0000-0000-0000-000000000002',
+  (select id from public.stock_import_batches where source_checksum=repeat('f',64)),
+  '[{"franchise":"generic","part_number":"SCHEDULED-1","description":"Scheduled reorder","qoh_wh":10,"global_safety":20,"supplier_type":"local"}]'::jsonb
+), 1, 'service wrapper preserves reordering-row staging behavior');
+select ok(public.service_validate_and_finish_stock_ingestion(
+  '11000000-0000-0000-0000-000000000002',
+  (select id from public.stock_ingestion_runs where status='running'),
+  (select id from public.stock_import_batches where source_checksum=repeat('f',64)),
+  repeat('f',64), 1, 1
+), 'stock validation and ingestion completion commit atomically');
+select is((select status from public.stock_import_batches where source_checksum=repeat('f',64)),
+  'validated', 'scheduled ingestion never auto-activates its validated batch');
+select is((select imported_by from public.stock_import_batches where source_checksum=repeat('f',64)),
+  '11000000-0000-0000-0000-000000000002'::uuid, 'service import audit attribution uses the verified administrator');
+select is((select count(*) from public.stock_audit
+  where entity_type='import_batch' and entity_id=(select id::text from public.stock_import_batches where source_checksum=repeat('f',64))
+    and actor_user_id='11000000-0000-0000-0000-000000000002' and action='validated'),
+  1::bigint, 'service validation preserves the existing administrator audit event');
+select isnt(public.claim_stock_ingestion_run(
+  (select id from public.stock_ingestion_sources where name='Primary stock sheet'),'scheduled',null
+), null::uuid, 'source can be claimed again after its previous run finishes');
+select ok(public.finish_stock_ingestion_run(
+  (select id from public.stock_ingestion_runs where status='running'),
+  'no_change',
+  (select id from public.stock_import_batches where source_checksum=repeat('f',64)),
+  repeat('f',64), 1, 1, ''
+), 'an unchanged extract reuses the prior completed batch');
+select is((select count(*) from public.stock_import_batches where source_checksum=repeat('f',64)),
+  1::bigint, 'an unchanged extract does not duplicate the import batch');
+select isnt(public.claim_stock_ingestion_run(
+  (select id from public.stock_ingestion_sources where name='Primary stock sheet'),'scheduled',null
+), null::uuid, 'source can be claimed after a no-change run');
+select lives_ok(format(
+  $sql$select public.service_create_stock_import_batch(%L,%L,'google_sheets','Interrupted stock sheet',%L)$sql$,
+  '11000000-0000-0000-0000-000000000002',
+  (select id from public.stock_ingestion_runs where status='running'), repeat('e',64)
+), 'an interrupted run has a run-owned staged batch');
+select ok(public.finish_stock_ingestion_run(
+  (select id from public.stock_ingestion_runs where status='running'),
+  'failed', null, null, 0, 0, E'token=top-secret\nupstream failed'
+), 'failed ingestion run is finalized');
+select is((select error_message from public.stock_ingestion_runs where status='failed'),
+  'token=[redacted] upstream failed', 'stored ingestion errors redact credential-like values and control characters');
+select is((select status from public.stock_import_batches where source_checksum=repeat('e',64)),
+  'rejected', 'failing a run atomically rejects its partial batch');
+select is((select import_batch_id from public.stock_ingestion_runs where status='failed'),
+  (select id from public.stock_import_batches where source_checksum=repeat('e',64)),
+  'failed run history retains its partial batch reference');
+reset role;
 
 select * from finish();
 rollback;

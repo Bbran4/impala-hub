@@ -142,6 +142,29 @@ After migration `0043_stock_reordering_workspace.sql` and the Stage 8 frontend a
 - Confirm administrators do not see staged, rejected or superseded rows mixed into the active workspace.
 - Sales, unrelated-role, inactive and signed-out users: confirm the workspace view returns no records or is inaccessible.
 
+### Automated Google Sheets ingestion
+
+Stage 9 uses a Google service account for private, read-only server-to-server access. Do not make the stock workbook public and do not put Google credentials in a `VITE_*` variable.
+
+1. In a Google Cloud project, enable the Google Sheets API and create a dedicated service account with no project roles beyond what Google requires to use the API.
+2. Create a service-account JSON key. Keep the downloaded key outside the repository.
+3. Share only the approved stock workbook with the service account's email address as **Viewer**. Domain-wide delegation is not required.
+4. Add these server-only Vercel environment variables to Production and the Preview environment used for acceptance testing:
+
+   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` — the JSON key's `client_email`.
+   - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` — the JSON key's `private_key`; Vercel may store its embedded newlines as `\n`.
+   - `SUPABASE_SERVICE_ROLE_KEY` — already required by the existing Vercel server functions; never prefix it with `VITE_`.
+   - `CRON_SECRET` — a random value of at least 16 characters. Vercel sends it as the cron request's Bearer token.
+
+5. Apply migration `0044_stock_ingestion_sources.sql`, deploy the frontend, then open **Smart Stock Control → Stock Data Import** as an administrator.
+6. Add the spreadsheet URL or ID and the exact `Stock Booking` and `Stock Reordering` tab names. Enable daily staging only after a manual sync succeeds.
+7. Select **Sync now**. Confirm the run becomes `validated`, the row counts match the source and the currently active snapshot is unchanged.
+8. Review the validated import in Import History and activate it separately. Repeat the same sync and confirm it reports `no change` without creating another batch.
+9. Insert a formula, remove a required Part Number header, or duplicate a Franchise/Part Number pair in a test copy. Confirm the run fails with a bounded diagnostic and live stock remains unchanged.
+10. Confirm Stock, Management, Sales, inactive and signed-out users cannot read source configuration or trigger a sync. Confirm no private key, service-role key or Google access token appears in browser traffic, responses or audit rows.
+
+The Vercel cron runs at `03:00 UTC` (approximately `05:00` South African time). Hobby cron jobs may execute at any point within that hour. Scheduled runs stage and validate only; they never activate stock automatically. Qlik or ERP/ODBC will later replace only the source adapter and must return the same canonical Booking/Reordering rows.
+
 ## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.
