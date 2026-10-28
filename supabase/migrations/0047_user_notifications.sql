@@ -1,11 +1,11 @@
--- Platform-wide, recipient-only notifications.
+-- Platform-wide, recipient-only notifications. Runs after the Reporting foundation.
 -- App triggers own notification creation; browser users can only read their own
 -- notifications and mark them read through the narrow RPCs below.
 
 create table if not exists public.user_notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  channel text not null check (channel in ('marketing', 'sales_desk', 'returns_claims', 'stock_control', 'system')),
+  channel text not null check (channel in ('marketing', 'sales_desk', 'returns_claims', 'stock_control', 'reporting', 'system')),
   kind text not null,
   title text not null check (char_length(btrim(title)) between 1 and 180),
   description text not null default '',
@@ -62,7 +62,8 @@ as $$
     (workspace_name = 'sales_desk' and (public.has_role('sales') or public.has_role('sales_manager') or public.has_role('management'))) or
     (workspace_name = 'returns_claims' and (public.has_role('returns') or public.has_role('management'))) or
     (workspace_name = 'marketing' and (public.has_role('marketing') or public.has_role('management'))) or
-    (workspace_name = 'stock_control' and (public.has_role('stock') or public.has_role('management')))
+    (workspace_name = 'stock_control' and (public.has_role('stock') or public.has_role('management'))) or
+    (workspace_name = 'reporting' and (public.has_role('reporting') or public.has_role('management')))
   );
 $$;
 
@@ -185,7 +186,7 @@ begin
     return 0;
   end if;
 
-  if notification_channel is not null and notification_channel not in ('marketing', 'sales_desk', 'returns_claims', 'stock_control', 'system') then
+  if notification_channel is not null and notification_channel not in ('marketing', 'sales_desk', 'returns_claims', 'stock_control', 'reporting', 'system') then
     raise exception 'Unknown notification channel';
   end if;
 

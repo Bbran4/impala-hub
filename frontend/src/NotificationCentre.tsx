@@ -7,6 +7,7 @@ export type NotificationChannel =
   | "sales_desk"
   | "returns_claims"
   | "stock_control"
+  | "reporting"
   | "system";
 
 export type UserNotification = {
@@ -35,6 +36,7 @@ const LABELS: Record<NotificationChannel, string> = {
   sales_desk: "Sales Desk",
   returns_claims: "Returns & Claims",
   stock_control: "Smart Stock",
+  reporting: "Reporting",
   system: "System",
 };
 

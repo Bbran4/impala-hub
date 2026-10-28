@@ -1,0 +1,48 @@
+# Impala BI sync agent — configuration
+#
+# Copy to config.toml. Secrets: write ${NAME} here and put NAME=value in a .env file
+# next to this file. install_task.ps1 locks this folder down so only Administrators
+# and the agent (SYSTEM) can read it. Never commit config.toml or .env.
+
+[agent]
+name = "impala-erp-agent"     # unique per machine; shown in the app
+tables_file = "tables.toml"   # what to load (see tables.example.toml)
+poll_seconds = 5              # how often to check for "Reload now" clicks and app requests
+heartbeat_seconds = 30
+batch_size = 5000             # rows fetched from the source per round trip
+log_file = "logs/agent.log"
+log_level = "INFO"
+run_history_days = 90
+request_history_days = 7
+preview_max_rows = 200        # cap for previews requested from the app
+
+[supabase]
+# Supabase dashboard -> Connect -> "Session pooler". Change the user to bi_agent.<project-ref>.
+# Encryption is mandatory. verify-full also proves you are talking to the real Supabase:
+# download the CA certificate (Project Settings -> Database -> SSL configuration) next to this file.
+db_url = "postgresql://bi_agent.YOUR_PROJECT_REF:${BI_AGENT_DB_PASSWORD}@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=verify-full&sslrootcert=prod-ca-2021.crt"
+
+# -----------------------------------------------------------------------------
+# Sources: one section per SQL database the agent may read from.
+# ALWAYS use a database login that can only SELECT, and only from the tables you need.
+# -----------------------------------------------------------------------------
+
+[sources.erp]
+# A System DSN from "ODBC Data Sources (64-bit)", or a full connection string, e.g. SQL Server:
+#   odbc = "Driver={ODBC Driver 18 for SQL Server};Server=ERPSERVER;Database=ERPDB;UID=bi_reader;PWD=${ERP_PASSWORD};Encrypt=yes;TrustServerCertificate=yes"
+odbc = "DSN=ERP;UID=bi_reader;PWD=${ERP_PASSWORD}"
+
+read_only_guard = true          # refuse anything that isn't a single SELECT
+rstrip_strings = true           # trim trailing spaces from fixed-width CHAR columns
+isolation = "read_committed"    # or "read_uncommitted" (= NOLOCK) so loads never wait for / block ERP users
+login_timeout_seconds = 30
+query_timeout_seconds = 0       # 0 = no limit
+
+# What the app may ask the agent to do on this source:
+#   "test_connection"  check the connection works
+#   "list_tables"      list table/view names
+#   "list_columns"     list a table's columns
+#   "preview"          run a SELECT and return up to preview_max_rows rows
+# Off by default except test_connection: an admin account on the app could otherwise
+# read any ERP table the ERP login can see. Turn on only when you need them.
+app_requests = ["test_connection"]

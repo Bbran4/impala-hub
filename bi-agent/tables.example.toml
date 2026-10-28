@@ -1,0 +1,118 @@
+# =============================================================================
+# Impala BI — tables.toml
+#
+# Every table loaded into Supabase is defined here, like a Qlik load script.
+# This file lives on the agent machine and is the ONLY place queries come from:
+# the agent will not run anything that isn't in this file.
+#
+# Workflow for any change (add / change / remove a table):
+#   1. edit this file
+#   2. run_agent.bat --validate             check for mistakes
+#   3. run_agent.bat --test-table <name>    run the query against the ERP, see the result (writes nothing)
+#   4. run_agent.bat --plan                 see exactly what will change in Supabase
+#   5. run_agent.bat --apply                make the change (asks for confirmation)
+#
+# Table names: lower case letters, digits and _. They become bi_data.<name> in Supabase.
+# Column names are cleaned the same way: "Cost Price" -> cost_price, InvoiceNo -> invoiceno.
+# Use AS in the SQL to choose nicer names: InvoiceNo AS invoice_no.
+# =============================================================================
+
+[defaults]
+source = "erp"        # every table uses this source unless it says otherwise
+
+# -----------------------------------------------------------------------------
+# Groups: tables loaded together in one transaction, on one schedule.
+# Dashboards never see invoices without their lines, or the other way round.
+# Reloading any table in a group reloads the whole group.
+# -----------------------------------------------------------------------------
+
+[groups.sales]
+description = "Invoices and invoice lines"
+interval_minutes = 15
+
+# -----------------------------------------------------------------------------
+# Tables
+#
+#   mode = "full"    replace the whole table every run (master data, small/medium tables)
+#   mode = "upsert"  insert new rows, update changed rows, matched on `keys`
+#   mode = "append"  add rows every run (daily snapshots)
+#
+#   interval_minutes  schedule for tables NOT in a group (leave out = manual reload only)
+#
+# Incremental loads (upsert/append) only read rows changed since the last run:
+#   incremental_column = the column (cleaned name) whose highest value is remembered
+#   watermark_type     = timestamp | date | integer | numeric | text
+#   initial_watermark  = where the very first load (and a full reload) starts
+#   and put {{watermark}} in the WHERE clause.
+# -----------------------------------------------------------------------------
+
+[tables.stock_items]
+description = "Stock master: item codes, descriptions, cost, quantity on hand"
+mode = "full"
+interval_minutes = 60
+sql = '''
+SELECT ItemCode     AS item_code,
+       Description  AS description,
+       CostPrice    AS cost_price,
+       QtyOnHand    AS qty_on_hand,
+       Warehouse    AS warehouse
+FROM   StockMaster
+'''
+
+[tables.invoices]
+description = "Invoice headers"
+group = "sales"
+mode = "upsert"
+keys = ["invoice_no"]
+incremental_column = "modified_at"
+watermark_type = "timestamp"
+initial_watermark = "2024-01-01"
+sql = '''
+SELECT InvoiceNo     AS invoice_no,
+       InvoiceDate   AS invoice_date,
+       CustomerCode  AS customer_code,
+       Branch        AS branch,
+       TotalExclVat  AS total_excl_vat,
+       ModifiedDate  AS modified_at
+FROM   InvoiceHeaders
+WHERE  ModifiedDate >= {{watermark}}
+'''
+
+[tables.invoice_lines]
+description = "Invoice lines"
+group = "sales"
+mode = "upsert"
+keys = ["invoice_no", "line_no"]
+incremental_column = "modified_at"
+watermark_type = "timestamp"
+initial_watermark = "2024-01-01"
+sql = '''
+SELECT l.InvoiceNo     AS invoice_no,
+       l.LineNo        AS line_no,
+       l.ItemCode      AS item_code,
+       l.Qty           AS qty,
+       l.UnitPrice     AS unit_price,
+       l.CostPrice     AS cost_price,
+       l.ModifiedDate  AS modified_at
+FROM   InvoiceLines l
+WHERE  l.ModifiedDate >= {{watermark}}
+'''
+
+[tables.goods_received]
+description = "Goods received notes"
+mode = "upsert"
+keys = ["grv_no", "line_no"]
+incremental_column = "received_date"
+watermark_type = "date"
+initial_watermark = "2024-01-01"
+interval_minutes = 30
+sql = '''
+SELECT GrvNo        AS grv_no,
+       LineNo       AS line_no,
+       SupplierCode AS supplier_code,
+       ItemCode     AS item_code,
+       QtyReceived  AS qty_received,
+       ReceivedDate AS received_date
+FROM   GrvLines
+WHERE  ReceivedDate >= {{watermark}}
+'''

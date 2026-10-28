@@ -148,7 +148,22 @@ Google Sheets ingestion has been retired. Apply migration `0045_retire_google_st
 
 For now, administrators load demonstration snapshots through **Smart Stock Control → Stock Data Import** using the documented CSV/XLSX format. Qlik, ERP/ODBC and other real external data sources are intentionally deferred.
 
-## Failure and rollback
+## Reporting (data loader) checks
+
+Migration `0046_bi_reporting.sql` adds the `reporting` role, extends `can_access_workspace` with `reporting`, and creates the `bi`/`bi_data` schemas, the `bi_agent` database role and the `public.bi_*` functions used by the Reporting workspace. Browsers have no privileges on `bi` or `bi_data`. The on-premises sync agent and its setup are documented in `bi-agent/README.md`.
+
+After the migration and the matching frontend are deployed:
+
+- Enable the agent login by hand in the SQL editor (`alter role bi_agent with login password '…'`). Never put this password in Git or Vercel.
+- Administrator: the Apps Dashboard shows **Reporting**; Data, Data Loads, Run History, Audit Log and Reporting Roadmap are available.
+- Management and `reporting` users: Reporting shows Data and the roadmap only; Data Loads, Run History and Audit Log are absent and their functions return permission errors.
+- Sales, stock, returns and marketing users without `reporting`, inactive users and signed-out users: no Reporting card; `bi_data_tables` and all other `bi_*` functions are denied.
+- Before the agent connects, Data Loads shows "No sync agent has connected yet" and Data shows "No data loaded yet".
+- With the agent running and `tables.toml` applied: the agent shows **Online**; **Test connection** returns the ERP database name; **Reload**, **Full** and **Pause/Resume** change the table or group and appear in the Audit Log with the administrator's name; Run History shows the resulting runs.
+- Confirm direct table requests to `bi` and `bi_data` from the browser fail, including for administrators.
+- Confirm the `bi_agent` role cannot read `public` tables (for example `select * from public.profiles` as `bi_agent` fails).
+
+
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.
 - If a database migration fails, do not deploy the frontend and do not manually mark the migration as applied.

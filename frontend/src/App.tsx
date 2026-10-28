@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map, PackageCheck,
+  Database, ServerCog, History, ShieldCheck,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
@@ -15,6 +16,7 @@ import StockReordering from './StockReorderingSupabase'
 import StockImport from './StockImport'
 import ReturnsClaims from './ReturnsClaims'
 import NotificationCentre, { type NotificationChannel, type UserNotification } from './NotificationCentre'
+import Reporting, { REPORTING_PAGES } from './Reporting'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 import { supabase, supabaseConfigured } from './supabase'
 
@@ -141,11 +143,13 @@ export default function App() {
   const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('sales_manager') || assignedRoles.includes('management') || Boolean(profile.sales_code)
   const canAccessReturns = isAdministrator || assignedRoles.includes('returns') || assignedRoles.includes('management')
   const canAccessStock = isAdministrator || assignedRoles.includes('stock') || assignedRoles.includes('management')
+  const canAccessReporting = isAdministrator || assignedRoles.includes('reporting') || assignedRoles.includes('management')
   const notificationChannels: NotificationChannel[] = [
     ...(canAccessMarketing ? ['marketing' as const] : []),
     ...(canAccessSalesDesk ? ['sales_desk' as const] : []),
     ...(canAccessReturns ? ['returns_claims' as const] : []),
     ...(canAccessStock ? ['stock_control' as const] : []),
+    ...(canAccessReporting ? ['reporting' as const] : []),
   ]
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
@@ -593,6 +597,10 @@ export default function App() {
       setPage(notification.target_page || 'Stock Booking')
       return
     }
+    if (notification.channel === 'reporting' && canAccessReporting) {
+      setPage(notification.target_page || 'Data')
+      return
+    }
     if (notification.channel === 'system') {
       setPage(notification.target_page || 'Apps')
       return
@@ -606,13 +614,14 @@ const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Supabase CR
 const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
   const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Reordering' || page === 'Stock Data Import' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
   const isReturnsClaimsPage = page === 'Returns & Claims' || page === 'Returns & Claims Roadmap'
+  const isReportingPage = (REPORTING_PAGES as readonly string[]).includes(page)
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">I</div>
-          <div><b>IMPALA HUB</b>{page !== 'Apps' && page !== 'Account' && <small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : 'Marketing workspace'}</small>}</div>
+          <div><b>IMPALA HUB</b>{page !== 'Apps' && page !== 'Account' && <small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : isReportingPage ? 'Reporting workspace' : 'Marketing workspace'}</small>}</div>
         </div>
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
         {(page === 'Apps' || page === 'Account') && (
@@ -632,6 +641,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               ? ([['Stock Booking', PackageCheck], ['Stock Reordering', PackageCheck], ['Parts Query', ClipboardList], ...(isAdministrator ? [['Stock Data Import', Upload] as const, ['Stock Control Configuration', Settings] as const] : []), ['Stock Control Roadmap', Map]] as const)
                 : isReturnsClaimsPage
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
+                : isReportingPage
+                  ? ([['Data', Database], ...(isAdministrator ? [['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Reporting Roadmap', Map]] as const)
                 : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ...(isAdministrator ? [['Configuration', Settings] as const] : [])] as const)
             ).map(([label, Icon]) => (
               <button
@@ -654,8 +665,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">{page === 'Account' ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
-          {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && page !== 'Apps' && page !== 'Account' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
+          <div><div className="eyebrow">{page === 'Account' ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : isReportingPage ? 'REPORTING' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : isReportingPage ? 'Reporting' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
+          {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && !isReportingPage && page !== 'Apps' && page !== 'Account' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
         </header>
@@ -718,7 +729,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <h2>Welcome to Impala Hub</h2>
               <p>Choose an application to get started. More tools will appear here as they become available.</p>
             </div>
-            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>{[canAccessMarketing, canAccessSalesDesk, canAccessReturns, canAccessStock].filter(Boolean).length} available</span></div>
+            <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>{[canAccessMarketing, canAccessSalesDesk, canAccessReturns, canAccessStock, canAccessReporting].filter(Boolean).length} available</span></div>
             <div className="app-cards">
               {canAccessMarketing && <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
                 <div className="app-card-icon"><Megaphone size={25} /></div>
@@ -750,9 +761,16 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Compare stock, book branch transfers, and manage Parts Queries.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>}
+              {canAccessReporting && <button className="app-card app-card-available" onClick={() => { setPage('Data'); setError(''); setNotice('') }}>
+                <div className="app-card-icon"><BarChart3 size={25} /></div>
+                <div className="app-card-copy"><h3>Reporting</h3><p>ERP data, reports and dashboards, replacing Qlik Sense.</p></div>
+                <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
+              </button>}
             </div>
           </section>
         )}
+
+        {key && isReportingPage && (canAccessReporting ? <Reporting page={page} isAdministrator={isAdministrator} setNotice={setNotice} setError={setError} /> : <section className="rfq-workspace"><div className="rfq-empty-card"><h3>No access to Reporting</h3><p>Ask an administrator for the Reporting role.</p></div></section>)}
 
         {isSalesDeskPage && page === 'RFQ Roadmap' ? (
           <section className="roadmap-page">
