@@ -20,6 +20,7 @@ import NotificationCentre, { type NotificationChannel, type UserNotification } f
 import Reporting, { REPORTING_PAGES } from './Reporting'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 import { supabase, supabaseConfigured } from './supabase'
+import { ALL_MARKETING_PERMISSIONS, type MarketingPermission } from './marketingPermissions'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
@@ -112,6 +113,7 @@ export default function App() {
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [campaignPostCounts, setCampaignPostCounts] = useState<Record<string, number>>({})
   const [integrations, setIntegrations] = useState<any[]>([])
   const [facebookPages, setFacebookPages] = useState<Array<{id: string; name: string}>>([])
   const [selectedFacebookPage, setSelectedFacebookPage] = useState('')
@@ -141,8 +143,10 @@ export default function App() {
   const [isAdministrator, setIsAdministrator] = useState(false)
   const [assignedRoles, setAssignedRoles] = useState<string[]>([])
   const [profileLoaded, setProfileLoaded] = useState(false)
+  const [marketingPermissions, setMarketingPermissions] = useState<MarketingPermission[]>([])
   const [notificationRfqId, setNotificationRfqId] = useState<string | null>(null)
   const canAccessMarketing = isAdministrator || assignedRoles.includes('marketing') || assignedRoles.includes('management')
+  const canMarketing = (permission: MarketingPermission) => isAdministrator || marketingPermissions.includes(permission)
   const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('sales_manager') || assignedRoles.includes('management')
   const canAccessReturns = isAdministrator || assignedRoles.includes('returns') || assignedRoles.includes('management')
   const canAccessStock = isAdministrator || assignedRoles.includes('stock') || assignedRoles.includes('management')
@@ -167,6 +171,8 @@ export default function App() {
     setIsAdministrator((roles.data || []).some((role: any) => role.role_id === 'administrator'))
     const roleIds = (roles.data || []).map((role: any) => role.role_id)
     setAssignedRoles(roleIds)
+    const permissions = await supabase.rpc('my_marketing_permissions')
+    setMarketingPermissions((permissions.data || []) as MarketingPermission[])
     void supabase.rpc('bi_my_access').then(({ data }) => { if (data) setReportingAccess(data) })
     setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
     setProfileLoaded(true)
@@ -224,8 +230,16 @@ export default function App() {
   async function load() {
     if (!getKey()) return
     try {
-      const [p, c, i, ct] = await Promise.all([api('/api/posts'), api('/api/campaigns'), api('/api/integrations'), api('/api/campaign-types')])
-      setPosts(p); setCampaigns(c); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')
+      const canReadPosts = canMarketing('feed.view') || canMarketing('posts.view')
+      const canReadCampaigns = canMarketing('campaigns.view')
+      const canUseCampaignOptions = canReadPosts || canMarketing('feed.assign_campaign') || canMarketing('posts.assign_campaign') || canMarketing('campaigns.assign_campaign')
+      const [p, c, counts, i, ct] = await Promise.all([
+        canReadPosts ? api('/api/posts') : Promise.resolve([]),
+        canReadCampaigns ? api('/api/campaigns') : canUseCampaignOptions && supabase ? supabase.rpc('my_marketing_campaign_options').then(({ data, error }) => { if (error) throw error; return data || [] }) : Promise.resolve([]),
+        canReadCampaigns && supabase ? supabase.rpc('my_marketing_campaign_post_counts').then(({ data, error }) => { if (error) throw error; return data || [] }) : Promise.resolve([]),
+        api('/api/integrations'), api('/api/campaign-types'),
+      ])
+      setPosts(p); setCampaigns(c as Campaign[]); setCampaignPostCounts(Object.fromEntries((counts as Array<{ campaign_id: string; post_count: number }>).map((row) => [row.campaign_id, row.post_count]))); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')
     } catch (e) { handleError(e) }
   }
   useEffect(() => {
@@ -242,34 +256,38 @@ export default function App() {
       window.history.replaceState({}, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash)
     }
     if (fb === 'choose_page') {
-      setPage('Admin Settings'); setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.'); void loadFacebookPages()
+      setPage('Marketing Accounts'); setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.'); void loadFacebookPages()
     } else if (fb === 'error') {
-      setPage('Admin Settings'); setError(OAUTH_REASONS[reason] ?? `Facebook authorization did not finish (${reason.replaceAll('_', ' ')}).`)
+      setPage('Marketing Accounts'); setError(OAUTH_REASONS[reason] ?? `Facebook authorization did not finish (${reason.replaceAll('_', ' ')}).`)
     }
     if (ig === 'connected') {
-      setPage('Admin Settings'); setNotice('Instagram connected.')
+      setPage('Marketing Accounts'); setNotice('Instagram connected.')
     } else if (ig === 'error') {
-      setPage('Admin Settings'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.${detail ? ' Meta said: ' + detail : ''}`)
+      setPage('Marketing Accounts'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.${detail ? ' Meta said: ' + detail : ''}`)
     }
   }, [key])
 
   useEffect(() => {
     if (key && canAccessMarketing) void load()
-  }, [key, canAccessMarketing])
+  }, [key, canAccessMarketing, marketingPermissions])
 
   useEffect(() => {
-    const marketingPages = ['Feed', 'Posts', 'Post', 'Campaigns', 'Roadmap']
+    const marketingPages = ['Feed', 'Posts', 'Post', 'Campaigns', 'Marketing Accounts', 'Roadmap']
     const salesPages = ['RFQs', 'RFQ Configuration', 'RFQ Roadmap']
     const stockPages = ['Parts Query', 'Stock Booking', 'Stock Reordering', 'Stock Data Import', 'Stock Control Configuration', 'Stock Control Roadmap']
     const returnsPages = ['Returns & Claims', 'Returns & Claims Roadmap']
     const adminPages = ['Admin Settings', 'Configuration', 'RFQ Configuration', 'Stock Data Import', 'Stock Control Configuration']
     if (profileLoaded && page === 'Configuration' && isAdministrator) { setPage('Admin Settings'); return }
-    if ((profileLoaded && adminPages.includes(page) && !isAdministrator) || (marketingPages.includes(page) && !canAccessMarketing) || (salesPages.includes(page) && !canAccessSalesDesk)
+    const marketingPageDenied = (page === 'Feed' && !canMarketing('feed.view'))
+      || ((page === 'Posts' || page === 'Post') && !canMarketing('posts.view'))
+      || (page === 'Campaigns' && !canMarketing('campaigns.view'))
+      || (page === 'Marketing Accounts' && !canMarketing('feed.manage_accounts'))
+    if ((profileLoaded && adminPages.includes(page) && !isAdministrator) || (marketingPages.includes(page) && (!canAccessMarketing || marketingPageDenied)) || (salesPages.includes(page) && !canAccessSalesDesk)
       || (stockPages.includes(page) && !canAccessStock) || (returnsPages.includes(page) && !canAccessReturns)) setPage('Apps')
-  }, [page, profileLoaded, isAdministrator, canAccessMarketing, canAccessSalesDesk, canAccessStock, canAccessReturns])
+  }, [page, profileLoaded, isAdministrator, canAccessMarketing, canAccessSalesDesk, canAccessStock, canAccessReturns, marketingPermissions])
 
   // Reload pending Page choices whenever Marketing settings opens, so a refresh does not lose the picker.
-  useEffect(() => { if (key && page === 'Admin Settings' && isAdministrator) void loadFacebookPages() }, [key, page, isAdministrator])
+  useEffect(() => { if (key && ((page === 'Admin Settings' && isAdministrator) || (page === 'Marketing Accounts' && canMarketing('feed.manage_accounts')))) void loadFacebookPages() }, [key, page, isAdministrator, marketingPermissions])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -452,6 +470,8 @@ export default function App() {
 
   async function savePost(mode: 'draft' | 'schedule' | 'publish-now') {
     if (!editor) return
+    const permission = `${page === 'Feed' ? 'feed' : 'posts'}.${editor.id ? 'edit' : 'create'}` as MarketingPermission
+    if (!canMarketing(permission)) { setError('You do not have permission to save this post.'); return }
     setBusy(true); setError('')
     try {
       const status = mode === 'draft' ? 'draft' : mode === 'schedule' ? 'scheduled' : 'draft'
@@ -508,6 +528,7 @@ export default function App() {
   }
 
   async function createCampaign() {
+    if (!(editingCampaignId ? canMarketing('campaigns.edit') : canMarketing('campaigns.create'))) { setError('You do not have permission to save this campaign.'); return }
     if (!campaignName.trim()) return
     try {
       const payload = { name: campaignName, objective: campaignObjective, stage: campaignStage, campaign_type: campaignType }
@@ -517,6 +538,7 @@ export default function App() {
     } catch (e) { handleError(e) }
   }
   async function moveCampaign(campaignId: string, stage: 'new' | 'in_progress' | 'done') {
+    if (!canMarketing('campaigns.change_status')) { setError('You do not have permission to change campaign status.'); return }
     try {
       await api('/api/campaigns/' + campaignId, { method: 'PATCH', body: JSON.stringify({ stage }) })
       setNotice('Campaign moved.')
@@ -528,7 +550,8 @@ export default function App() {
     setEditingCampaignId(c.id); setCampaignName(c.name); setCampaignObjective(c.objective || ''); setCampaignStage(c.stage || 'new'); setCampaignType(c.campaign_type || campaignTypes[0] || 'Tips'); setCampaignModal(true)
   }
   async function removeCampaign(c: Campaign) {
-    if (posts.some((p) => p.campaign_id === c.id)) { setError('Campaigns can only be deleted when they contain no posts.'); return }
+    if (!canMarketing('campaigns.delete')) { setError('You do not have permission to delete campaigns.'); return }
+    if ((campaignPostCounts[c.id] || 0) > 0) { setError('Campaigns can only be deleted when they contain no posts.'); return }
     if (!window.confirm(`Delete campaign "${c.name}"?`)) return
     try {
       await api(`/api/campaigns/${c.id}`, { method: 'DELETE' })
@@ -538,6 +561,8 @@ export default function App() {
   }
 
   async function removePost(id: string) {
+    const allowed = page === 'Feed' ? canMarketing('feed.delete') : canMarketing('posts.delete')
+    if (!allowed) { setError('You do not have permission to delete this post.'); return }
     if (!confirm('Delete this post?')) return
     try {
       await api(`/api/posts/${id}`, { method: 'DELETE' })
@@ -550,20 +575,26 @@ export default function App() {
 
   // Failed posts reopen with their existing content and a safe near-future time.
   function reschedulePost(p: Post) {
+    const allowed = page === 'Feed' ? canMarketing('feed.edit') : canMarketing('posts.edit')
+    if (!allowed) { setError('You do not have permission to reschedule this post.'); return }
     const when = new Date(Date.now() + 15 * 60 * 1000)
     setEditor({ ...p, status: 'draft', publish_at: toLocalInput(when.toISOString()) })
     setDetailId(null)
-    setPage('Posts')
+    if (page !== 'Feed') setPage('Posts')
     setError('')
     setNotice('Review the post and scheduled time, then confirm Schedule post.')
   }
 
   // Scheduled and published posts cannot be edited, so they open the detail view instead.
   function openEditor(p: Post) {
+    const allowed = page === 'Feed' ? canMarketing('feed.edit') : canMarketing('posts.edit')
+    if (!allowed) { setError('You do not have permission to edit this post.'); return }
     if (EDITABLE.includes(p.status)) { setEditor(p); setError('') } else openPost(p.id)
   }
 
   async function saveCampaign(postId: string, campaignId: string | null) {
+    const allowed = page === 'Feed' ? canMarketing('feed.assign_campaign') : canMarketing('posts.assign_campaign')
+    if (!allowed) { setError('You do not have permission to assign this post to a campaign.'); return }
     try {
       await api(`/api/posts/${postId}`, { method: 'PATCH', body: JSON.stringify({ campaign_id: campaignId }) })
       setNotice('Campaign updated.'); setError('')
@@ -653,7 +684,12 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : isReportingPage
                   ? ([['Dashboards', LayoutDashboard], ...(isAdministrator || reportingAccess.catalogue ? [['Data', Database] as const] : []), ...(isAdministrator ? [['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Reporting Roadmap', Map]] as const)
-                : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map]] as const)
+                : ([
+                    ...(canMarketing('feed.view') ? [['Feed', LayoutDashboard] as const] : []),
+                    ...(canMarketing('posts.view') ? [['Posts', ClipboardList] as const] : []),
+                    ...(canMarketing('campaigns.view') ? [['Campaigns', Megaphone] as const] : []),
+                    ['Roadmap', Map] as const,
+                  ] as const)
             ).map(([label, Icon]) => (
               <button
                 key={label}
@@ -676,7 +712,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
       <main className="main">
         <header className="topbar">
           <div><div className="eyebrow">{page === 'Account' || isAdminSettingsPage ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : isReportingPage ? 'REPORTING' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isAdminSettingsPage ? 'Settings' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : isReportingPage ? 'Reporting' : page}</h1>{isAdminSettingsPage && <p className="topbar-subtitle">Manage application access and shared configuration.</p>}{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
-          {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && !isReportingPage && !isAdminSettingsPage && page !== 'Apps' && page !== 'Account' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
+          {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && !isReportingPage && !isAdminSettingsPage && page !== 'Apps' && page !== 'Account' && page !== 'Marketing Accounts' && page !== 'Campaigns' && page !== 'Roadmap' && ((page === 'Feed' && canMarketing('feed.create')) || ((page === 'Posts' || page === 'Post') && canMarketing('posts.create'))) && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
         </header>
@@ -741,7 +777,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
             <div className="apps-section-heading"><div><h2>Your apps</h2><p>One home for Impala's business workflows.</p></div><span>{[canAccessMarketing, canAccessSalesDesk, canAccessReturns, canAccessStock, canAccessReporting].filter(Boolean).length} available</span></div>
             <div className="app-cards">
-              {canAccessMarketing && <button className="app-card app-card-available" onClick={() => { setPage('Feed'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
+              {canAccessMarketing && <button className="app-card app-card-available" onClick={() => { setPage(canMarketing('feed.view') ? 'Feed' : canMarketing('posts.view') ? 'Posts' : canMarketing('campaigns.view') ? 'Campaigns' : 'Roadmap'); setFilter('all'); setCampaignFilter('all'); setMonth(startOfMonth()) }}>
                 <div className="app-card-icon"><Megaphone size={25} /></div>
                 <div className="app-card-copy"><h3>Marketing</h3><p>Plan campaigns, organise content, and manage social publishing.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
@@ -857,7 +893,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <div><h2>Connected social accounts</h2><p>Review Facebook and Instagram activity, engagement and provider health in one feed.</p></div>
               <div className="feed-actions">
                 <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
-                {isAdministrator && <button className="primary" onClick={() => setPage('Admin Settings')}><Settings size={16} /> Manage accounts</button>}
+                {canMarketing('feed.manage_accounts') && <button className="primary" onClick={() => setPage(isAdministrator ? 'Admin Settings' : 'Marketing Accounts')}><Settings size={16} /> Manage accounts</button>}
               </div>
             </div>
             <div className="feed-streams feed-network-cards">
@@ -884,7 +920,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 const providerPosts = posts.filter((p) => p.channels.includes(i.provider)).sort((a, b) => new Date(b.published_at || b.publish_at || b.created_at || 0).getTime() - new Date(a.published_at || a.publish_at || a.created_at || 0).getTime()).slice(0, 25)
                 return <section className="feed-post-column" key={i.provider}>
                   <h3>{i.account_name || i.page_name || i.label}</h3>
-                  <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} card pageName={i.account_name || i.page_name || i.label} pageUrl={i.provider === 'facebook' ? `https://www.facebook.com/${i.page_id || ''}` : `https://www.instagram.com/${i.username || ''}`} />
+                  <PostList posts={providerPosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} canEdit={canMarketing('feed.edit')} canDelete={canMarketing('feed.delete')} card pageName={i.account_name || i.page_name || i.label} pageUrl={i.provider === 'facebook' ? `https://www.facebook.com/${i.page_id || ''}` : `https://www.instagram.com/${i.username || ''}`} />
                 </section>
               })}
             </div>
@@ -927,7 +963,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               {integrations.some((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected') && (
                 <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
               )}
-              <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>
+              {canMarketing('posts.create') && <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>}
             </div>
             <MonthNav
               month={view === 'calendar' ? month ?? startOfMonth() : month}
@@ -941,11 +977,12 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               }
             />
             {view === 'list' && (
-              <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} />
+              <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} canEdit={canMarketing('posts.edit')} canDelete={canMarketing('posts.delete')} />
             )}
             {view === 'board' && (
               <PostBoard
                 posts={monthPosts} campaigns={campaigns} onOpen={openPost} onError={setError}
+                canEdit={canMarketing('posts.edit')}
                 onMove={(id, status) => void patchPost(id, { status }, `Post moved to ${status.replace(/_/g, ' ')}.`)}
               />
             )}
@@ -955,6 +992,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             {view === 'calendar' && (
               <PostCalendar
                 posts={filteredPosts} month={month ?? startOfMonth()} onOpen={(id) => { setDetailId(id); setError('') }} onError={setError}
+                canCreate={canMarketing('posts.create')} canEdit={canMarketing('posts.edit')}
                 onChangeDate={(id, iso, message) => void patchPost(id, { publish_at: iso }, message)}
                 onCreate={(local) => { setEditor({ ...emptyPost(), publish_at: local }); setError('') }}
               />
@@ -966,7 +1004,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <>
             <div className="section-head">
               <div><h2>Campaigns</h2><p>Group related posts under a shared marketing objective.</p></div>
-              <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage('new'); setCampaignType(campaignTypes[0] || 'Tips'); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>
+              {canMarketing('campaigns.create') && <button className="primary" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage('new'); setCampaignType(campaignTypes[0] || 'Tips'); setCampaignModal(true) }}><Plus size={16} /> New campaign</button>}
             </div>
             <div className="campaign-board">
               {([
@@ -974,17 +1012,17 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 ['in_progress', 'In Progress'],
                 ['done', 'Done'],
               ] as const).map(([stage, label]) => (
-                <section className="campaign-column" key={stage} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/campaign-id'); if (id) void moveCampaign(id, stage) }}>
+                <section className="campaign-column" key={stage} onDragOver={(e) => { if (canMarketing('campaigns.change_status')) e.preventDefault() }} onDrop={(e) => { if (!canMarketing('campaigns.change_status')) return; e.preventDefault(); const id = e.dataTransfer.getData('text/campaign-id'); if (id) void moveCampaign(id, stage) }}>
                   <header className="campaign-column-head"><h3>{label}</h3><span>{campaigns.filter((c) => (c.stage || 'new') === stage).length}</span></header>
-                  <button className="campaign-quick-add" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage(stage); setCampaignType(campaignTypes[0] || 'Tips'); setCampaignModal(true) }}><Plus size={14} /> Quick add</button>
+                  {canMarketing('campaigns.create') && (stage === 'new' || canMarketing('campaigns.change_status')) && <button className="campaign-quick-add" onClick={() => { setEditingCampaignId(null); setCampaignName(''); setCampaignObjective(''); setCampaignStage(stage); setCampaignType(campaignTypes[0] || 'Tips'); setCampaignModal(true) }}><Plus size={14} /> Quick add</button>}
                   {campaigns.filter((c) => (c.stage || 'new') === stage).map((c) => (
-                <div className="campaign-card" key={c.id} draggable onDragStart={(e) => e.dataTransfer.setData('text/campaign-id', c.id)}>
+                <div className="campaign-card" key={c.id} draggable={canMarketing('campaigns.change_status')} onDragStart={(e) => { if (canMarketing('campaigns.change_status')) e.dataTransfer.setData('text/campaign-id', c.id) }}>
                   <div className="campaign-icon"><Megaphone size={20} /></div>
                   <div className="campaign-card-heading"><h3>{c.name}</h3><span className="status-badge">{(c.stage || 'new').replace('_', ' ')}</span></div>
                   <p>{c.objective || 'No objective added yet.'}</p>
                                     <div className="campaign-footer">
-                    <button className="text-button" onClick={() => openCampaignEditor(c)}>Edit</button>
-                    <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>{!posts.some((p) => p.campaign_id === c.id) && <button className="text-button danger" onClick={() => void removeCampaign(c)}>Delete</button>}
+                    {canMarketing('campaigns.edit') && <button className="text-button" onClick={() => openCampaignEditor(c)}>Edit</button>}
+                    {canMarketing('posts.view') && <button className="text-button" onClick={() => { setPage('Posts'); setSearch(''); setFilter('all'); setCampaignFilter(c.id); setMonth(null) }}>View posts →</button>}{canMarketing('campaigns.delete') && (campaignPostCounts[c.id] || 0) === 0 && <button className="text-button danger" onClick={() => void removeCampaign(c)}>Delete</button>}
                   </div>
                 </div>
                   ))}
@@ -994,7 +1032,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 <div className="empty">
                   <Megaphone size={28} /><h3>No campaigns yet</h3>
                   <p>Create a campaign to organise related posts.</p>
-                  <button className="secondary" onClick={() => setCampaignModal(true)}>{editingCampaignId ? 'Save changes' : 'Create campaign'}</button>
+                  {canMarketing('campaigns.create') && <button className="secondary" onClick={() => setCampaignModal(true)}>{editingCampaignId ? 'Save changes' : 'Create campaign'}</button>}
                 </div>
               )}
             </div>
@@ -1006,6 +1044,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <PostDetail
               post={selected} campaigns={campaigns} onBack={() => setPage('Posts')} onEdit={openEditor}
               onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onOpenImage={(images, index) => setImageViewer({ images, index })} onError={handleError}
+              canEdit={canMarketing('posts.edit')} canDelete={canMarketing('posts.delete')} canAssignCampaign={canMarketing('posts.assign_campaign')}
             />
           ) : (
             <div className="empty">
@@ -1015,7 +1054,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           )
         )}
 
-        {key && page === 'Configuration' && (
+        {key && (page === 'Configuration' || page === 'Marketing Accounts') && (
           <>
             <div className="section-head">
               <div><h2>Connected channels</h2><p>Facebook Page connection health and account identity.</p></div>
@@ -1073,7 +1112,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 </div>
               ))}
             </div>
-            <CampaignTypeConfiguration
+            {isAdministrator && <CampaignTypeConfiguration
               types={campaignTypes}
               draft={newCampaignType}
               onDraftChange={setNewCampaignType}
@@ -1089,7 +1128,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               onReorder={async (names) => {
                 try { await api('/api/campaign-types/order', { method: 'PUT', body: JSON.stringify({ names }) }); await load() } catch (e) { handleError(e) }
               }}
-            />
+            />}
             <div className="security-note">
               <Settings size={20} />
               <div>
@@ -1106,6 +1145,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <PostDetail
                 post={selected} campaigns={campaigns} onBack={() => setDetailId(null)} onEdit={openEditor}
                 onReschedule={reschedulePost} onDelete={removePost} onSaveCampaign={saveCampaign} onOpenImage={(images, index) => setImageViewer({ images, index })} onError={handleError}
+                canEdit={page === 'Feed' ? canMarketing('feed.edit') : canMarketing('posts.edit')} canDelete={page === 'Feed' ? canMarketing('feed.delete') : canMarketing('posts.delete')} canAssignCampaign={page === 'Feed' ? canMarketing('feed.assign_campaign') : canMarketing('posts.assign_campaign')}
               />
             </div>
           </div>
@@ -1167,7 +1207,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               </div>
 
               <label htmlFor="post-campaign">Campaign</label>
-              <select id="post-campaign" value={editor.campaign_id || ''} onChange={(e) => patchEditor({ campaign_id: e.target.value || null })}>
+              <select id="post-campaign" value={editor.campaign_id || ''} disabled={!(page === 'Feed' ? canMarketing('feed.assign_campaign') : canMarketing('posts.assign_campaign'))} onChange={(e) => patchEditor({ campaign_id: e.target.value || null })}>
                 <option value="">No campaign</option>
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -1251,12 +1291,14 @@ function PostPivot({ posts, campaigns, campaignTypes }: { posts: Post[]; campaig
   )
 }
 
-function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false, pageName, pageUrl }: {
+function PostList({ posts, campaigns, onEdit, onOpen, onDelete, canEdit, canDelete, card = false, pageName, pageUrl }: {
   posts: Post[]
   campaigns: Campaign[]
   onEdit: (p: Post) => void
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  canEdit: boolean
+  canDelete: boolean
   card?: boolean
   pageName?: string
   pageUrl?: string
@@ -1296,7 +1338,7 @@ function PostList({ posts, campaigns, onEdit, onOpen, onDelete, card = false, pa
                   <small>{campaigns.find((c) => c.id === p.campaign_id)?.name || 'No campaign'} · {p.published_at ? `Posted ${fmt(p.published_at)}` : fmt(p.publish_at)}</small>
                   {p.status === 'published' && <small>Views {metric(p.views ?? p.impressions ?? p.reach)} · Reach {metric(p.reach)} · Likes {metric(p.likes)} · Comments {metric(p.comments)} · Shares {metric(p.shares)}{p.metrics_refreshed_at ? ` · updated ${fmt(p.metrics_refreshed_at)}` : ''}</small>}
                 </div>
-                <div className="row-actions"><button className="secondary" onClick={() => onOpen(p.id)}>View</button>{EDITABLE.includes(p.status) && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}<button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button></div>
+                <div className="row-actions"><button className="secondary" onClick={() => onOpen(p.id)}>View</button>{canEdit && EDITABLE.includes(p.status) && <button className="secondary" onClick={() => onEdit(p)}>Edit</button>}{canDelete && <button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(p.id)}><Trash2 size={16} /></button>}</div>
               </>
             )}
           </article>

@@ -20,8 +20,14 @@ export default async function handler(req: any, res: any) {
   const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data: user, error: authError } = await auth.auth.getUser(token)
   if (authError || !user.user) return res.status(401).json({ detail: 'Authentication required.' })
-  const { data: canAccess } = await auth.rpc('can_access_workspace', { workspace_name: 'marketing' })
-  if (!canAccess) return res.status(403).json({ detail: 'Marketing access required.' })
+  const permissionChecks = await Promise.all([
+    auth.rpc('has_marketing_permission', { required_permission: 'feed.create' }),
+    auth.rpc('has_marketing_permission', { required_permission: 'feed.edit' }),
+    auth.rpc('has_marketing_permission', { required_permission: 'posts.create' }),
+    auth.rpc('has_marketing_permission', { required_permission: 'posts.edit' }),
+  ])
+  if (permissionChecks.some((check) => check.error)) return res.status(500).json({ detail: 'Could not verify Marketing publishing access.' })
+  if (!permissionChecks.some((check) => check.data === true)) return res.status(403).json({ detail: 'Create or edit post permission required.' })
   const postId = String(req.query?.post_id || '')
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const [{ data: post }, { data: connection }] = await Promise.all([

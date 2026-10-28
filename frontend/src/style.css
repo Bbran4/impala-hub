@@ -398,6 +398,22 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .app-access-reason{border-radius:20px;padding:5px 8px;background:#edf0f3;color:#657582;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
 .app-access-reason.direct{background:#e8f2fb;color:#31658d}
 .app-access-row input{width:17px;height:17px;accent-color:#1d4668}
+.marketing-permissions-panel{display:grid;gap:18px}
+.permission-group{display:grid;gap:9px}
+.permission-group h3{margin:0;color:#1d3447;font-size:15px}
+.permission-table-wrap{overflow-x:auto;border:1px solid #e2e7eb;border-radius:10px}
+.permission-table{width:100%;min-width:760px;border-collapse:collapse;background:#fff}
+.permission-table th,.permission-table td{padding:10px 9px;border-bottom:1px solid #edf0f3;text-align:center;vertical-align:middle}
+.permission-table th{background:#f7f9fa;color:#526372;font-size:10px;line-height:1.25;text-transform:uppercase;letter-spacing:.04em;white-space:normal}
+.permission-table th:first-child,.permission-table td:first-child{position:sticky;left:0;z-index:1;min-width:220px;text-align:left;background:inherit}
+.permission-table td:first-child{background:#fff}
+.permission-table td:first-child b,.permission-table td:first-child small{display:block}
+.permission-table td:first-child small{margin-top:3px;color:#71808c;font-size:10px}
+.permission-table tr:last-child td{border-bottom:0}
+.permission-table tr.no-app-access{opacity:.55;background:#fafbfc}
+.permission-check{display:flex;justify-content:center;cursor:pointer}
+.permission-check input{width:17px;height:17px;margin:0;accent-color:#1d4668}
+.permission-check input:disabled{cursor:not-allowed}
 .app-access-empty{padding:25px;text-align:center;color:#82909a;font-size:11px}
 @media(max-width:1000px){.admin-settings-layout{grid-template-columns:1fr}.admin-settings-apps{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.admin-settings-menu-head{grid-column:1/-1}.admin-settings-apps>button>span{align-items:flex-start;flex-direction:column}}
 @media(max-width:760px){.admin-settings-panel .integration{grid-template-columns:1fr}.admin-settings-panel .integration-actions{width:100%;align-items:flex-start;padding-left:52px}.admin-settings-panel .facebook-page-picker{width:min(100%,320px)}.admin-settings-panel .facebook-page-picker .secondary{align-self:flex-start}}

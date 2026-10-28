@@ -17,9 +17,9 @@ async function clients(token: string) {
   const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data: user, error } = await auth.auth.getUser(token)
   if (error || !user.user) throw new Error('Authentication required.')
-  const { data: isAdministrator, error: roleError } = await auth.rpc('has_role', { required_role: 'administrator' })
-  if (roleError) throw new Error('Could not verify administrator access.')
-  if (!isAdministrator) throw new Error('Administrator access required.')
+  const { data: canManageAccounts, error: roleError } = await auth.rpc('has_marketing_permission', { required_permission: 'feed.manage_accounts' })
+  if (roleError) throw new Error('Could not verify Marketing account access.')
+  if (!canManageAccounts) throw new Error('Marketing account management permission required.')
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   return { admin }
 }
@@ -50,7 +50,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ page_id: result.id, page_name: result.name, status: 'connected' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Facebook connection request failed.'
-    const status = message === 'Administrator access required.' ? 403 : message === 'Could not verify administrator access.' ? 500 : 401
+    const status = message === 'Marketing account management permission required.' ? 403 : message === 'Could not verify Marketing account access.' ? 500 : 401
     return res.status(status).json({ detail: message })
   }
 }
