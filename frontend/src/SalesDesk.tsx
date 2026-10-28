@@ -39,7 +39,14 @@ function describeDetail(detail: unknown, status: number): string {
 }
 
 type Req = (path: string, init?: RequestInit) => Promise<any>
-type Props = { page: string; token: string; setNotice: (m: string) => void; setError: (m: string) => void }
+type Props = {
+  page: string
+  token: string
+  setNotice: (m: string) => void
+  setError: (m: string) => void
+  openRfqId?: string | null
+  onOpenRfqHandled?: () => void
+}
 
 // ---------------------------------------------------------------------------------------------
 // Drag-and-drop list used for media platforms and statuses.
@@ -413,7 +420,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
 }
 
 // ---------------------------------------------------------------------------------------------
-export default function SalesDesk({ page, token, setNotice, setError }: Props) {
+export default function SalesDesk({ page, token, setNotice, setError, openRfqId, onOpenRfqHandled }: Props) {
   const [user, setUser] = useState<any>(null)
   const [busy, setBusy] = useState(false)
   const [rfqs, setRfqs] = useState<any[]>([])
@@ -442,6 +449,12 @@ export default function SalesDesk({ page, token, setNotice, setError }: Props) {
   const [milestoneColors, setMilestoneColors] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestone_colors') || '{}') } catch { return {} } })
 
   const closePanel = useCallback(() => setPanel(null), [])
+  useEffect(() => {
+    if (!openRfqId || page !== 'RFQs') return
+    setView('rfqs')
+    setPanel({ mode: 'edit', id: openRfqId })
+    onOpenRfqHandled?.()
+  }, [openRfqId, page, onOpenRfqHandled])
   useEffect(() => { localStorage.setItem('sales_desk_gp_milestones', JSON.stringify(gpMilestones)) }, [gpMilestones])
   useEffect(() => { localStorage.setItem('sales_desk_gp_percent_milestones', JSON.stringify(gpPercentMilestones)) }, [gpPercentMilestones])
   useEffect(() => { localStorage.setItem('sales_desk_gp_percent_colors', JSON.stringify(gpPercentColors)) }, [gpPercentColors])

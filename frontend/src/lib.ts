@@ -229,7 +229,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (profile.error || !profile.data?.active) throw new Error('Your Impala Hub profile is inactive.')
     const roleRows = await client.from('profile_roles').select('role_id').eq('profile_id', user.id)
     const roleIds = (roleRows.data || []).map((r: any) => r.role_id)
-    const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : profile.data.sales_code ? 'salesperson' : roleIds.includes('sales') ? 'manager' : 'salesperson'
+    const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : roleIds.includes('sales_manager') ? 'manager' : 'salesperson'
     const auditRfq = async (rfqId: string, action: string, changes: Record<string, unknown> = {}) => {
       const result = await client.from('sales_desk_rfq_audit').insert({ rfq_id: rfqId, actor_user_id: user.id, action, changes })
       if (result.error) throw new Error(result.error.message)

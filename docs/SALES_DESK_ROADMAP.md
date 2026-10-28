@@ -28,7 +28,7 @@ The Daily Sales and RFQ Performance tables currently contain temporary test data
 1. Add a dedicated RFQ Kanban with drag-and-drop status changes.
 2. Add bulk actions for assignment, claiming, status changes, and export.
 3. Add saved filters and advanced search by customer, salesperson, source, status, and date.
-4. Add notification bell for new/unclaimed RFQs, reassignment, overdue work, and status changes.
+4. Expand the notification bell beyond assigned RFQs entering In Progress to new/unclaimed RFQs, reassignment, overdue work, approval decisions, and SLA reminders.
 5. Add SLA timers, overdue indicators, and workload alerts.
 6. Add CSV/XLSX export and printable RFQ reports.
 7. Add dashboard drill-down from every metric to the matching RFQs.
@@ -57,7 +57,7 @@ The Daily Sales and RFQ Performance tables currently contain temporary test data
 | Daily sales and RFQ performance membership | Temporary Supabase seed data | Restrict rows to active users with profile sales codes and replace test values with live sales data |
 | Search/filtering | Basic filters | Add advanced filters and saved views |
 | Send for approval | Partial; prerequisite checks implemented | Add administrator notification persistence, approval queue and decision tracking |
-| Notifications | Missing from the active approval path | Add persistence, bell, unread count, and reminders |
+| Notifications | Shared Supabase notification centre, app channel, unread state, mark-read controls, and exact RFQ links implemented for assigned RFQs entering In Progress | Add approval, unclaimed, reassignment, overdue and SLA event producers |
 | Bulk operations | Missing | Add multi-select actions |
 | Export/reporting | Missing | Add CSV, XLSX, and print views |
 | DMS integration | Deferred | Reconcile with Qlik when real external data work resumes |
