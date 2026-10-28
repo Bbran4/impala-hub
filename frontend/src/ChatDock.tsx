@@ -56,17 +56,34 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserResult[]>([])
   const [loading, setLoading] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
   const dismissedUnread = useRef<Record<string, number>>({})
+  const hadLoadError = useRef(false)
+  const active = enabled && authenticated
+
+  useEffect(() => {
+    if (!enabled || !supabase) { setAuthenticated(false); return }
+    let mounted = true
+    void supabase.auth.getSession().then(({ data }) => {
+      if (mounted) setAuthenticated(Boolean(data.session))
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setAuthenticated(Boolean(session))
+    })
+    return () => { mounted = false; listener.subscription.unsubscribe() }
+  }, [enabled])
 
   const loadConversations = useCallback(async (quiet = false) => {
-    if (!enabled || !supabase) return
+    if (!active || !supabase) return
     if (!quiet) setLoading(true)
     const { data, error } = await supabase.rpc('chat_list_conversations')
     if (error) {
+      hadLoadError.current = true
       if (!quiet) onError(`Could not load chats: ${error.message}`)
       setLoading(false)
       return
     }
+    if (hadLoadError.current) { hadLoadError.current = false; onError('') }
     const rows = ((data || []) as Conversation[]).map((row) => ({ ...row, unread_count: Number(row.unread_count || 0) }))
     setConversations(rows)
     setDocked((current) => {
@@ -82,11 +99,11 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
       return next
     })
     setLoading(false)
-  }, [enabled, onError])
+  }, [active, onError])
   const refreshConversations = useCallback(() => { void loadConversations(true) }, [loadConversations])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!active) {
       setLauncherOpen(false); setConversations([]); setDocked([]); setQuery(''); setResults([])
       dismissedUnread.current = {}
       return
@@ -96,13 +113,13 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
     const focus = () => void loadConversations(true)
     window.addEventListener('focus', focus)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', focus) }
-  }, [enabled, loadConversations])
+  }, [active, loadConversations])
 
   useEffect(() => {
-    if (!enabled || openRequest < 1) return
+    if (!active || openRequest < 1) return
     setLauncherOpen(true)
     void loadConversations()
-  }, [openRequest, enabled, loadConversations])
+  }, [openRequest, active, loadConversations])
 
   useEffect(() => {
     if (!supabase || !launcherOpen) return
@@ -156,7 +173,7 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
     conversation: conversations.find((row) => row.conversation_id === chat.conversationId),
   })).filter((item) => item.conversation), [docked, conversations])
 
-  if (!enabled) return null
+  if (!active) return null
 
   return <>
     {launcherOpen && <section className="chat-launcher" aria-label="Team chat">
