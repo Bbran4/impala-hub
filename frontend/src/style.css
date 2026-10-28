@@ -348,6 +348,49 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .stock-pagination { display:flex; align-items:center; gap:8px; }
 .settings-card { max-width: 1180px; padding: 24px; background: #fff; border: 1px solid var(--line, #d7dce5); border-radius: 14px; }
 .settings-card h3 { margin-top: 0; }
+.admin-settings{max-width:1280px}
+.admin-settings-layout{display:grid;grid-template-columns:minmax(220px,260px) minmax(0,1fr);gap:20px;align-items:start}
+.admin-settings-apps{position:sticky;top:24px;background:#fff;border:1px solid #dfe5ea;border-radius:12px;padding:10px;overflow:hidden}
+.admin-settings-menu-head{display:flex;gap:10px;align-items:flex-start;padding:12px 10px 16px;border-bottom:1px solid #edf0f3;margin-bottom:7px;color:#26445d}
+.admin-settings-menu-head b{display:block;font:700 13px Manrope,sans-serif}
+.admin-settings-menu-head span{display:block;margin-top:4px;color:#7c8994;font-size:10px;line-height:1.4}
+.admin-settings-apps>button{width:100%;display:flex;align-items:center;gap:11px;border:0;border-radius:8px;background:transparent;color:#4e5f6d;padding:11px 10px;text-align:left}
+.admin-settings-apps>button:hover,.admin-settings-apps>button.active{background:#edf3f7;color:#1d4668}
+.admin-settings-apps>button.active{box-shadow:inset 3px 0 #e7b94f}
+.admin-settings-apps>button>span{display:flex;flex:1;min-width:0;align-items:center;justify-content:space-between;gap:6px}
+.admin-settings-apps>button b{font-size:11px;white-space:normal}
+.admin-settings-apps>button small{color:#8a97a1;font-size:8px;text-transform:uppercase;letter-spacing:.7px}
+.admin-settings-content{min-width:0;display:flex;flex-direction:column;gap:17px}
+.admin-settings-heading,.admin-settings-panel{background:#fff;border:1px solid #dfe5ea;border-radius:12px;padding:21px}
+.admin-settings-heading{display:flex;align-items:center;gap:14px}
+.admin-settings-heading h2{font:800 21px Manrope,sans-serif;margin:3px 0}
+.admin-settings-heading p{font-size:11px;color:#778692;margin:0}
+.admin-settings-app-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:10px;background:#edf3f7;color:#315d7d;flex:none}
+.admin-app-status{margin-left:auto;border-radius:20px;padding:6px 9px;background:#e8f5ed;color:#2d7849;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.7px}
+.admin-app-status.planned{background:#f2f3f5;color:#76838c}
+.admin-settings-panel .section-head{margin-top:0}
+.admin-settings-panel .integration-list{margin-top:5px}
+.admin-settings-panel .integration{align-items:flex-start;flex-wrap:wrap}
+.admin-settings-panel .integration-actions{margin-left:52px;flex-basis:calc(100% - 52px)}
+.app-access-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.app-access-toolbar label{display:flex;align-items:center;gap:8px;flex:1;max-width:430px;border:1px solid #d8e1e7;border-radius:8px;padding:0 10px;color:#83919c;background:#fbfcfd}
+.app-access-toolbar input{width:100%;border:0;outline:0;background:transparent;padding:10px 0;font-size:11px}
+.app-access-toolbar>span{display:flex;align-items:center;gap:6px;color:#70808c;font-size:10px}
+.app-access-list{border:1px solid #e1e6ea;border-radius:9px;overflow:hidden}
+.app-access-row{display:flex;align-items:center;gap:11px;padding:12px 13px;border-bottom:1px solid #edf0f3;background:#fff;cursor:pointer}
+.app-access-row:last-child{border-bottom:0}
+.app-access-row:hover{background:#fafbfc}
+.app-access-row.inherited{cursor:default;background:#fbfcfd}
+.app-access-avatar{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:#e8eef3;color:#315875;font-size:12px;font-weight:800;flex:none}
+.app-access-person{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.app-access-person b{font-size:11px;color:#304456;overflow:hidden;text-overflow:ellipsis}
+.app-access-person small{font-size:9px;color:#87949e;overflow:hidden;text-overflow:ellipsis}
+.app-access-reason{border-radius:20px;padding:5px 8px;background:#edf0f3;color:#657582;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+.app-access-reason.direct{background:#e8f2fb;color:#31658d}
+.app-access-row input{width:17px;height:17px;accent-color:#1d4668}
+.app-access-empty{padding:25px;text-align:center;color:#82909a;font-size:11px}
+@media(max-width:1000px){.admin-settings-layout{grid-template-columns:1fr}.admin-settings-apps{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.admin-settings-menu-head{grid-column:1/-1}.admin-settings-apps>button>span{align-items:flex-start;flex-direction:column}.admin-settings-panel .integration-actions{margin-left:0;flex-basis:100%}}
+@media(max-width:680px){.admin-settings-apps{grid-template-columns:1fr}.admin-settings-heading{align-items:flex-start}.admin-app-status{font-size:0;padding:5px;width:10px;height:10px}.app-access-toolbar{align-items:stretch;flex-direction:column}.app-access-reason{display:none}.admin-settings-panel{padding:15px}}
 .stock-config-form { flex-wrap: wrap; align-items: stretch; gap: 10px; }
 .stock-config-form input, .stock-config-select { min-width: 190px; flex: 1 1 190px; }
 .stock-config-form > .primary, .stock-config-form > .secondary { flex: 0 0 auto; margin-top: 4px; }

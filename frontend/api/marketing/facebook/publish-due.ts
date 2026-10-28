@@ -26,7 +26,7 @@ export default async function handler(req: any, res: any) {
   for (const post of due || []) {
     const claim = await admin.from('posts').update({ status: 'publishing' }).eq('id', post.id).eq('status', 'scheduled').select('id').maybeSingle()
     if (!claim.data) continue
-    const { data: connection } = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('owner_id', post.created_by).maybeSingle()
+    const { data: connection } = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('is_workspace_connection', true).maybeSingle()
     if (!connection?.page_id || !connection.token_ciphertext) {
       await admin.from('posts').update({ status: 'failed', last_error: 'Facebook is not connected for the post owner.' }).eq('id', post.id)
       results.push({ id: post.id, status: 'failed' }); continue

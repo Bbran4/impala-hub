@@ -15,6 +15,7 @@ import StockControlConfig from './StockControlConfig'
 import StockReordering from './StockReorderingSupabase'
 import StockImport from './StockImport'
 import ReturnsClaims from './ReturnsClaims'
+import AdminSettings from './AdminSettings'
 import NotificationCentre, { type NotificationChannel, type UserNotification } from './NotificationCentre'
 import Reporting, { REPORTING_PAGES } from './Reporting'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
@@ -125,6 +126,7 @@ export default function App() {
   const [campaignStage, setCampaignStage] = useState<'new' | 'in_progress' | 'done'>('new')
   const [campaignType, setCampaignType] = useState('Tips')
   const [campaignTypes, setCampaignTypes] = useState<string[]>([])
+  // Retained while old Configuration links age out; Admin Settings owns the visible controls.
   const [newCampaignType, setNewCampaignType] = useState('')
   const [draggedCampaignType, setDraggedCampaignType] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
@@ -138,9 +140,10 @@ export default function App() {
   const [profileBusy, setProfileBusy] = useState(false)
   const [isAdministrator, setIsAdministrator] = useState(false)
   const [assignedRoles, setAssignedRoles] = useState<string[]>([])
+  const [profileLoaded, setProfileLoaded] = useState(false)
   const [notificationRfqId, setNotificationRfqId] = useState<string | null>(null)
   const canAccessMarketing = isAdministrator || assignedRoles.includes('marketing') || assignedRoles.includes('management')
-  const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('sales_manager') || assignedRoles.includes('management') || Boolean(profile.sales_code)
+  const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('sales_manager') || assignedRoles.includes('management')
   const canAccessReturns = isAdministrator || assignedRoles.includes('returns') || assignedRoles.includes('management')
   const canAccessStock = isAdministrator || assignedRoles.includes('stock') || assignedRoles.includes('management')
   const canAccessReporting = isAdministrator || assignedRoles.includes('reporting') || assignedRoles.includes('management')
@@ -157,13 +160,14 @@ export default function App() {
   async function loadProfile() {
     if (!supabase) return
     const user = (await supabase.auth.getUser()).data.user
-    if (!user) return
+    if (!user) { setProfileLoaded(true); return }
     const { data } = await supabase.from('profiles').select('first_name,surname,email,avatar_url,sales_code').eq('id', user.id).maybeSingle()
     const roles = await supabase.from('profile_roles').select('role_id').eq('profile_id', user.id)
     setIsAdministrator((roles.data || []).some((role: any) => role.role_id === 'administrator'))
     const roleIds = (roles.data || []).map((role: any) => role.role_id)
     setAssignedRoles(roleIds)
     setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
+    setProfileLoaded(true)
   }
 
   async function saveProfile() {
@@ -236,14 +240,14 @@ export default function App() {
       window.history.replaceState({}, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash)
     }
     if (fb === 'choose_page') {
-      setPage('Configuration'); setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.'); void loadFacebookPages()
+      setPage('Admin Settings'); setNotice('Facebook authorized. Choose the Page you want Impala Hub to manage.'); void loadFacebookPages()
     } else if (fb === 'error') {
-      setPage('Configuration'); setError(OAUTH_REASONS[reason] ?? `Facebook authorization did not finish (${reason.replaceAll('_', ' ')}).`)
+      setPage('Admin Settings'); setError(OAUTH_REASONS[reason] ?? `Facebook authorization did not finish (${reason.replaceAll('_', ' ')}).`)
     }
     if (ig === 'connected') {
-      setPage('Configuration'); setNotice('Instagram connected.')
+      setPage('Admin Settings'); setNotice('Instagram connected.')
     } else if (ig === 'error') {
-      setPage('Configuration'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.${detail ? ' Meta said: ' + detail : ''}`)
+      setPage('Admin Settings'); setError(`Instagram authorization did not finish: ${reason.replaceAll('_', ' ')}.${detail ? ' Meta said: ' + detail : ''}`)
     }
   }, [key])
 
@@ -252,17 +256,18 @@ export default function App() {
   }, [key, canAccessMarketing])
 
   useEffect(() => {
-    const marketingPages = ['Feed', 'Posts', 'Post', 'Campaigns', 'Roadmap', 'Configuration']
+    const marketingPages = ['Feed', 'Posts', 'Post', 'Campaigns', 'Roadmap']
     const salesPages = ['RFQs', 'RFQ Configuration', 'RFQ Roadmap']
     const stockPages = ['Parts Query', 'Stock Booking', 'Stock Reordering', 'Stock Data Import', 'Stock Control Configuration', 'Stock Control Roadmap']
     const returnsPages = ['Returns & Claims', 'Returns & Claims Roadmap']
-    const adminPages = ['Configuration', 'RFQ Configuration', 'Stock Data Import', 'Stock Control Configuration']
-    if ((adminPages.includes(page) && !isAdministrator) || (marketingPages.includes(page) && !canAccessMarketing) || (salesPages.includes(page) && !canAccessSalesDesk)
+    const adminPages = ['Admin Settings', 'Configuration', 'RFQ Configuration', 'Stock Data Import', 'Stock Control Configuration']
+    if (profileLoaded && page === 'Configuration' && isAdministrator) { setPage('Admin Settings'); return }
+    if ((profileLoaded && adminPages.includes(page) && !isAdministrator) || (marketingPages.includes(page) && !canAccessMarketing) || (salesPages.includes(page) && !canAccessSalesDesk)
       || (stockPages.includes(page) && !canAccessStock) || (returnsPages.includes(page) && !canAccessReturns)) setPage('Apps')
-  }, [page, isAdministrator, canAccessMarketing, canAccessSalesDesk, canAccessStock, canAccessReturns])
+  }, [page, profileLoaded, isAdministrator, canAccessMarketing, canAccessSalesDesk, canAccessStock, canAccessReturns])
 
-  // Reload any pending Page choices whenever Configuration opens, so a browser refresh does not lose the picker.
-  useEffect(() => { if (key && page === 'Configuration') void loadFacebookPages() }, [key, page])
+  // Reload pending Page choices whenever Marketing settings opens, so a refresh does not lose the picker.
+  useEffect(() => { if (key && page === 'Admin Settings' && isAdministrator) void loadFacebookPages() }, [key, page, isAdministrator])
 
   // Escape closes whichever dialog is open.
   useEffect(() => {
@@ -468,7 +473,7 @@ export default function App() {
       else saved = await api('/api/posts', { method: 'POST', body: JSON.stringify(payload) })
       const facebookLive = integrations.some((i) => i.provider === 'facebook' && i.status === 'connected')
       if (mode === 'publish-now') {
-        if (!facebookLive) throw new Error('Connect Facebook in Configuration before publishing.')
+        if (!facebookLive) throw new Error('Connect Facebook in Settings before publishing.')
         await api(`/api/posts/${saved.id}/publish-now`, { method: 'POST' })
         setNotice('Publish requested. Check the post status for the confirmed Facebook result.')
       } else {
@@ -615,16 +620,19 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
   const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Reordering' || page === 'Stock Data Import' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
   const isReturnsClaimsPage = page === 'Returns & Claims' || page === 'Returns & Claims Roadmap'
   const isReportingPage = (REPORTING_PAGES as readonly string[]).includes(page)
+  const isAdminSettingsPage = page === 'Admin Settings'
+  const isPlatformPage = page === 'Apps' || page === 'Account' || isAdminSettingsPage
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">I</div>
-          <div><b>IMPALA HUB</b>{page !== 'Apps' && page !== 'Account' && <small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : isReportingPage ? 'Reporting workspace' : 'Marketing workspace'}</small>}</div>
+          <div><b>IMPALA HUB</b>{!isPlatformPage && <small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : isReportingPage ? 'Reporting workspace' : 'Marketing workspace'}</small>}</div>
         </div>
-        <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
-        {(page === 'Apps' || page === 'Account') && (
+        <button className={`nav-item app-home-link ${page === 'Apps' ? 'active' : ''}`} onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
+        {isAdministrator && <button className={`nav-item ${isAdminSettingsPage ? 'active' : ''}`} onClick={() => setPage('Admin Settings')}><Settings size={18} /> Settings</button>}
+        {isPlatformPage && (
           <div className="sidebar-bottom">
             {key && <NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />}
             <div className="connection-dot" /> <span>Local workspace</span>
@@ -632,7 +640,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
           </div>
         )}
-        {page !== 'Apps' && page !== 'Account' && (
+        {!isPlatformPage && (
           <>
             <div className="nav-label">WORKSPACE</div>
             {(isSalesDeskPage
@@ -643,7 +651,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : isReportingPage
                   ? ([['Data', Database], ...(isAdministrator ? [['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Reporting Roadmap', Map]] as const)
-                : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map], ...(isAdministrator ? [['Configuration', Settings] as const] : [])] as const)
+                : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map]] as const)
             ).map(([label, Icon]) => (
               <button
                 key={label}
@@ -665,8 +673,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">{page === 'Account' ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : isReportingPage ? 'REPORTING' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : isReportingPage ? 'Reporting' : page}</h1>{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
-          {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && !isReportingPage && page !== 'Apps' && page !== 'Account' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
+          <div><div className="eyebrow">{page === 'Account' || isAdminSettingsPage ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : isReportingPage ? 'REPORTING' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isAdminSettingsPage ? 'Settings' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : isReportingPage ? 'Reporting' : page}</h1>{isAdminSettingsPage && <p className="topbar-subtitle">Manage application access and shared configuration.</p>}{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
+          {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && !isReportingPage && !isAdminSettingsPage && page !== 'Apps' && page !== 'Account' && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
         </header>
@@ -685,7 +693,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
         {/* Token expiry warning: visible on every screen so nobody misses it. */}
         {key && integrations.filter((i) => i.provider === 'facebook' && i.token_warning).map((i) => (
           <div className="warning" key="fb-token"><CircleAlert size={17} />{i.token_warning}
-            {page !== 'Configuration' && <button className="secondary" onClick={() => setPage('Configuration')}>Go to Configuration</button>}
+            {!isAdminSettingsPage && isAdministrator && <button className="secondary" onClick={() => setPage('Admin Settings')}>Go to Settings</button>}
           </div>
         ))}
 
@@ -770,6 +778,38 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           </section>
         )}
 
+        {key && isAdminSettingsPage && isAdministrator && (
+          <AdminSettings
+            integrations={integrations}
+            facebookPages={facebookPages}
+            selectedFacebookPage={selectedFacebookPage}
+            setSelectedFacebookPage={setSelectedFacebookPage}
+            busy={busy}
+            connectFacebook={connectFacebook}
+            chooseFacebookPage={chooseFacebookPage}
+            checkFacebookConnection={checkFacebookConnection}
+            disconnectFacebook={disconnectFacebook}
+            connectInstagram={connectInstagram}
+            checkInstagramConnection={checkInstagramConnection}
+            disconnectInstagram={disconnectInstagram}
+            campaignTypes={campaignTypes}
+            addCampaignType={async (name) => {
+              try { await api('/api/campaign-types', { method: 'POST', body: JSON.stringify({ name }) }); await load(); setNotice('Campaign type added.'); return true }
+              catch (e) { handleError(e); return false }
+            }}
+            deleteCampaignType={async (name) => {
+              try { await api('/api/campaign-types/' + encodeURIComponent(name), { method: 'DELETE' }); await load(); setNotice('Campaign type removed.'); return true }
+              catch (e) { handleError(e); return false }
+            }}
+            reorderCampaignTypes={async (names) => {
+              try { await api('/api/campaign-types/order', { method: 'PUT', body: JSON.stringify({ names }) }); await load(); setNotice('Campaign types reordered.'); return true }
+              catch (e) { handleError(e); return false }
+            }}
+            setNotice={setNotice}
+            setError={setError}
+          />
+        )}
+
         {key && isReportingPage && (canAccessReporting ? <Reporting page={page} isAdministrator={isAdministrator} setNotice={setNotice} setError={setError} /> : <section className="rfq-workspace"><div className="rfq-empty-card"><h3>No access to Reporting</h3><p>Ask an administrator for the Reporting role.</p></div></section>)}
 
         {isSalesDeskPage && page === 'RFQ Roadmap' ? (
@@ -815,7 +855,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <div><h2>Connected social accounts</h2><p>Review Facebook and Instagram activity, engagement and provider health in one feed.</p></div>
               <div className="feed-actions">
                 <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
-                <button className="primary" onClick={() => setPage('Configuration')}><Settings size={16} /> Manage accounts</button>
+                {isAdministrator && <button className="primary" onClick={() => setPage('Admin Settings')}><Settings size={16} /> Manage accounts</button>}
               </div>
             </div>
             <div className="feed-streams feed-network-cards">

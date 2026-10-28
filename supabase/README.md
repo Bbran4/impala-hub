@@ -2,6 +2,11 @@
 
 This directory contains versioned Supabase configuration and database migrations.
 
+Starting after migration `0047`, new migrations use odd sequence numbers only:
+`0049`, `0051`, `0053`, and so on. Even numbers are intentionally left unused.
+Before creating a migration, inspect the directory and choose the next unused odd
+number; never renumber a migration that has already been applied.
+
 ## First-time project setup
 
 1. Install the Supabase CLI.

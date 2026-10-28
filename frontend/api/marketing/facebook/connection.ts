@@ -17,16 +17,24 @@ async function clients(token: string) {
   const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
   const { data: user, error } = await auth.auth.getUser(token)
   if (error || !user.user) throw new Error('Authentication required.')
-  return { userId: user.user.id, admin: createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } }) }
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const [{ data: profile }, { data: administratorRole }] = await Promise.all([
+    admin.from('profiles').select('active').eq('id', user.user.id).maybeSingle(),
+    admin.from('profile_roles').select('role_id').eq('profile_id', user.user.id).eq('role_id', 'administrator').maybeSingle(),
+  ])
+  if (!profile?.active || !administratorRole) throw new Error('Administrator access required.')
+  return { admin }
 }
 
 export default async function handler(req: any, res: any) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   try {
-    const { userId, admin } = await clients(token)
-    const { data: connection } = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('owner_id', userId).maybeSingle()
+    const { admin } = await clients(token)
+    const { data: connection, error: loadError } = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('is_workspace_connection', true).maybeSingle()
+    if (loadError) return res.status(500).json({ detail: 'Could not load the shared Facebook connection.' })
     if (req.method === 'DELETE') {
-      await admin.from('provider_connections').delete().eq('provider', 'facebook').eq('owner_id', userId)
+      const { error: deleteError } = await admin.from('provider_connections').delete().eq('provider', 'facebook').eq('is_workspace_connection', true)
+      if (deleteError) return res.status(500).json({ detail: 'Could not disconnect Facebook.' })
       return res.status(200).json({ disconnected: true })
     }
     if (req.method !== 'POST') return res.status(405).json({ detail: 'Method not allowed' })
@@ -35,12 +43,15 @@ export default async function handler(req: any, res: any) {
     const response = await fetch(`https://graph.facebook.com/v22.0/${encodeURIComponent(connection.page_id)}?fields=id,name&access_token=${encodeURIComponent(pageToken)}`)
     const result = await response.json()
     if (!response.ok || !result.id) {
-      await admin.from('provider_connections').update({ status: 'error', last_error: 'Facebook rejected the Page token.', last_checked_at: new Date().toISOString() }).eq('id', connection.id)
+      const { error: saveError } = await admin.from('provider_connections').update({ status: 'error', last_error: 'Facebook rejected the Page token.', last_checked_at: new Date().toISOString() }).eq('id', connection.id)
+      if (saveError) return res.status(500).json({ detail: 'Facebook rejected the token and its status could not be saved.' })
       return res.status(502).json({ detail: 'Facebook rejected the saved Page token. Reconnect Facebook.' })
     }
-    await admin.from('provider_connections').update({ status: 'connected', page_name: result.name || connection.page_name, last_checked_at: new Date().toISOString(), last_success_at: new Date().toISOString(), last_error: null }).eq('id', connection.id)
+    const { error: saveError } = await admin.from('provider_connections').update({ status: 'connected', page_name: result.name || connection.page_name, account_name: result.name || connection.account_name, last_checked_at: new Date().toISOString(), last_success_at: new Date().toISOString(), last_error: null }).eq('id', connection.id)
+    if (saveError) return res.status(500).json({ detail: 'Facebook passed the live check, but the result could not be saved.' })
     return res.status(200).json({ page_id: result.id, page_name: result.name, status: 'connected' })
   } catch (error) {
-    return res.status(401).json({ detail: error instanceof Error ? error.message : 'Facebook connection request failed.' })
+    const message = error instanceof Error ? error.message : 'Facebook connection request failed.'
+    return res.status(message === 'Administrator access required.' ? 403 : 401).json({ detail: message })
   }
 }

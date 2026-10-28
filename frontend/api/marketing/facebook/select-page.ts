@@ -23,12 +23,27 @@ export default async function handler(req: any, res: any) {
   if (authError || !user.user) return res.status(401).json({ detail: 'Authentication required.' })
   if (!page_id) return res.status(400).json({ detail: 'Choose a Facebook Page.' })
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const [{ data: profile }, { data: administratorRole }] = await Promise.all([
+    admin.from('profiles').select('active').eq('id', user.user.id).maybeSingle(),
+    admin.from('profile_roles').select('role_id').eq('profile_id', user.user.id).eq('role_id', 'administrator').maybeSingle(),
+  ])
+  if (!profile?.active || !administratorRole) return res.status(403).json({ detail: 'Administrator access required.' })
   const { data: choices } = await admin.from('oauth_page_choices').select('pages').eq('owner_id', user.user.id).gt('expires_at', new Date().toISOString()).maybeSingle()
   const page = (choices?.pages || []).find((item: any) => item.id === String(page_id))
   if (!page) return res.status(400).json({ detail: 'That Facebook Page selection has expired. Connect Facebook again.' })
   try {
     const pageToken = decrypt(page.token, encryptionKey)
-    const { error } = await admin.from('provider_connections').upsert({ provider: 'facebook', owner_id: user.user.id, page_id: page.id, page_name: page.name, token_ciphertext: page.token, scopes: page.tasks || [], status: 'connected', last_checked_at: new Date().toISOString(), last_success_at: new Date().toISOString(), last_error: null }, { onConflict: 'provider,owner_id' })
+    const now = new Date().toISOString()
+    const connection = { page_id: page.id, page_name: page.name, account_name: page.name, token_ciphertext: page.token, scopes: page.tasks || [], status: 'connected', last_checked_at: now, last_success_at: now, last_error: null, is_workspace_connection: true }
+    const { data: shared } = await admin.from('provider_connections').select('id').eq('provider', 'facebook').eq('is_workspace_connection', true).maybeSingle()
+    let error
+    if (shared?.id) {
+      error = (await admin.from('provider_connections').update(connection).eq('id', shared.id)).error
+    } else {
+      const { data: owned } = await admin.from('provider_connections').select('id').eq('provider', 'facebook').eq('owner_id', user.user.id).maybeSingle()
+      if (owned?.id) error = (await admin.from('provider_connections').update(connection).eq('id', owned.id)).error
+      else error = (await admin.from('provider_connections').insert({ ...connection, provider: 'facebook', owner_id: user.user.id })).error
+    }
     if (error) return res.status(500).json({ detail: 'Could not save the Facebook Page connection.' })
     await admin.from('oauth_page_choices').delete().eq('owner_id', user.user.id)
     void pageToken

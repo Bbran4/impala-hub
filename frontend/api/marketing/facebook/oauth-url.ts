@@ -17,8 +17,13 @@ export default async function handler(req: any, res: any) {
   const authClient = createClient(url, publishableKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const { data: user, error: userError } = await authClient.auth.getUser(token)
   if (userError || !user.user) return res.status(401).json({ detail: 'Invalid or expired session.' })
-  const state = crypto.randomBytes(32).toString('base64url')
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const [{ data: profile }, { data: administratorRole }] = await Promise.all([
+    admin.from('profiles').select('active').eq('id', user.user.id).maybeSingle(),
+    admin.from('profile_roles').select('role_id').eq('profile_id', user.user.id).eq('role_id', 'administrator').maybeSingle(),
+  ])
+  if (!profile?.active || !administratorRole) return res.status(403).json({ detail: 'Administrator access required.' })
+  const state = crypto.randomBytes(32).toString('base64url')
   const { error } = await admin.from('oauth_states').insert({ state, provider: 'facebook', owner_id: user.user.id, redirect_uri: redirectUri, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
   if (error) return res.status(500).json({ detail: `Could not create Facebook OAuth state. Apply the latest Supabase migration and retry. (${error.code || 'database error'})` })
   const params = new URLSearchParams({ client_id: appId, redirect_uri: redirectUri, state, response_type: 'code', scope: 'ads_management,ads_read,business_management,pages_manage_engagement,pages_manage_metadata,pages_manage_posts,pages_messaging,pages_read_engagement,pages_read_user_content,pages_show_list,read_insights,instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_contents,instagram_manage_engagement,instagram_manage_insights,instagram_manage_messages' })
