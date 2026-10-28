@@ -146,7 +146,8 @@ export default function App() {
   const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('sales_manager') || assignedRoles.includes('management')
   const canAccessReturns = isAdministrator || assignedRoles.includes('returns') || assignedRoles.includes('management')
   const canAccessStock = isAdministrator || assignedRoles.includes('stock') || assignedRoles.includes('management')
-  const canAccessReporting = isAdministrator || assignedRoles.includes('reporting') || assignedRoles.includes('management')
+  const [reportingAccess, setReportingAccess] = useState({ admin: false, builder: false, catalogue: false, apps: 0 })
+  const canAccessReporting = isAdministrator || assignedRoles.includes('reporting') || assignedRoles.includes('management') || assignedRoles.includes('report_builder') || reportingAccess.apps > 0
   const notificationChannels: NotificationChannel[] = [
     ...(canAccessMarketing ? ['marketing' as const] : []),
     ...(canAccessSalesDesk ? ['sales_desk' as const] : []),
@@ -166,6 +167,7 @@ export default function App() {
     setIsAdministrator((roles.data || []).some((role: any) => role.role_id === 'administrator'))
     const roleIds = (roles.data || []).map((role: any) => role.role_id)
     setAssignedRoles(roleIds)
+    void supabase.rpc('bi_my_access').then(({ data }) => { if (data) setReportingAccess(data) })
     setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
     setProfileLoaded(true)
   }
@@ -603,7 +605,7 @@ export default function App() {
       return
     }
     if (notification.channel === 'reporting' && canAccessReporting) {
-      setPage(notification.target_page || 'Data')
+      setPage(notification.target_page || 'Dashboards')
       return
     }
     if (notification.channel === 'system') {
@@ -650,7 +652,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 : isReturnsClaimsPage
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : isReportingPage
-                  ? ([['Data', Database], ...(isAdministrator ? [['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Reporting Roadmap', Map]] as const)
+                  ? ([['Dashboards', LayoutDashboard], ...(isAdministrator || reportingAccess.catalogue ? [['Data', Database] as const] : []), ...(isAdministrator ? [['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Reporting Roadmap', Map]] as const)
                 : ([['Feed', LayoutDashboard], ['Posts', ClipboardList], ['Campaigns', Megaphone], ['Roadmap', Map]] as const)
             ).map(([label, Icon]) => (
               <button
@@ -769,7 +771,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 <div className="app-card-copy"><h3>Smart Stock Control</h3><p>Compare stock, book branch transfers, and manage Parts Queries.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
               </button>}
-              {canAccessReporting && <button className="app-card app-card-available" onClick={() => { setPage('Data'); setError(''); setNotice('') }}>
+              {canAccessReporting && <button className="app-card app-card-available" onClick={() => { setPage('Dashboards'); setError(''); setNotice('') }}>
                 <div className="app-card-icon"><BarChart3 size={25} /></div>
                 <div className="app-card-copy"><h3>Reporting</h3><p>ERP data, reports and dashboards, replacing Qlik Sense.</p></div>
                 <div className="app-card-footer"><span className="app-status-dot" /> Available <span className="app-card-open">Open app <span aria-hidden="true">→</span></span></div>
@@ -810,7 +812,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           />
         )}
 
-        {key && isReportingPage && (canAccessReporting ? <Reporting page={page} isAdministrator={isAdministrator} setNotice={setNotice} setError={setError} /> : <section className="rfq-workspace"><div className="rfq-empty-card"><h3>No access to Reporting</h3><p>Ask an administrator for the Reporting role.</p></div></section>)}
+        {key && isReportingPage && (canAccessReporting ? <Reporting page={page} isAdministrator={isAdministrator} canBuild={isAdministrator || reportingAccess.builder} setNotice={setNotice} setError={setError} /> : <section className="rfq-workspace"><div className="rfq-empty-card"><h3>No access to Reporting</h3><p>Ask an administrator for the Reporting role.</p></div></section>)}
 
         {isSalesDeskPage && page === 'RFQ Roadmap' ? (
           <section className="roadmap-page">

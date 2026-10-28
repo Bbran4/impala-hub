@@ -21,6 +21,7 @@ insert into public.profile_roles(profile_id,role_id) values
 ('49000000-0000-0000-0000-000000000001','administrator'),
 ('49000000-0000-0000-0000-000000000002','management'),
 ('49000000-0000-0000-0000-000000000003','sales_manager'),
+('49000000-0000-0000-0000-000000000003','report_builder'),
 ('49000000-0000-0000-0000-000000000004','marketing'),
 ('49000000-0000-0000-0000-000000000005','fleet');
 
@@ -103,6 +104,12 @@ select ok(
    from public.admin_list_app_access('sales_desk')
    where profile_id='49000000-0000-0000-0000-000000000003'),
   'sales managers retain inherited Sales Desk access'
+);
+select ok(
+  (select inherited_access and can_open and access_reason='report_builder'
+   from public.admin_list_app_access('reporting')
+   where profile_id='49000000-0000-0000-0000-000000000003'),
+  'report builders retain inherited Reporting access'
 );
 select is(
   public.admin_set_app_access('49000000-0000-0000-0000-000000000003','sales_desk',false),

@@ -56,6 +56,14 @@ const APPS: AppDefinition[] = [
   { id: 'reporting', label: 'Reporting', description: 'ERP data, reports and dashboards.', status: 'available', icon: BarChart3 },
 ]
 
+const ACCESS_REASON_LABELS: Record<string, string> = {
+  administrator: 'Administrator',
+  management: 'Management',
+  sales_manager: 'Sales Manager',
+  report_builder: 'Report builder',
+  shared_reporting_app: 'Shared dashboard',
+}
+
 export default function AdminSettings(props: Props) {
   const [selectedAppId, setSelectedAppId] = useState('marketing')
   const [accessRows, setAccessRows] = useState<AccessRow[]>([])
@@ -198,7 +206,7 @@ export default function AdminSettings(props: Props) {
                 <label className={`app-access-row ${row.inherited_access ? 'inherited' : ''}`} key={row.profile_id}>
                   <span className="app-access-avatar">{(row.display_name || row.email || '?').slice(0, 1).toUpperCase()}</span>
                   <span className="app-access-person"><b>{row.display_name || row.email || 'Unnamed employee'}</b><small>{[row.sales_code, row.email].filter(Boolean).join(' · ')}</small></span>
-                  {row.inherited_access && <span className="app-access-reason">{row.access_reason || 'Inherited access'}</span>}
+                  {row.inherited_access && <span className="app-access-reason">{ACCESS_REASON_LABELS[row.access_reason || ''] || 'Inherited access'}</span>}
                   {!row.inherited_access && row.direct_access && <span className="app-access-reason direct">App role</span>}
                   <input type="checkbox" checked={row.can_open} disabled={row.inherited_access || savingProfileId === row.profile_id} onChange={(event) => void setAccess(row, event.target.checked)} />
                 </label>

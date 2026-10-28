@@ -1,0 +1,154 @@
+begin;
+
+create extension if not exists pgtap with schema extensions;
+set local search_path=public,extensions;
+select no_plan();
+
+-- Users: administrator, report builder, management, stock (granted one app personally), sales, inactive builder
+insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at) values
+('00000000-0000-0000-0000-000000000000','47000000-0000-0000-0000-000000000001','authenticated','authenticated','apps-admin@test.invalid','',now(),'{}','{}',now(),now()),
+('00000000-0000-0000-0000-000000000000','47000000-0000-0000-0000-000000000002','authenticated','authenticated','apps-builder@test.invalid','',now(),'{}','{}',now(),now()),
+('00000000-0000-0000-0000-000000000000','47000000-0000-0000-0000-000000000003','authenticated','authenticated','apps-manager@test.invalid','',now(),'{}','{}',now(),now()),
+('00000000-0000-0000-0000-000000000000','47000000-0000-0000-0000-000000000004','authenticated','authenticated','apps-stock@test.invalid','',now(),'{}','{}',now(),now()),
+('00000000-0000-0000-0000-000000000000','47000000-0000-0000-0000-000000000005','authenticated','authenticated','apps-sales@test.invalid','',now(),'{}','{}',now(),now()),
+('00000000-0000-0000-0000-000000000000','47000000-0000-0000-0000-000000000006','authenticated','authenticated','apps-inactive@test.invalid','',now(),'{}','{}',now(),now());
+insert into public.profile_roles(profile_id,role_id) values
+('47000000-0000-0000-0000-000000000001','administrator'),
+('47000000-0000-0000-0000-000000000002','report_builder'),
+('47000000-0000-0000-0000-000000000003','management'),
+('47000000-0000-0000-0000-000000000004','stock'),
+('47000000-0000-0000-0000-000000000005','sales'),
+('47000000-0000-0000-0000-000000000006','report_builder');
+update public.profiles set active=false where id='47000000-0000-0000-0000-000000000006';
+
+-- Loaded data (as the sync agent would create it)
+create table bi_data.t_invoices(invoice_no bigint, invoice_date date, branch text, customer text);
+create table bi_data.t_lines(invoice_no bigint, line_no bigint, item_code text, qty bigint, unit_price numeric);
+create table bi_data.t_items(item_code text, description text, cost_price numeric);
+create table bi_data.t_payroll(employee text, salary numeric);
+insert into bi_data.t_invoices values (1,current_date-1,'Centurion','A'),(2,current_date-1,'Pretoria','B'),(3,current_date-2,'Centurion','A');
+insert into bi_data.t_lines values (1,1,'BRK',2,100),(1,2,'FLT',1,50),(2,1,'BRK',1,100),(3,1,'BAT',1,1000),(3,2,'FLT',4,50);
+insert into bi_data.t_items values ('BRK','Brake pads',60),('FLT','Oil filter',20),('BAT','Battery',700);
+insert into bi_data.t_payroll values ('someone',99999);
+insert into bi.data_tables(table_name,columns,row_count,last_loaded_at) values
+('t_invoices','[{"name":"invoice_no","type":"bigint"},{"name":"invoice_date","type":"date"},{"name":"branch","type":"text"},{"name":"customer","type":"text"},{"name":"_bi_loaded_at","type":"timestamptz"}]',3,now()),
+('t_lines','[{"name":"invoice_no","type":"bigint"},{"name":"line_no","type":"bigint"},{"name":"item_code","type":"text"},{"name":"qty","type":"bigint"},{"name":"unit_price","type":"numeric"}]',5,now()),
+('t_items','[{"name":"item_code","type":"text"},{"name":"description","type":"text"},{"name":"cost_price","type":"numeric"}]',3,now()),
+('t_payroll','[{"name":"employee","type":"text"},{"name":"salary","type":"numeric"}]',1,now());
+
+create temporary table ids(name text primary key, id uuid);
+grant all on ids to authenticated;
+
+select ok(exists(select 1 from public.roles where id='report_builder'),'report builder role exists');
+select ok(not has_function_privilege('anon','public.bi_query(uuid,jsonb)','execute'),'signed-out users cannot query');
+select ok(not has_function_privilege('authenticated','bi.compile_expr(jsonb,jsonb,boolean,boolean,integer)','execute'),'the expression compiler is not callable from the app');
+
+-- ---------------------------------------------------------------------------
+-- Builder creates an app
+-- ---------------------------------------------------------------------------
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000002","role":"authenticated"}';
+select ok((public.bi_my_access()->>'builder')::boolean,'report builder is a builder');
+select ok(public.can_access_workspace('reporting'),'report builders open Reporting');
+select lives_ok($sql$insert into ids select 'sales', public.bi_save_app('{
+  "name":"Sales","description":"Daily sales",
+  "model":[
+    {"alias":"lines","table_name":"t_lines"},
+    {"alias":"invoices","table_name":"t_invoices","parent_alias":"lines","join_pairs":[["invoice_no","invoice_no"]]},
+    {"alias":"items","table_name":"t_items","parent_alias":"lines","join_pairs":[["item_code","item_code"]]}],
+  "measures":[{"name":"Sales","expression":"Sum(qty*unit_price)"}],
+  "access":[{"type":"role","principal":"management"},{"type":"user","principal":"47000000-0000-0000-0000-000000000004"}]}'::jsonb)$sql$,'builder creates an app with a three-table data model');
+select throws_ok($sql$select public.bi_save_app('{"name":"sales","model":[{"alias":"lines","table_name":"t_lines"}]}'::jsonb)$sql$,'23505',null,'app names are unique');
+select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"a","table_name":"t_lines"},{"alias":"b","table_name":"t_items"}]}'::jsonb)$sql$,'22023','The data model needs exactly one main table','the model needs one main table');
+select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"a","table_name":"t_lines"},{"alias":"b","table_name":"t_items","parent_alias":"a","join_pairs":[["nope","item_code"]]}]}'::jsonb)$sql$,'42703',null,'link fields must exist');
+select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"a","table_name":"no_such_table"}]}'::jsonb)$sql$,'42P01',null,'model tables must be loaded tables');
+select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"a; drop table x","table_name":"t_lines"}]}'::jsonb)$sql$,'22023',null,'table names in the model are validated');
+select lives_ok($sql$insert into ids select 'sheet', public.bi_save_sheet(jsonb_build_object('app_id',(select id from ids where name='sales'),'title','Overview','objects','[{"id":"o1","kind":"bar"}]'::jsonb))$sql$,'builder saves a sheet');
+select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'sheets'),1,'the app has its sheet');
+select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'access'),2,'builders see the access list');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- Query engine
+-- ---------------------------------------------------------------------------
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000003","role":"authenticated"}';
+select is(public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"fn","name":"sum","args":[{"t":"bin","op":"*","l":{"t":"field","name":"qty"},"r":{"t":"field","name":"unit_price"}}]}}]}')->'rows',
+  '[[1550]]'::jsonb,'KPI: Sum(qty*unit_price) over all lines');
+select is(public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","name":"branch"}}],"measures":[{"expr":{"t":"fn","name":"sum","args":[{"t":"bin","op":"*","l":{"t":"field","name":"qty"},"r":{"t":"field","name":"unit_price"}}]}}],"sort":[{"index":1,"desc":true}]}')->'rows',
+  '[["Centurion",1450],["Pretoria",100]]'::jsonb,'bar: sales per branch through the invoice link, sorted by value');
+select is(public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","name":"description"}}],"measures":[{"expr":{"t":"fn","name":"sum","args":[{"t":"bin","op":"*","l":{"t":"field","name":"qty"},"r":{"t":"bin","op":"-","l":{"t":"field","name":"unit_price"},"r":{"t":"field","name":"cost_price"}}}]}}]}')->'rows',
+  '[["Battery",300],["Brake pads",120],["Oil filter",150]]'::jsonb,'gross profit per item through the item link');
+select is(public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","name":"branch"}}],"measures":[{"expr":{"t":"fn","name":"count","distinct":true,"args":[{"t":"field","table":"invoices","name":"invoice_no"}]}}],"selections":[{"expr":{"t":"field","name":"item_code"},"values":["FLT"]}]}')->'rows',
+  '[["Centurion",2]]'::jsonb,'selections filter other fields (Qlik-style associations)');
+select is(public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"fn","name":"sum","args":[{"t":"field","name":"qty"}]}}],"conditions":[{"t":"bin","op":"=","l":{"t":"field","name":"invoice_date"},"r":{"t":"bin","op":"-","l":{"t":"fn","name":"today","args":[]},"r":{"t":"num","v":1}}}]}')->'rows',
+  '[[4]]'::jsonb,'condition: quantity sold yesterday');
+select is(public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","name":"invoice_no"}}],"selections":[{"expr":{"t":"field","name":"unit_price"},"values":[50.00]}]}')->'rows',
+  '[[1],[3]]'::jsonb,'numeric selections match regardless of formatting; no measures gives distinct values');
+select is(public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","name":"item_code"}}],"limit":2}')->'has_more','true'::jsonb,'paging reports more rows');
+select is(public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"bin","op":"/","l":{"t":"fn","name":"sum","args":[{"t":"field","name":"qty"}]},"r":{"t":"num","v":0}}}]}')->'rows','[[null]]'::jsonb,'division by zero gives empty, not an error');
+select is(public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"fn","name":"if","args":[{"t":"bin","op":">","l":{"t":"field","name":"qty"},"r":{"t":"num","v":1}},{"t":"str","v":"Multi"},{"t":"str","v":"Single"}]}}],"measures":[{"expr":{"t":"fn","name":"count","args":[{"t":"star"}]}}]}')->'rows',
+  '[["Multi",2],["Single",3]]'::jsonb,'If() and Count(*)');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"field","name":"qty"}}]}')$sql$,'22023',null,'measures must aggregate');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"fn","name":"sum","args":[{"t":"field","name":"qty"}]}}]}')$sql$,'22023',null,'dimensions cannot aggregate');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"fn","name":"sum","args":[{"t":"fn","name":"sum","args":[{"t":"field","name":"qty"}]}]}}]}')$sql$,'22023',null,'aggregations cannot be nested');
+
+-- injection and reach attempts
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","name":"salary"}}]}')$sql$,'42703',null,'fields outside the data model are unknown');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","table":"t_payroll","name":"salary"}}]}')$sql$,'42P01',null,'tables outside the data model are unknown');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"field","name":"qty\" from bi_data.t_payroll --"}}]}')$sql$,'42703',null,'field names cannot carry SQL');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"fn","name":"pg_sleep","args":[{"t":"num","v":5}]}}]}')$sql$,'22023',null,'only whitelisted functions run');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"bin","op":"; drop table bi.apps; --","l":{"t":"num","v":1},"r":{"t":"num","v":1}}}]}')$sql$,'22023',null,'only whitelisted operators run');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"dimensions":[{"expr":{"t":"num","v":"1); drop table bi.apps; --"}}]}')$sql$,'22023',null,'numbers must be numbers');
+select is(public.bi_query((select id from ids where name='sales'),$q${"dimensions":[{"expr":{"t":"str","v":"x'); drop table bi.apps; --"}}]}$q$)->'rows',$r$[["x'); drop table bi.apps; --"]]$r$::jsonb,'text is always a quoted literal');
+select is(public.bi_query((select id from ids where name='sales'),$q${"dimensions":[{"expr":{"t":"field","name":"branch"}}],"selections":[{"expr":{"t":"field","name":"branch"},"values":["x'); drop table bi.apps; --"]}]}$q$)->'rows','[]'::jsonb,'selected values are always quoted literals');
+select throws_ok($sql$select public.bi_save_app('{"name":"Hack","model":[{"alias":"p","table_name":"t_payroll"}]}'::jsonb)$sql$,'42501',null,'management cannot create apps');
+select throws_ok($sql$select public.bi_save_sheet(jsonb_build_object('app_id',(select id from ids where name='sales'),'title','x'))$sql$,'42501',null,'management cannot edit sheets');
+select is(public.bi_get_app((select id from ids where name='sales'))->'access','null'::jsonb,'viewers do not see the access list');
+reset role;
+select ok(to_regclass('bi.apps') is not null and (select count(*) from bi.apps)=1,'nothing was dropped or changed by the injection attempts');
+
+-- ---------------------------------------------------------------------------
+-- Access: role grant, personal grant, no grant, inactive
+-- ---------------------------------------------------------------------------
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000004","role":"authenticated"}';
+select is(jsonb_array_length(public.bi_list_apps()),1,'a user granted personally sees the app');
+select ok(not public.can_access_workspace('reporting'),'personal app access does not open the data catalogue');
+select is((public.bi_my_access()->>'apps')::int,1,'access summary counts the shared app');
+select is(public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"fn","name":"count","args":[{"t":"star"}]}}]}')->'rows','[[5]]'::jsonb,'and can query it');
+reset role;
+
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000005","role":"authenticated"}';
+select is(jsonb_array_length(public.bi_list_apps()),0,'users without a grant see no apps');
+select throws_ok($sql$select public.bi_get_app((select id from ids where name='sales'))$sql$,'42501',null,'and cannot open one');
+select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"fn","name":"count","args":[{"t":"star"}]}}]}')$sql$,'42501',null,'and cannot query one');
+select throws_ok($sql$select * from bi.apps$sql$,'42501',null,'app tables are not readable directly');
+reset role;
+
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000006","role":"authenticated"}';
+select ok(not (public.bi_my_access()->>'builder')::boolean,'inactive builders lose builder rights');
+select throws_ok($sql$select public.bi_delete_app((select id from ids where name='sales'))$sql$,'42501',null,'inactive builders cannot delete apps');
+reset role;
+
+-- Administrator removes access and deletes
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select is(jsonb_array_length(public.bi_list_principals()->'roles') > 5,true,'builders can list roles for sharing');
+select lives_ok($sql$select public.bi_save_app(jsonb_build_object('id',(select id from ids where name='sales'),'name','Sales','model',(public.bi_get_app((select id from ids where name='sales'))->'model'),'access','[]'::jsonb))$sql$,'administrator removes all access');
+reset role;
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000004","role":"authenticated"}';
+select is(jsonb_array_length(public.bi_list_apps()),0,'access removal takes effect immediately');
+reset role;
+set local role authenticated;
+set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select lives_ok($sql$select public.bi_delete_app((select id from ids where name='sales'))$sql$,'administrator deletes the app');
+select is((select count(*) from public.bi_audit_log() where object_type='app'),3::bigint,'app create, change and delete are audited');
+reset role;
+select is((select count(*) from bi.sheets),0::bigint,'deleting an app deletes its sheets');
+
+select * from finish();
+rollback;

@@ -85,7 +85,7 @@ as $$
     (workspace_name = 'stock_control' and (public.has_role('stock') or public.has_role('management'))) or
     (workspace_name = 'fleet_management' and public.has_role('fleet')) or
     (workspace_name = 'ecommerce' and public.has_role('ecommerce')) or
-    (workspace_name = 'reporting' and (public.has_role('reporting') or public.has_role('management')))
+    (workspace_name = 'reporting' and (public.has_role('reporting') or public.has_role('management') or public.has_role('report_builder')))
   );
 $$;
 
@@ -143,7 +143,7 @@ begin
         select 1 from public.profile_roles direct_role
         where direct_role.profile_id = p.id and direct_role.role_id = app_role
       ) as is_direct,
-      exists (
+      (exists (
         select 1 from public.profile_roles inherited_role
         where inherited_role.profile_id = p.id
           and (
@@ -152,8 +152,16 @@ begin
               'marketing', 'sales_desk', 'returns_claims', 'stock_control', 'reporting'
             ))
             or (inherited_role.role_id = 'sales_manager' and p_app_id = 'sales_desk')
+            or (inherited_role.role_id = 'report_builder' and p_app_id = 'reporting')
           )
-      ) as is_inherited,
+      ) or (p_app_id = 'reporting' and exists (
+        select 1 from bi.app_access app_access
+        where (app_access.principal_type = 'user' and app_access.principal = p.id::text)
+          or (app_access.principal_type = 'role' and exists (
+            select 1 from public.profile_roles shared_role
+            where shared_role.profile_id = p.id and shared_role.role_id = app_access.principal
+          ))
+      ))) as is_inherited,
       case
         when exists (
           select 1 from public.profile_roles reason_role
@@ -168,6 +176,18 @@ begin
             select 1 from public.profile_roles reason_role
             where reason_role.profile_id = p.id and reason_role.role_id = 'management'
           ) then 'management'
+        when p_app_id = 'reporting' and exists (
+          select 1 from public.profile_roles reason_role
+          where reason_role.profile_id = p.id and reason_role.role_id = 'report_builder'
+        ) then 'report_builder'
+        when p_app_id = 'reporting' and exists (
+          select 1 from bi.app_access app_access
+          where (app_access.principal_type = 'user' and app_access.principal = p.id::text)
+            or (app_access.principal_type = 'role' and exists (
+              select 1 from public.profile_roles shared_role
+              where shared_role.profile_id = p.id and shared_role.role_id = app_access.principal
+            ))
+        ) then 'shared_reporting_app'
         when exists (
           select 1 from public.profile_roles reason_role
           where reason_role.profile_id = p.id and reason_role.role_id = app_role
@@ -251,8 +271,16 @@ begin
           'marketing', 'sales_desk', 'returns_claims', 'stock_control', 'reporting'
         ))
         or (inherited_role.role_id = 'sales_manager' and p_app_id = 'sales_desk')
+        or (inherited_role.role_id = 'report_builder' and p_app_id = 'reporting')
       )
-  ) into has_inherited_access;
+  ) or (p_app_id = 'reporting' and exists (
+    select 1 from bi.app_access app_access
+    where (app_access.principal_type = 'user' and app_access.principal = p_profile_id::text)
+      or (app_access.principal_type = 'role' and exists (
+        select 1 from public.profile_roles shared_role
+        where shared_role.profile_id = p_profile_id and shared_role.role_id = app_access.principal
+      ))
+  )) into has_inherited_access;
 
   -- Inherited access is managed through its platform role, never per app.
   if has_inherited_access then
