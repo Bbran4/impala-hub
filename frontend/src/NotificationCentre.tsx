@@ -66,12 +66,35 @@ export default function NotificationCentre({
     __all__: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const loadGeneration = useRef(0);
+  const hadLoadError = useRef(false);
+  const active = enabled && authenticated;
+
+  useEffect(() => {
+    if (!enabled || !supabase) {
+      setAuthenticated(false);
+      return;
+    }
+    let mounted = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (mounted) setAuthenticated(Boolean(data.session));
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (mounted) setAuthenticated(Boolean(session));
+      },
+    );
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [enabled]);
 
   const load = useCallback(
     async (quiet = false) => {
-      if (!enabled || !supabase) return;
+      if (!active || !supabase) return;
       const generation = ++loadGeneration.current;
       if (!quiet) setLoading(true);
       const [listResult, countResult] = await Promise.all([
@@ -87,8 +110,13 @@ export default function NotificationCentre({
       if (generation !== loadGeneration.current) return;
       const error = listResult.error || countResult.error;
       if (error) {
+        hadLoadError.current = true;
         if (!quiet) onError(`Could not load notifications: ${error.message}`);
       } else {
+        if (hadLoadError.current) {
+          hadLoadError.current = false;
+          onError("");
+        }
         setNotifications((listResult.data || []) as UserNotification[]);
         setUnreadCounts(
           Object.fromEntries(
@@ -101,11 +129,11 @@ export default function NotificationCentre({
       }
       if (!quiet) setLoading(false);
     },
-    [enabled, onError],
+    [active, onError],
   );
 
   useEffect(() => {
-    if (!enabled) {
+    if (!active) {
       loadGeneration.current += 1;
       setNotifications([]);
       setUnreadCounts({ __all__: 0 });
@@ -121,7 +149,7 @@ export default function NotificationCentre({
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [enabled, load]);
+  }, [active, load]);
 
   useEffect(() => {
     if (!open) return;
@@ -152,7 +180,7 @@ export default function NotificationCentre({
   }
 
   async function markRead(notification: UserNotification) {
-    if (!supabase || notification.read_at) return;
+    if (!active || !supabase || notification.read_at) return;
     const { error } = await supabase.rpc("mark_user_notification_read", {
       notification_id: notification.id,
     });
@@ -163,7 +191,7 @@ export default function NotificationCentre({
   }
 
   async function markAllRead() {
-    if (!supabase || !unreadInView) return;
+    if (!active || !supabase || !unreadInView) return;
     const channel = activeChannel === "all" ? null : activeChannel;
     const { error } = await supabase.rpc("mark_all_user_notifications_read", {
       notification_channel: channel,
@@ -179,6 +207,8 @@ export default function NotificationCentre({
     closePanel(false);
     onNavigate(notification);
   }
+
+  if (!active) return null;
 
   return (
     <div className="notification-centre">
