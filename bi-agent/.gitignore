@@ -1,0 +1,7 @@
+config.toml
+tables.toml
+.env
+*.crt
+logs/
+.venv/
+__pycache__/
