@@ -26,7 +26,7 @@
 | 1 | Record validation and required-field guidance | Database-backed status transitions, completion prerequisites and clear save errors | Implemented |
 | 2 | Attachment preview and file management | New-tab images, inline PDF previews, downloads, uploader/date, file limits and permanent deletion | Implemented |
 | 3 | Supplier outcome tracking | Capture credits, replacements, supplier responses and pickup/drop-off progress | Implemented |
-| 4 | Customer and invoice search | Faster investigation of claims | Planned |
+| 4 | Customer and invoice search | Substring search across claim values, including customer and invoice fields | Implemented |
 | 5 | Return ageing and SLA reporting | Identify due-soon and overdue claims using an adjustable 7-day default | Implemented |
 | 6 | Exports and audit history | Current-filter CSV/XLSX reports plus named activity history | Implemented |
 | 7 | Automated security and lifecycle tests | Local and CI verification of RLS, CRUD, attachments, audit and signed-out access | Implemented |
@@ -70,4 +70,4 @@ The automated database suite covers table and RPC privileges, active-role worksp
 
 ## Wildcard search
 
-Wildcard search is planned across RFC, customer, invoice, part number and other claim fields.
+Literal substring search is implemented across RFC, customer, invoice, part number and other claim values. True wildcard-pattern semantics such as `*` and `?` remain planned, along with final hosted smoke verification.

@@ -54,17 +54,17 @@ const SALES_ROADMAP_ROWS = [
   ['RFQ statuses', 'Pipeline stages', 'Configurable statuses', 'Implemented; Kanban improvement planned'],
   ['RFQ audit history', 'Chatter/activity history', 'Audit timeline', 'Implemented'],
   ['Attachments', 'Record attachments', 'Protected RFQ attachments', 'Implemented'],
-  ['Send for approval', 'Approval handoff', 'Requires document number, attachment and Complete status; notifies RFQ administrators', 'Partial; needs testing'],
+  ['Send for approval', 'Approval handoff', 'Prerequisite checks exist; notification and decision queue are not connected', 'Partial'],
   ['Sales Desk dashboard', 'Not applicable', 'Team RFQ and sales metrics', 'Implemented; drill-downs planned'],
-  ['Sales-code dashboard membership', 'Not applicable', 'Daily Sales and RFQ Performance use active profile sales codes; current figures are temporary test data', 'Partial; replace seed data with live sales source'],
+  ['Sales-code dashboard membership', 'Not applicable', 'Dashboard demonstration rows are not yet linked to active profiles', 'Deferred until live sales data'],
   ['Workspace permissions', 'Role-based application access', 'Salespeople currently see Sales Desk only; Supabase workspace permission contract added', 'Partial; enforce on every workspace backend'],
   ['RFQ analytics', 'Not applicable', 'Period-filtered analytics', 'Implemented; funnel improvements planned'],
   ['Search and filtering', 'Advanced search panels', 'Basic filters', 'Partial'],
   ['Notifications', 'Activities/messages', 'Not implemented', 'Missing'],
   ['Bulk operations', 'Mass actions', 'Not implemented', 'Missing'],
-  ['Export and reporting', 'List/report exports', 'Partial', 'Partial'],
-  ['Evolve DMS/Qlik reconciliation', 'Not applicable', 'Planned integration', 'Planned'],
-  ['Personal consultant dashboard', 'Not applicable', 'Planned sales and GP reporting', 'Planned'],
+  ['Export and reporting', 'List/report exports', 'CSV/XLSX/print RFQ export is not implemented', 'Missing'],
+  ['Evolve DMS/Qlik reconciliation', 'Not applicable', 'External data integration is intentionally postponed', 'Deferred'],
+  ['Personal consultant dashboard', 'Not applicable', 'Requires live sales and GP data', 'Deferred'],
 ]
 
 const ROADMAP_ROWS = [
@@ -72,18 +72,19 @@ const ROADMAP_ROWS = [
   ['Persistent session', 'Yes', 'Persistent session with retry protection', 'Implemented'],
   ['Logout', 'Yes', 'Yes', 'Implemented'],
   ['Facebook connection', 'Social account configuration', 'Meta OAuth, Page selection, diagnostics, disconnect', 'Implemented'],
-  ['Instagram connection', 'Social account configuration', 'Meta OAuth for professional accounts', 'Implemented; live connection working'],
+  ['Instagram connection', 'Social account configuration', 'Schema and UI foundation only; Supabase OAuth is disabled', 'Deferred'],
   ['WhatsApp', 'Not central', 'Deferred', 'Correctly deferred'],
-  ['Wildcard search', 'Search panels', 'Wildcard matching across posts, campaigns and captions', 'Implemented'],
+  ['Search', 'Search panels', 'Literal title and caption substring search', 'Partial; campaign and wildcard search planned'],
   ['Feed', 'Account feeds, streams, metrics', 'Network columns, 25 newest posts, metrics', 'Implemented; provider availability applies'],
   ['Create post', 'New Post workflow', 'Create Post editor', 'Implemented'],
   ['Edit draft posts', 'Yes', 'Yes', 'Implemented'],
   ['Schedule posts', 'Yes', 'Yes', 'Implemented'],
   ['Publish now', 'Yes', 'Facebook workflow', 'Partial'],
   ['Facebook publishing', 'Yes', 'OAuth/Page publishing', 'Implemented'],
-  ['Instagram publishing', 'Yes', 'OAuth/API foundation', 'Partial; live publishing verification required'],
+  ['Instagram publishing', 'Yes', 'Not enabled on the Supabase deployment', 'Deferred'],
   ['Likes, comments, shares', 'Yes', 'Stored/displayed where synced, including reactions and saves', 'Implemented; provider coverage varies'],
-  ['Views, reach, impressions', 'Odoo insights', 'Facebook post views, reach and provider fallbacks', 'Implemented; live provider availability applies'],
+  ['Views and reach', 'Odoo insights', 'Facebook post views, reach and provider fallbacks', 'Implemented; provider availability applies'],
+  ['Impressions', 'Odoo insights', 'Provider fields exist but live coverage is not verified', 'Partial'],
   ['Clicks', 'Yes', 'Post model, Facebook and Instagram provider paths', 'Implemented; provider availability applies'],
   ['Post analytics detail', 'Post cards and insights', 'Post detail performance metrics', 'Implemented; provider availability applies'],
   ['Campaign creation', 'Yes', 'Yes', 'Implemented'],
@@ -562,8 +563,8 @@ export default function App() {
   const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
-  const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims with RC date/sequence references','Implemented'],['Outcome handling','Unknown until decided','Validated status transitions, rejection/reopen reasons and receipt checks','Implemented'],['Attachments','Evidence files','New-tab images, PDF previews, downloads and audited permanent deletion','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response, dated credit/replacement receipts and pickup/drop-off tracking','Implemented'],['Ageing and SLA','Claim ageing reports','7-day calendar SLA, 2-day warning, date-range/overdue filters and closure age','Implemented'],['Exports and audit','Traceable reporting','Filtered CSV/XLSX reports, summary breakdowns and named audit history','Implemented'],['Wildcard search','Search','Wildcard matching across claim fields','Planned']]
-const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Supabase CRUD, atomic supplier replacement, archival and named history','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','Active Supabase snapshot, persisted transfers and Evolve export','Implemented'],['Stock Reordering','Inventory planning','Active Supabase snapshot, shared mover rules, supply metrics and filters','Implemented'],['Shared configuration','Locations, thresholds and statuses','Supabase-backed settings with audited administrator controls','Implemented'],['Versioned imports','Safe snapshot replacement','Chunked staging, validation, audit and transactional activation','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['CSV/XLSX import','Administrator upload','Mapping, preview validation, hashing, staging and activation','Implemented'],['Google Sheets ingestion','Private inventory feed','Server-side read-only sync, canonical validation and staged snapshots','Implemented'],['Qlik/ODBC adapter','ERP inventory feed','Replace the Sheet extractor without changing the snapshot pipeline','Planned'],['Supplier response workflow','Quote lifecycle','Track quote requests and supplier responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Wildcard search','Search','Wildcard matching across parts, suppliers and sales codes','Implemented']]
+  const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims with RC date/sequence references','Implemented'],['Customer and invoice search','Record investigation','Substring search across claim fields, including customer and invoice','Implemented'],['Outcome handling','Unknown until decided','Validated status transitions, rejection/reopen reasons and receipt checks','Implemented'],['Attachments','Evidence files','New-tab images, PDF previews, downloads and audited permanent deletion','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response, dated credit/replacement receipts and pickup/drop-off tracking','Implemented'],['Ageing and SLA','Claim ageing reports','7-day calendar SLA, 2-day warning, date-range/overdue filters and closure age','Implemented'],['Exports and audit','Traceable reporting','Filtered CSV/XLSX reports, summary breakdowns and named audit history','Implemented'],['Wildcard syntax','Advanced search','Literal substring search exists; * and ? pattern semantics are not implemented','Planned'],['Hosted verification','Production readiness','Signed URL, preview, concurrency and role smoke tests','Planned']]
+const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Supabase CRUD, atomic supplier replacement, archival and named history','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','Active Supabase snapshot, persisted transfers and Evolve export','Implemented'],['Stock Reordering','Inventory planning','Active Supabase snapshot, shared mover rules, supply metrics and filters','Implemented'],['Shared configuration','Locations, thresholds and statuses','Supabase-backed settings with audited administrator controls','Implemented'],['Versioned imports','Safe snapshot replacement','Chunked staging, validation, audit and transactional activation','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['CSV/XLSX import','Administrator upload','Mapping, preview validation, hashing, staging and activation','Implemented'],['Google Sheets ingestion','Private inventory feed','Removed from the deployed application; database history retained but disabled','Retired'],['Qlik/ODBC adapter','ERP inventory feed','Real external stock data is intentionally postponed','Deferred'],['Historical SQLite reconciliation','Legacy data','Reconcile legacy records only when production data work resumes','Deferred'],['Supplier response workflow','Quote lifecycle','Track quote requests and responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Reorder recommendations','Inventory action','Turn approved queries into stock actions','Planned'],['Search','Parts and suppliers','Substring search across parts, descriptions, suppliers, alternatives and sales codes','Implemented']]
 
 const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
   const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Reordering' || page === 'Stock Data Import' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
@@ -719,7 +720,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <div className="section-head">
               <div><h2>RFQ capability workspace</h2><p>Current Sales Desk coverage, known gaps, and improvement priorities.</p></div>
             </div>
-            <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ approval review queue</span><span>Notifications and SLA reminders</span><span>Bulk actions and exports</span><span>DMS/Qlik reconciliation</span></div>
+            <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ approval review queue</span><span>Notifications and SLA reminders</span><span>Bulk actions and exports</span><span>Granular server-side permissions</span></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
               {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
@@ -727,7 +728,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
         ) : page === 'Returns & Claims Roadmap' || page === 'Stock Control Roadmap' ? (
           <section className="roadmap-page">
             <div className="section-head"><div><h2>{page === 'Returns & Claims Roadmap' ? 'Returns & Claims roadmap' : 'Smart Stock Control roadmap'}</h2><p>Current workspace coverage, known gaps, and implementation priorities.</p></div></div>
-            <div className="roadmap-priorities">{page === 'Returns & Claims Roadmap' ? <><strong>Next priorities</strong><span>Supplier outcome tracking</span><span>Claim ageing and SLA reporting</span><span>Attachment preview and management</span><span>Exports and audit history</span></> : <><strong>Next priorities</strong><span>Qlik/ODBC source adapter</span><span>Supplier response workflow</span><span>Approval workflow</span><span>Supplier history</span></>}</div>
+            <div className="roadmap-priorities">{page === 'Returns & Claims Roadmap' ? <><strong>Next priorities</strong><span>Hosted attachment and role smoke tests</span><span>True wildcard-pattern search</span><span>Production workflow verification</span></> : <><strong>Next priorities</strong><span>Verify manual imports and transfers in production</span><span>Supplier response workflow</span><span>Approval workflow</span><span>Supplier history and recommendations</span></>}</div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
               {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
@@ -741,7 +742,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
             <div className="roadmap-priorities">
               <strong>Next priorities</strong>
-              <span>Instagram boosted metrics and publishing verification</span><span>Notifications and social conversations</span><span>Sentiment analysis and reporting</span><span>Advanced search and reporting</span>
+              <span>Advanced and campaign-aware search</span><span>Notifications and social conversations</span><span>Sentiment analysis and reporting</span><span>Instagram integration remains deferred</span>
             </div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Odoo</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
               {ROADMAP_ROWS.map(([capability, odoo, impala, status]) => <tr key={capability}><td>{capability}</td><td>{odoo}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') || status.startsWith('Incomplete') ? 'missing' : 'partial')}>{status}</span></td></tr>)}

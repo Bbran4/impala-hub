@@ -1,6 +1,6 @@
 # Sales Desk Roadmap
 
-Updated: 2026-10-21
+Updated: 2026-10-28
 
 ## Current review
 
@@ -17,7 +17,7 @@ Implemented today:
 - Sales Desk dashboard with team metrics.
 - RFQ analytics with period filters and charts.
 - Drag-and-drop ordering for configuration items.
-- Send for Approval action has an initial implementation for existing RFQs, with document number, attachment and Complete-status guards plus persisted administrator notifications; end-to-end testing remains.
+- Send for Approval has document-number, attachment and closed-status guards. Administrator notification persistence and the approval decision queue are not connected yet.
 
 ## Improvement roadmap
 
@@ -56,14 +56,14 @@ The Daily Sales and RFQ Performance tables currently contain temporary test data
 | RFQ analytics | Implemented | Add conversion funnel and cohort comparisons |
 | Daily sales and RFQ performance membership | Temporary Supabase seed data | Restrict rows to active users with profile sales codes and replace test values with live sales data |
 | Search/filtering | Basic filters | Add advanced filters and saved views |
-| Send for approval | Partial; initial implementation with document, attachment and Complete-status guards | Test end-to-end administrator notification, then add approval queue and decision tracking |
-| Notifications | Approval notification persistence implemented | Add bell, unread count, and reminders |
+| Send for approval | Partial; prerequisite checks implemented | Add administrator notification persistence, approval queue and decision tracking |
+| Notifications | Missing from the active approval path | Add persistence, bell, unread count, and reminders |
 | Bulk operations | Missing | Add multi-select actions |
-| Export/reporting | Partial | Add CSV, XLSX, and print views |
-| DMS integration | Planned | Reconcile with Qlik before production use |
-| Personal consultant dashboard | Planned | Add sales, GP, customer, and daily reporting |
+| Export/reporting | Missing | Add CSV, XLSX, and print views |
+| DMS integration | Deferred | Reconcile with Qlik when real external data work resumes |
+| Personal consultant dashboard | Deferred | Requires live sales, GP, customer, and daily reporting data |
 
 
-## Wildcard search
+## Search
 
-Sales Desk roadmap now includes wildcard search across RFQ numbers, customers, document numbers and other searchable RFQ fields.
+Sales Desk provides literal substring search across RFQ numbers, customers and document numbers. True wildcard-pattern syntax and advanced saved filters remain planned.

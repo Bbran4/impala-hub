@@ -2,7 +2,9 @@
 
 ## Scope
 
-This record covers the automated Google Sheets ingestion implementation prepared on 2026-10-27 on branch `supabase-migration`. It is source-repository analysis and implementation evidence; no private workbook contents or credentials were captured.
+This record covers the automated Google Sheets ingestion prototype prepared on 2026-10-27 on branch `supabase-migration`. It is retained as historical implementation evidence; no private workbook contents or credentials were captured.
+
+**Retirement notice (2026-10-28):** the prototype was intentionally removed from the deployable frontend and Vercel functions. Migration `0045_retire_google_stock_ingestion.sql` disables sources and revokes execution grants while preserving database history. The artifact hashes below describe the retired prototype and do not describe current deployable files.
 
 ## Provenance
 

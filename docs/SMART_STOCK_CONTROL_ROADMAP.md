@@ -4,20 +4,20 @@
 
 | Stage | Scope | Status |
 |---|---|---|
-| 1 | Evidence-backed behavior, permissions and acceptance contract | Implemented; verification pending |
-| 2 | Supabase tables, constraints, RLS, actor attribution and audit foundation | Implemented; deployment pending |
-| 3 | Parts Query frontend and transactional supplier workflow | Implemented; deployment pending |
-| 4 | Shared configuration and administrator controls | Implemented; deployment pending |
-| 5 | Versioned stock-import pipeline | Implemented; deployment pending |
-| 6 | CSV/XLSX import and validation UI | Implemented; deployment pending |
-| 7 | Stock Booking, persisted transfer batches and Evolve export | Implemented; deployment pending |
-| 8 | Stock Reordering and shared calculations | Implemented; deployment pending |
-| 9 | Automated Google Sheets ingestion and replaceable source adapter | Implemented; deployment pending |
-| 10 | Historical SQLite reconciliation | Planned |
-| 11 | Full frontend and database acceptance suite | Planned |
+| 1 | Evidence-backed behavior, permissions and acceptance contract | Implemented |
+| 2 | Supabase tables, constraints, RLS, actor attribution and audit foundation | Implemented |
+| 3 | Parts Query frontend and transactional supplier workflow | Implemented |
+| 4 | Shared configuration and administrator controls | Implemented |
+| 5 | Versioned stock-import pipeline | Implemented |
+| 6 | CSV/XLSX import and validation UI | Implemented |
+| 7 | Stock Booking, persisted transfer batches and Evolve export | Implemented |
+| 8 | Stock Reordering and shared calculations | Implemented |
+| 9 | Automated Google Sheets ingestion | Retired; disabled by migration 0045 |
+| 10 | Historical SQLite reconciliation and real external data | Deferred |
+| 11 | Frontend and database tests for current manual workflows | Implemented; hosted smoke testing remains |
 | 12 | Production cutover and retirement of Smart Stock FastAPI routes | Planned |
 
-The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sql`. It does not switch the current screens away from FastAPI. That cutover begins with Parts Queries in stage 3 after the migration is applied and verified.
+The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sql`. Current Parts Query, Stock Booking, Stock Reordering, import and configuration screens use Supabase. Legacy FastAPI retirement remains a final cutover task after hosted verification.
 
 Stage 3 is defined in `supabase/migrations/0038_smart_stock_parts_queries.sql` and the `PartsQueries` frontend. It moves Parts Query reads, atomic create/update with complete supplier replacement, audited archival, active Sales Code selection, role-aware editing and named history to Supabase.
 
@@ -27,18 +27,18 @@ Stage 5 is defined in `supabase/migrations/0040_smart_stock_import_pipeline.sql`
 
 Stage 6 adds the administrator-only `Stock Data Import` screen. It reads UTF-8 CSV/TSV and XLSX files locally, selects matching worksheets, auto-maps known headers, allows explicit mapping corrections, blocks Excel formulas and unsafe formula-like text, validates database precision and duplicate part/franchise keys, previews a bounded sample, hashes the exact file pair and uploads sequential chunks to the Stage 5 pipeline. Staging/validation and activation remain separate confirmations. Rejected attempts remain auditable and may be retried with the same source checksum through `supabase/migrations/0041_stock_import_retry_support.sql`.
 
-The import requires one Booking dataset and one Reordering dataset. Use either two CSV/TSV files or two XLSX files; a single XLSX workbook may be selected twice when it contains matching Booking and Reordering worksheets. Source mappings are documented in `docs/SMART_STOCK_IMPORT_FORMAT.md`. Background Google Sheets/Qlik execution and its service-job actor model remain Stage 9.
+The import requires one Booking dataset and one Reordering dataset. Use either two CSV/TSV files or two XLSX files; a single XLSX workbook may be selected twice when it contains matching Booking and Reordering worksheets. Source mappings are documented in `docs/SMART_STOCK_IMPORT_FORMAT.md`. Real external source integration is intentionally deferred.
 
 Stage 7 is defined in `supabase/migrations/0042_stock_booking_transfers.sql` and the Supabase Stock Booking frontend. The workspace reads only the active import snapshot and active location configuration. Stock operators and administrators can save a warehouse-to-ER/PTA transfer through one database function that validates the active snapshot, destination, whole-number quantity and remaining warehouse availability across earlier exports from that snapshot. Transfer creation is serialized to prevent concurrent overbooking. Every transfer receives a concurrent-safe `ST-` reference, retains its source and destination bins, appears in export history, can be downloaded again and writes an audit event before the browser downloads the Excel-compatible Evolve CSV. Management remains read-only and direct browser writes are denied.
 
 Stage 8 is defined in `supabase/migrations/0043_stock_reordering_workspace.sql` and the Supabase Stock Reordering frontend. A security-invoker database view selects only the active snapshot and calculates supply percentage plus inclusive slow-mover and A&B-mover flags from the shared thresholds. The frontend loads large snapshots in bounded pages, searches parts, descriptions, suppliers and alternative numbers, retains supplier/mover/supply filters and performs stable numeric sorting. Visible results are paginated to keep the browser responsive. Signed-out, inactive, Sales and unrelated roles remain outside the underlying Row Level Security boundary.
 
-Stage 9 is defined in `supabase/migrations/0044_stock_ingestion_sources.sql`, the Vercel `/api/stock/ingestion/sync` function and the automated-source controls on **Stock Data Import**. The first adapter reads a private Google Sheet through a read-only Google service account, detects formulas, applies the same mapping and row validation as manual imports, computes a deterministic content checksum and uploads both datasets through service-only wrappers around the existing Stage 5 pipeline. Manual and daily scheduled runs are claimed per source to prevent overlap, retain sanitized run history and finish at `validated`; activation remains a separate administrator decision. Provider credentials remain server-only. The adapter contract is intentionally source-neutral so a later Qlik or ERP/ODBC extractor can produce the same canonical Booking/Reordering envelope without writing snapshot tables directly.
+Stage 9 was prototyped in migration `0044`, then intentionally retired after the Google Sheets deployment was not adopted. Migration `0045_retire_google_stock_ingestion.sql` disables configured sources and revokes execution access while retaining schema and run history for auditability. The Vercel endpoint, cron, Google dependency and application controls have been removed. Manual CSV/XLSX imports remain the supported data-loading path. Qlik, ERP/ODBC and other real data sources are deferred.
 
 ### Permission contract
 
 - Administrators have full operational, configuration and import access.
-- Stock users can operate Parts Queries and, in later stages, create validated booking exports. They cannot change shared configuration or replace stock snapshots.
+- Stock users can operate Parts Queries and create validated booking transfers/exports. They cannot change shared configuration or replace stock snapshots.
 - Management users have read-only access.
 - Salesperson and unrelated workspace roles cannot access Smart Stock data.
 - Inactive and signed-out users have no access.
@@ -80,13 +80,14 @@ These rules are enforced through Supabase Row Level Security. Frontend visibilit
 
 | Priority | Capability | Outcome | Status |
 |---|---|---|---|
-| 1 | Private Google Sheets stock ingestion | Refresh and validate stock data without browser file uploads | Implemented |
+| 1 | Manual CSV/XLSX import and activation | Maintain safe demonstration snapshots without a live external source | Implemented |
 | 2 | Evolve picking-list export | Export franchise, locations, bins, quantities and comments using the supplied transfer format | Implemented |
-| 3 | Supplier response workflow | Track quote requests and responses | Planned |
-| 4 | Approval workflow | Approve queries and supplier selections | Planned |
-| 5 | Supplier history | Reuse supplier performance and pricing history | Planned |
-| 6 | Qlik/ERP ODBC source adapter | Replace the pilot Sheet extractor without changing the snapshot pipeline | Planned |
-| 7 | Reorder recommendations | Turn approved queries into stock actions | Planned |
+| 3 | Hosted verification | Verify imports, permissions, transfers and downloads on the deployed application | Planned |
+| 4 | Supplier response workflow | Track quote requests and responses | Planned |
+| 5 | Approval workflow | Approve queries and supplier selections | Planned |
+| 6 | Supplier history | Reuse supplier performance and pricing history | Planned |
+| 7 | Qlik/ERP ODBC source adapter | Connect authoritative stock data when real-data integration resumes | Deferred |
+| 8 | Reorder recommendations | Turn approved queries into stock actions | Planned |
 
 Feature expansion remains behind migration parity. Supplier response, approval, supplier-history and recommendation work starts only after the existing Parts Query, Booking and Reordering workflows have passed the Supabase cutover checks.
 
@@ -102,6 +103,6 @@ Stock Booking acceptance direction:
 - Location descriptions are display-only and are never included in exported location values.
 
 
-## Wildcard search
+## Search
 
-Wildcard search is available across part numbers, descriptions, suppliers and sales codes.
+Substring search is available across part numbers, descriptions, suppliers, alternatives and sales codes. True wildcard-pattern syntax is not claimed.

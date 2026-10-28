@@ -3,10 +3,6 @@
     {
       "path": "/api/marketing/facebook/publish-due",
       "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/stock/ingestion/sync",
-      "schedule": "0 3 * * *"
     }
   ]
 }

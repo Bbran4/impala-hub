@@ -1,15 +1,15 @@
 # Impala Hub Marketing Roadmap
 
-Updated: 2026-10-21
+Updated: 2026-10-28
 
-This workspace tracks parity between the Odoo Social Marketing workflow and Impala Hub Marketing.
+This workspace tracks parity between the Odoo Social Marketing workflow and the current Supabase/Vercel Impala Hub deployment. Older FastAPI provider routes are legacy implementation evidence and are not treated as active hosted capabilities.
 
 ## Current priorities
 
-1. Verify Instagram boosted metrics and publishing against a live professional account.
+1. Expand search to campaigns and advanced filters.
 2. Add notifications and social conversations.
 3. Add sentiment analysis and advanced reporting.
-4. Expand advanced search and reporting.
+4. Keep Instagram connectivity, publishing and insights deferred until that migration resumes.
 
 ## Parity table
 
@@ -19,7 +19,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 | Persistent session | Yes | Persistent session with retry protection | Implemented |
 | Logout | Yes | Yes | Implemented |
 | Facebook connection | Social account configuration | Meta OAuth, Page selection, diagnostics, disconnect | Implemented |
-| Instagram connection | Social account configuration | Meta OAuth for professional accounts | Implemented; live connection working |
+| Instagram connection | Social account configuration | Schema and UI foundation; Supabase OAuth is disabled | Deferred |
 | WhatsApp | Not central | Deferred | Correctly deferred |
 | Feed | Account feeds, streams, metrics | Network columns, 25 newest posts, metrics | Implemented; provider availability applies |
 | Create post | New Post workflow | Create Post editor | Implemented |
@@ -29,7 +29,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 | Schedule posts | Yes | Yes | Implemented |
 | Publish now | Yes | Facebook workflow | Partial |
 | Facebook publishing | Yes | OAuth/Page publishing | Implemented |
-| Instagram publishing | Yes | OAuth/API foundation | Partial; live publishing verification required |
+| Instagram publishing | Yes | Not enabled on the Supabase deployment | Deferred |
 | Likes | Yes | Stored/displayed where synced, including reactions and saves | Implemented; provider availability applies |
 | Comments | Yes | Stored/displayed where synced | Implemented; provider availability applies |
 | Shares | Yes | Provider shares | Implemented; provider availability applies |
@@ -57,15 +57,15 @@ This workspace tracks parity between the Odoo Social Marketing workflow and Impa
 
 ## Acceptance notes
 
-- Facebook and Instagram are the only active social providers.
+- Facebook is the active social provider. Instagram and WhatsApp are deferred.
 - Disconnecting a provider removes mirrored published records locally; it does not delete provider content.
 - The Posts manager retains the full local history; the Feed displays the 25 newest posts per connected network.
 - Facebook Views, reach and clicks are implemented with current Meta post insight fallbacks; live provider responses determine which values are available for a specific post.
 
 
-## Wildcard search
+## Search status
 
-Marketing roadmap now includes wildcard search across posts, campaigns, captions and supported searchable fields.
+Marketing currently provides literal substring search over post titles and captions plus basic status, campaign and month filters. Campaign-name search, saved filters and true wildcard-pattern syntax remain planned.
 
 
 ## Recently completed

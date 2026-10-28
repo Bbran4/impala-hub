@@ -1,5 +1,7 @@
 # Smart Stock Control: Stage 9 Ingestion Specification
 
+> Retired on 2026-10-28. This specification is preserved as historical design evidence. Google Sheets ingestion is no longer a deployable Impala Hub capability; manual CSV/XLSX imports remain supported and real external data integration is deferred.
+
 ## Input and output
 
 The Google workbook supplies two configured tabs: Stock Booking and Stock Reordering. Header aliases and row validation are identical to manual Smart Stock imports. The adapter output is a canonical envelope containing source type, retrieval time, checksum, Booking rows and Reordering rows.
