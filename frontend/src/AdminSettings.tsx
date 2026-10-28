@@ -25,6 +25,8 @@ type AccessRow = {
   access_reason: string | null
 }
 
+type CampaignDropTarget = { type: string; edge: 'before' | 'after' }
+
 type Props = {
   integrations: any[]
   facebookPages: Array<{ id: string; name: string }>
@@ -72,6 +74,7 @@ export default function AdminSettings(props: Props) {
   const [accessSearch, setAccessSearch] = useState('')
   const [campaignDraft, setCampaignDraft] = useState('')
   const [draggedCampaignType, setDraggedCampaignType] = useState<string | null>(null)
+  const [campaignDropTarget, setCampaignDropTarget] = useState<CampaignDropTarget | null>(null)
   const accessRequest = useRef(0)
   const selectedApp = APPS.find((app) => app.id === selectedAppId) || APPS[0]
 
@@ -116,14 +119,27 @@ export default function AdminSettings(props: Props) {
     setSavingProfileId(null)
   }
 
-  function reorderCampaignType(target: string) {
-    if (!draggedCampaignType || draggedCampaignType === target) return
+  function campaignDropEdge(event: React.DragEvent<HTMLDivElement>): 'before' | 'after' {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    return event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after'
+  }
+
+  function showCampaignDropTarget(event: React.DragEvent<HTMLDivElement>, target: string) {
+    event.preventDefault()
+    if (!draggedCampaignType || draggedCampaignType === target) { setCampaignDropTarget(null); return }
+    const edge = campaignDropEdge(event)
+    setCampaignDropTarget({ type: target, edge })
+  }
+
+  function reorderCampaignType(target: string, edge: 'before' | 'after') {
+    if (!draggedCampaignType || draggedCampaignType === target) { setCampaignDropTarget(null); return }
     const next = [...props.campaignTypes]
     const from = next.indexOf(draggedCampaignType)
-    const to = next.indexOf(target)
     next.splice(from, 1)
-    next.splice(to, 0, draggedCampaignType)
+    const targetIndex = next.indexOf(target)
+    next.splice(targetIndex + (edge === 'after' ? 1 : 0), 0, draggedCampaignType)
     setDraggedCampaignType(null)
+    setCampaignDropTarget(null)
     void props.reorderCampaignTypes(next)
   }
 
@@ -153,23 +169,25 @@ export default function AdminSettings(props: Props) {
               <div className="integration-list">
                 {props.integrations.filter((item) => item.provider === 'facebook' || item.provider === 'instagram').map((item) => (
                   <div className="integration" key={item.provider}>
-                    <div className={`provider-icon ${item.provider}`}>{item.provider === 'facebook' ? 'f' : '◎'}</div>
-                    <div className="integration-info">
-                      <b>{item.label || (item.provider === 'facebook' ? 'Facebook' : 'Instagram')}</b>
-                      <p>{item.note || (item.status === 'connected' ? 'Live account identity check passed.' : 'Official account connection is not configured.')}</p>
-                      {item.provider === 'facebook' && item.page_id && <p><strong>Page ID:</strong> {item.page_id}</p>}
-                      {item.provider === 'instagram' && item.account_id && <p><strong>Account ID:</strong> {item.account_id}</p>}
-                      {item.username && <p><strong>Username:</strong> @{item.username}</p>}
-                      {item.last_checked_at && <p><strong>Last checked:</strong> {new Date(item.last_checked_at).toLocaleString()}</p>}
-                      {item.last_success_at && <p><strong>Last successful check:</strong> {new Date(item.last_success_at).toLocaleString()}</p>}
-                      {item.expires_at && <p><strong>Token expires:</strong> {new Date(item.expires_at * 1000).toLocaleString()}</p>}
-                      {item.data_access_expires_at && <p><strong>Data access expires:</strong> {new Date(item.data_access_expires_at * 1000).toLocaleString()}</p>}
-                      {item.granted_permissions?.length > 0 && <p><strong>Granted permissions:</strong> {item.granted_permissions.join(', ')}</p>}
-                      {item.missing_permissions?.length > 0 && <p><strong>Missing permissions:</strong> {item.missing_permissions.join(', ')}</p>}
-                      {item.diagnostic_note && <p>{item.diagnostic_note}</p>}
-                      {item.token_warning && <p className="token-warning"><strong>Token warning:</strong> {item.token_warning}</p>}
+                    <div className="integration-main">
+                      <div className={`provider-icon ${item.provider}`}>{item.provider === 'facebook' ? 'f' : '◎'}</div>
+                      <div className="integration-info">
+                        <b>{item.label || (item.provider === 'facebook' ? 'Facebook' : 'Instagram')}</b>
+                        <p>{item.note || (item.status === 'connected' ? 'Live account identity check passed.' : 'Official account connection is not configured.')}</p>
+                        {item.provider === 'facebook' && item.page_id && <p><strong>Page ID:</strong> {item.page_id}</p>}
+                        {item.provider === 'instagram' && item.account_id && <p><strong>Account ID:</strong> {item.account_id}</p>}
+                        {item.username && <p><strong>Username:</strong> @{item.username}</p>}
+                        {item.last_checked_at && <p><strong>Last checked:</strong> {new Date(item.last_checked_at).toLocaleString()}</p>}
+                        {item.last_success_at && <p><strong>Last successful check:</strong> {new Date(item.last_success_at).toLocaleString()}</p>}
+                        {item.expires_at && <p><strong>Token expires:</strong> {new Date(item.expires_at * 1000).toLocaleString()}</p>}
+                        {item.data_access_expires_at && <p><strong>Data access expires:</strong> {new Date(item.data_access_expires_at * 1000).toLocaleString()}</p>}
+                        {item.granted_permissions?.length > 0 && <p><strong>Granted permissions:</strong> {item.granted_permissions.join(', ')}</p>}
+                        {item.missing_permissions?.length > 0 && <p><strong>Missing permissions:</strong> {item.missing_permissions.join(', ')}</p>}
+                        {item.diagnostic_note && <p>{item.diagnostic_note}</p>}
+                        {item.token_warning && <p className="token-warning"><strong>Token warning:</strong> {item.token_warning}</p>}
+                        <span className="status-badge">{item.status === 'connected' ? `Connected${item.account_name ? `: ${item.account_name}` : ''}` : item.status === 'warning' ? 'Permission warning' : item.status === 'error' ? 'Connection error' : 'Not connected'}</span>
+                      </div>
                     </div>
-                    <span className="status-badge">{item.status === 'connected' ? `Connected${item.account_name ? `: ${item.account_name}` : ''}` : item.status === 'warning' ? 'Permission warning' : item.status === 'error' ? 'Connection error' : 'Not connected'}</span>
                     {item.provider === 'facebook' ? <div className="integration-actions">
                       <button className="primary" disabled={props.busy} onClick={() => void props.connectFacebook()}>{props.busy ? 'Working...' : item.status === 'connected' ? 'Reconnect Facebook' : 'Connect Facebook'}</button>
                       <button className="secondary" disabled={props.busy || item.status === 'not_connected'} onClick={() => void props.checkFacebookConnection()}>Check connection</button>
@@ -194,7 +212,18 @@ export default function AdminSettings(props: Props) {
             <section className="admin-settings-panel">
               <div className="section-head"><div><h2>Campaign types</h2><p>Manage the categories used by campaigns and grouped post insights.</p></div><Tags size={19} /></div>
               <div className="campaign-type-add"><input value={campaignDraft} placeholder="Add campaign type" onChange={(event) => setCampaignDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && campaignDraft.trim()) void props.addCampaignType(campaignDraft.trim()).then((saved) => { if (saved) setCampaignDraft('') }) }} /><button className="primary" disabled={!campaignDraft.trim()} onClick={() => void props.addCampaignType(campaignDraft.trim()).then((saved) => { if (saved) setCampaignDraft('') })}>Add type</button></div>
-              <div className="campaign-type-list">{props.campaignTypes.map((type) => <div className="campaign-type-row" key={type} draggable onDragStart={() => setDraggedCampaignType(type)} onDragOver={(event) => event.preventDefault()} onDrop={() => reorderCampaignType(type)}><span>☷ {type}</span><button className="text-button" onClick={() => void props.deleteCampaignType(type)}>Remove</button></div>)}</div>
+              <div className="campaign-type-list">{props.campaignTypes.map((type) => {
+                const dropEdge = campaignDropTarget?.type === type ? campaignDropTarget.edge : null
+                return <div
+                  className={`campaign-type-row ${draggedCampaignType === type ? 'dragging' : ''} ${dropEdge ? `drop-${dropEdge}` : ''}`}
+                  key={type}
+                  draggable
+                  onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; setDraggedCampaignType(type); setCampaignDropTarget(null) }}
+                  onDragOver={(event) => showCampaignDropTarget(event, type)}
+                  onDrop={(event) => { event.preventDefault(); reorderCampaignType(type, campaignDropEdge(event)) }}
+                  onDragEnd={() => { setDraggedCampaignType(null); setCampaignDropTarget(null) }}
+                ><span>☷ {type}</span><button className="text-button" onClick={() => void props.deleteCampaignType(type)}>Remove</button></div>
+              })}</div>
             </section>
           </>}
 
