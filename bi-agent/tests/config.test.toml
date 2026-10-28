@@ -1,0 +1,14 @@
+[agent]
+name = "test-agent"
+tables_file = "tables.test.toml"
+poll_seconds = 1
+batch_size = 1000
+log_file = "logs/test-agent.log"
+[supabase]
+db_url = "postgresql://bi_agent:${BI_AGENT_DB_PASSWORD}@localhost:5432/sb"
+[sources.erp]
+odbc = "Driver={PostgreSQL Unicode};Server=localhost;Port=5432;Database=erp;Uid=erp_reader;Pwd=${ERP_PASSWORD};BoolsAsChar=0"
+isolation = "read_uncommitted"
+[sources.branches]
+odbc = "Driver={SQLite3};Database=tests/branches.db"
+app_requests = ["test_connection", "list_tables", "list_columns", "preview"]

@@ -1,0 +1,58 @@
+/* Reporting workspace (data loader). Builds on the shared rfq-, sd- and roadmap- styles. */
+.rp-live{margin-left:auto;color:#82909a}
+.sd-session-bar .rp-live+.secondary{margin-left:4px}
+.rp-metric-text{font-size:20px!important}
+.rp-toolbar{display:flex;align-items:end;gap:12px;padding:14px 16px;background:#fff;border:1px solid #e1e7ec;border-radius:14px;flex-wrap:wrap}
+.rp-search{display:flex;align-items:center;gap:8px;flex:1 1 320px;max-width:520px;border:1px solid #dce3e9;border-radius:8px;background:#f7f9fa;padding:0 11px;color:#84929d}
+.rp-search input{border:0;outline:0;background:transparent;width:100%;padding:10px 0;color:#2d3e4d}
+.rp-field{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;color:#526170}
+.rp-field select{min-width:200px;padding:10px 11px;border:1px solid #dce3e9;border-radius:8px;background:#f7f9fa;color:#2d3e4d}
+.rp-check{display:flex;align-items:center;gap:8px;font-size:12px;color:#526170;padding-bottom:10px}
+.rp-toolbar .secondary{margin-left:auto}
+
+.rp-click{cursor:pointer}
+.rp-chevron{width:34px;color:#8a969f}
+.rfq-data-row td.rp-chevron{padding-right:0}
+.rp-sub{display:block;margin-top:4px;font-size:11px;font-weight:400;color:#7a8994}
+.rfq-data-row .sd-type{margin-left:8px;white-space:nowrap}
+.rp-loads td:nth-child(5){white-space:nowrap}
+.rp-badge{display:inline-block;border-radius:20px;padding:4px 9px;font-size:10px;font-weight:700;white-space:nowrap;background:#edf1f4;color:#5d6d79}
+.rp-badge.fresh{background:#eaf6ee;color:#2b7547}
+.rp-badge.stale,.rp-badge.paused{background:#fff7e0;color:#80651e}
+.rp-badge.failed{background:#fff0ed;color:#a34130}
+.rp-badge.running{background:#e9f2ff;color:#33659a}
+.rp-badge.never,.rp-badge.neutral{background:#f0f3f5;color:#5d6d79}
+.rp-ok{color:#2b7547}
+.rp-fail{color:#a34130!important}
+
+.rfq-table .rp-detail-row td{padding:4px 16px 16px 50px;background:#fafcfd;border-bottom:1px solid #edf0f3}
+.rp-columns{display:flex;flex-wrap:wrap;gap:8px;padding-top:8px}
+.rp-columns span{display:inline-flex;align-items:baseline;gap:6px;border:1px solid #e1e7ec;background:#fff;border-radius:7px;padding:6px 9px;font-size:11px;color:#2d3e4d}
+.rp-columns small{color:#8a969f;font-size:10px}
+.rp-row-error td{background:#fffaf9}
+.rfq-table .rp-error-row td{padding:0 16px 12px 16px;font-size:11px;color:#a34130;background:#fffaf9;border-bottom:1px solid #f3e3df;white-space:pre-wrap;overflow-wrap:anywhere}
+.rp-error-cell{max-width:420px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px!important;color:#a34130!important}
+.rp-loads .row-actions{flex-wrap:nowrap}
+.rp-loads .row-actions .secondary{padding:7px 9px}
+
+.rp-job{padding:12px 0;border-top:1px dashed #e1e7ec}
+.rp-job:first-child{border-top:0}
+.rp-job-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:#526170}
+.rp-job-head b{color:#203a50}
+.rp-job p{margin:8px 0 0;font-size:11px}
+.rp-sql{margin:10px 0 6px;padding:12px 14px;background:#f4f6f8;border:1px solid #e1e7ec;border-radius:8px;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#203a50;white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto}
+
+.rp-agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.rp-agent{background:#fff;border:1px solid #e1e7ec;border-radius:13px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.rp-agent-head{display:flex;align-items:center;gap:9px;font-size:13px;color:#203a50}
+.rp-agent-head .rp-badge{margin-left:auto}
+.rp-agent>small{font-size:11px;color:#7a8994}
+.rp-dot{width:9px;height:9px;border-radius:50%;background:#c2ccd4}
+.rp-dot.online{background:#2fa35f;box-shadow:0 0 0 3px #2fa35f22}
+.rp-dot.offline{background:#c8553f}
+.rp-sources{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.rp-source{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:12px;color:#2d3e4d}
+.rp-source .secondary{padding:6px 9px}
+.rp-source small{font-size:11px}
+
+@media(max-width:800px){.rfq-table .rp-detail-row td{padding-left:16px}.rp-toolbar .secondary{margin-left:0}}

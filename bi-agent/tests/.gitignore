@@ -1,0 +1,6 @@
+.env
+branches.db
+logs/
+tls/
+tables.test.toml
+*.tmp.*
