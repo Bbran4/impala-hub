@@ -16,6 +16,8 @@ export type ExprNode =
   | {t:'not';e:ExprNode}
   | {t:'fn';name:string;args:ExprNode[];distinct?:boolean}
 
+import {AGGREGATION_NAMES,findFunction} from './biFunctions.ts'
+
 export type MasterMeasure={name:string;expression:string;format?:string}
 
 export class ExpressionError extends Error{
@@ -23,14 +25,7 @@ export class ExpressionError extends Error{
   constructor(message:string,position:number){super(message);this.position=position}
 }
 
-export const AGGREGATIONS=['sum','avg','min','max','count','median']
-export const FUNCTIONS:Record<string,string>={
-  sum:'Sum(expression)',avg:'Avg(expression)',min:'Min(expression)',max:'Max(expression)',count:'Count(expression), Count(DISTINCT field), Count(*)',median:'Median(expression)',
-  if:'If(condition, then, else)',alt:'Alt(value, fallback)',round:'Round(number, decimals)',abs:'Abs(number)',
-  upper:'Upper(text)',lower:'Lower(text)',trim:'Trim(text)',len:'Len(text)',left:'Left(text, n)',right:'Right(text, n)',text:'Text(value)',num:'Num(value)',
-  date:'Date(value)',year:'Year(date)',quarter:'Quarter(date)',month:'Month(date)',week:'Week(date)',day:'Day(date)',weekday:'WeekDay(date)',
-  monthstart:'MonthStart(date)',weekstart:'WeekStart(date)',yearstart:'YearStart(date)',yearmonth:'YearMonth(date)',today:'Today()',now:'Now()',
-}
+export const AGGREGATIONS=AGGREGATION_NAMES
 
 // Same rule the sync agent uses to name columns: "Cost Price" -> cost_price
 export function fieldKey(name:string){
@@ -47,6 +42,8 @@ function tokenize(src:string):Token[]{
   while(i<src.length){
     const c=src[i]
     if(/\s/.test(c)){i++;continue}
+    if(c==='/'&&src[i+1]==='/'){const end=src.indexOf('\n',i);i=end<0?src.length:end+1;continue}
+    if(c==='/'&&src[i+1]==='*'){const end=src.indexOf('*/',i+2);if(end<0)throw new ExpressionError('Comment is missing its closing */',i);i=end+2;continue}
     if(/[0-9.]/.test(c)&&/[0-9]/.test(src[i]===`.`?src[i+1]||'':c)){
       const m=/^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(src.slice(i))!;out.push({k:'num',v:m[0],p:i});i+=m[0].length;continue
     }
@@ -133,21 +130,28 @@ export function parseExpression(src:string,options:{measures?:MasterMeasure[];st
     if(t.k==='op'&&t.v==='*')throw new ExpressionError('* is only allowed in Count(*)',t.p)
     if(t.k==='id'){
       const lower=t.v.toLowerCase()
-      if(lower==='null')return {t:'null'}
+      if(lower==='null'&&peek().k!=='(')return {t:'null'}
       if(lower==='true')return {t:'bin',op:'=',l:{t:'num',v:1},r:{t:'num',v:1}}
       if(lower==='false')return {t:'bin',op:'=',l:{t:'num',v:1},r:{t:'num',v:0}}
       if(peek().k==='('){
         next()
-        if(!(lower in FUNCTIONS))throw new ExpressionError(`Unknown function ${t.v}()`,t.p)
+        const spec=findFunction(lower)
+        if(!spec)throw new ExpressionError(`Unknown function ${t.v}(). See the Function reference for the list.`,t.p)
+        const name=spec.name.toLowerCase()
         const args:ExprNode[]=[];let distinct=false
-        if(lower==='count'&&peek().k==='op'&&peek().v==='*'){next();args.push({t:'star'});expect(')','a closing )');return {t:'fn',name:lower,args}}
-        if(AGGREGATIONS.includes(lower)&&keyword(peek())==='distinct'){next();distinct=true}
+        if(name==='count'&&peek().k==='op'&&peek().v==='*'){next();args.push({t:'star'});expect(')','a closing )');return {t:'fn',name,args}}
+        if(keyword(peek())==='distinct'){
+          if(!spec.distinct)throw new ExpressionError(`${spec.name}() does not take DISTINCT`,peek().p)
+          next();distinct=true
+        }
         if(peek().k!==')'){
           args.push(parse(1))
           while(peek().k===','){next();args.push(parse(1))}
         }
         expect(')','a closing ) or a comma')
-        return distinct?{t:'fn',name:lower,args,distinct}:{t:'fn',name:lower,args}
+        const [min,max]=spec.args
+        if(args.length<min||args.length>max)throw new ExpressionError(`${spec.name}() takes ${min===max?min:max===Infinity?`at least ${min}`:`${min} to ${max}`} argument${max===1&&min===1?'':'s'}: ${spec.signature}`,t.p)
+        return distinct?{t:'fn',name,args,distinct}:{t:'fn',name,args}
       }
       return fieldOrMeasure(t.v,t.p,false)
     }

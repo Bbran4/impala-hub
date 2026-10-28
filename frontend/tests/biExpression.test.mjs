@@ -60,3 +60,29 @@ test('aggregation detection, plain fields and model checks',()=>{
   assert.match(checkFields(parseExpression('salary'),model),/Unknown field "salary"/)
   assert.match(checkFields(parseExpression('payroll.salary'),model),/Unknown table/)
 })
+
+test('comments are ignored, so long expressions can be annotated',()=>{
+  assert.deepEqual(parseExpression('Sum(qty) // units sold'),{t:'fn',name:'sum',args:[f('qty')]})
+  assert.deepEqual(parseExpression('/* sales */ Sum(qty * /* price */ unit_price)\n// done'),parseExpression('Sum(qty*unit_price)'))
+  assert.deepEqual(parseExpression('Sum(qty) / 2'),{t:'bin',op:'/',l:{t:'fn',name:'sum',args:[f('qty')]},r:{t:'num',v:2}})
+  assert.throws(()=>parseExpression('Sum(qty) /* open'),/closing \*\//)
+})
+
+test('argument counts and DISTINCT are checked against the catalogue',()=>{
+  assert.throws(()=>parseExpression("Replace(branch, 'a')"),/Replace\(\) takes 3 arguments: Replace\(text, from, to\)/)
+  assert.throws(()=>parseExpression('Left(item_code)'),/Left\(\) takes 2 arguments/)
+  assert.throws(()=>parseExpression('Today(1)'),/Today\(\) takes 0 arguments/)
+  assert.throws(()=>parseExpression('RangeSum(qty)'),/at least 2/)
+  assert.throws(()=>parseExpression('Max(DISTINCT qty)'),/does not take DISTINCT/)
+  assert.deepEqual(parseExpression("Concat(DISTINCT branch, ', ')"),{t:'fn',name:'concat',args:[f('branch'),{t:'str',v:', '}],distinct:true})
+  assert.deepEqual(parseExpression('Coalesce(a, b)'),{t:'fn',name:'alt',args:[f('a'),f('b')]},'aliases map to the catalogue name')
+  assert.equal(parseExpression('RangeSum(1,2,3,4,5)').args.length,5)
+})
+
+test('every catalogue example parses, and aggregations are recognised',async()=>{
+  const {FUNCTION_CATALOGUE}=await import('../src/biFunctions.ts')
+  for(const spec of FUNCTION_CATALOGUE)for(const example of spec.examples){
+    const node=parseExpression(example.expr)
+    if(spec.aggregate)assert.equal(hasAggregation(node),true,example.expr)
+  }
+})

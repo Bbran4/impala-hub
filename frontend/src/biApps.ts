@@ -1,5 +1,5 @@
 import type {SupabaseClient} from '@supabase/supabase-js'
-import {AGGREGATIONS,checkFields,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
+import {checkFields,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
 
 // Reporting apps: data model, sheets and objects. All data access goes through the
 // role-checked public.bi_* functions (migrations 0046 and 0047).
@@ -162,7 +162,7 @@ export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'mea
   const dimensions:CompiledObject['dimensions']=[]
   object.dimensions.forEach((item,i)=>{
     const node=parse(item.expr,`Dimension ${i+1}`);if(!node)return
-    if(hasAggregation(node)){errors.push(`Dimension ${i+1}: dimensions cannot use ${AGGREGATIONS.map(name=>name[0].toUpperCase()+name.slice(1)+'()').join(', ')}`);return}
+    if(hasAggregation(node)){errors.push(`Dimension ${i+1}: dimensions cannot use aggregations such as Sum() or Count(); put those in a measure`);return}
     dimensions.push({node,label:item.label||(node.t==='field'?humanize(node.name):item.expr),selectKey:selectionKey(app.model,node)||'expr:'+JSON.stringify(node),format:item.format})
   })
   const measures:CompiledObject['measures']=[]

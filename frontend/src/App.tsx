@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map, PackageCheck,
-  Database, ServerCog, History, ShieldCheck,
+  Database, ServerCog, History, ShieldCheck, BookOpen,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
@@ -683,7 +683,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 : isReturnsClaimsPage
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : isReportingPage
-                  ? ([['Dashboards', LayoutDashboard], ...(isAdministrator || reportingAccess.catalogue ? [['Data', Database] as const] : []), ...(isAdministrator ? [['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Reporting Roadmap', Map]] as const)
+                  ? ([['Dashboards', LayoutDashboard], ...(isAdministrator || reportingAccess.catalogue ? [['Data', Database] as const] : []), ...(isAdministrator ? [['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Function Reference', BookOpen], ['Reporting Roadmap', Map]] as const)
                 : ([
                     ...(canMarketing('feed.view') ? [['Feed', LayoutDashboard] as const] : []),
                     ...(canMarketing('posts.view') ? [['Posts', ClipboardList] as const] : []),
