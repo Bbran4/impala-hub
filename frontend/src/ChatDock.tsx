@@ -56,8 +56,7 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserResult[]>([])
   const [loading, setLoading] = useState(false)
-  const bootstrapped = useRef(false)
-  const unreadSeen = useRef<Record<string, number>>({})
+  const dismissedUnread = useRef<Record<string, number>>({})
 
   const loadConversations = useCallback(async (quiet = false) => {
     if (!enabled || !supabase) return
@@ -72,18 +71,16 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
     setConversations(rows)
     setDocked((current) => {
       const next = [...current]
-      const initialLoad = !bootstrapped.current
       for (const row of rows) {
-        const previousUnread = unreadSeen.current[row.conversation_id] || 0
-        const shouldOpen = row.unread_count > 0 && (!bootstrapped.current || row.unread_count > previousUnread)
-        if (shouldOpen && !next.some((chat) => chat.conversationId === row.conversation_id)) {
-          next.push({ conversationId: row.conversation_id, minimized: initialLoad })
+        if (row.unread_count === 0) delete dismissedUnread.current[row.conversation_id]
+        const dismissedAt = dismissedUnread.current[row.conversation_id] || 0
+        const shouldDock = row.unread_count > dismissedAt
+        if (shouldDock && !next.some((chat) => chat.conversationId === row.conversation_id)) {
+          next.push({ conversationId: row.conversation_id, minimized: true })
         }
       }
       return next
     })
-    unreadSeen.current = Object.fromEntries(rows.map((row) => [row.conversation_id, row.unread_count]))
-    bootstrapped.current = true
     setLoading(false)
   }, [enabled, onError])
   const refreshConversations = useCallback(() => { void loadConversations(true) }, [loadConversations])
@@ -91,24 +88,15 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
   useEffect(() => {
     if (!enabled) {
       setLauncherOpen(false); setConversations([]); setDocked([]); setQuery(''); setResults([])
-      bootstrapped.current = false; unreadSeen.current = {}
+      dismissedUnread.current = {}
       return
     }
-    void loadConversations(true)
+    void loadConversations()
     const timer = window.setInterval(() => void loadConversations(true), 8_000)
     const focus = () => void loadConversations(true)
     window.addEventListener('focus', focus)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', focus) }
   }, [enabled, loadConversations])
-
-  useEffect(() => {
-    if (!enabled || !supabase) return
-    const heartbeat = () => { void supabase!.rpc('chat_presence_heartbeat') }
-    heartbeat()
-    const timer = window.setInterval(heartbeat, 30_000)
-    window.addEventListener('focus', heartbeat)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', heartbeat) }
-  }, [enabled])
 
   useEffect(() => {
     if (!enabled || openRequest < 1) return
@@ -156,6 +144,7 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
   }
 
   function openExisting(conversationId: string) {
+    delete dismissedUnread.current[conversationId]
     setDocked((current) => current.some((chat) => chat.conversationId === conversationId)
       ? current.map((chat) => chat.conversationId === conversationId ? { ...chat, minimized: false } : chat)
       : [...current, { conversationId, minimized: false }])
@@ -189,7 +178,10 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
         conversation={conversation!}
         minimized={minimized}
         onMinimize={() => setDocked((current) => current.map((chat) => chat.conversationId === conversation!.conversation_id ? { ...chat, minimized: !chat.minimized } : chat))}
-        onClose={() => setDocked((current) => current.filter((chat) => chat.conversationId !== conversation!.conversation_id))}
+        onClose={() => {
+          dismissedUnread.current[conversation!.conversation_id] = conversation!.unread_count
+          setDocked((current) => current.filter((chat) => chat.conversationId !== conversation!.conversation_id))
+        }}
         onChanged={refreshConversations}
         onError={onError}
       />)}
@@ -225,10 +217,7 @@ function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, o
     const { data, error } = await supabase.rpc('chat_list_messages', { target_conversation_id: conversation.conversation_id })
     if (error) { if (!quiet) onError(`Could not load messages: ${error.message}`); return }
     setMessages((data || []) as Message[])
-    if (document.visibilityState === 'visible' && document.hasFocus()) {
-      await supabase.rpc('chat_mark_read', { target_conversation_id: conversation.conversation_id })
-      onChanged()
-    }
+    onChanged()
   }, [conversation.conversation_id, minimized, onChanged, onError])
 
   useEffect(() => {

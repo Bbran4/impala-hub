@@ -48,8 +48,7 @@ set local role authenticated;
 set local request.jwt.claims='{"sub":"53000000-0000-0000-0000-000000000002","role":"authenticated"}';
 select is((select unread_count from public.chat_list_conversations()),1::bigint,'offline recipient sees one unread message');
 select is((select body from public.chat_list_messages((select conversation_id from chat_test_ids))),'Hello Brenda','recipient can read the message');
-select lives_ok(format($sql$select public.chat_mark_read(%L)$sql$,(select conversation_id from chat_test_ids)),'recipient can mark the chat read');
-select is((select unread_count from public.chat_list_conversations()),0::bigint,'marking read clears unread count');
+select is((select unread_count from public.chat_list_conversations()),0::bigint,'opening the chat atomically clears unread count');
 select ok((select is_online from public.chat_search_users('alice.chat@test.invalid')),'recent heartbeat displays the other user as online');
 reset role;
 
