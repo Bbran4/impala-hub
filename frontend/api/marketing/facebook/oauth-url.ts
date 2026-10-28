@@ -14,15 +14,13 @@ export default async function handler(req: any, res: any) {
     return res.status(503).json({ detail: `Facebook OAuth server configuration is incomplete. Missing: ${missing.join(', ')}` })
   }
   if (!token) return res.status(401).json({ detail: 'Authentication required.' })
-  const authClient = createClient(url, publishableKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const authClient = createClient(url, publishableKey, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data: user, error: userError } = await authClient.auth.getUser(token)
   if (userError || !user.user) return res.status(401).json({ detail: 'Invalid or expired session.' })
+  const { data: isAdministrator, error: roleError } = await authClient.rpc('has_role', { required_role: 'administrator' })
+  if (roleError) return res.status(500).json({ detail: `Could not verify administrator access. (${roleError.code || 'database error'})` })
+  if (!isAdministrator) return res.status(403).json({ detail: 'Administrator access required.' })
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
-  const [{ data: profile }, { data: administratorRole }] = await Promise.all([
-    admin.from('profiles').select('active').eq('id', user.user.id).maybeSingle(),
-    admin.from('profile_roles').select('role_id').eq('profile_id', user.user.id).eq('role_id', 'administrator').maybeSingle(),
-  ])
-  if (!profile?.active || !administratorRole) return res.status(403).json({ detail: 'Administrator access required.' })
   const state = crypto.randomBytes(32).toString('base64url')
   const { error } = await admin.from('oauth_states').insert({ state, provider: 'facebook', owner_id: user.user.id, redirect_uri: redirectUri, expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
   if (error) return res.status(500).json({ detail: `Could not create Facebook OAuth state. Apply the latest Supabase migration and retry. (${error.code || 'database error'})` })

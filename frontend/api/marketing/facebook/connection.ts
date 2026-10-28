@@ -14,15 +14,13 @@ async function clients(token: string) {
   const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key || !serviceKey || !process.env.META_TOKEN_ENCRYPTION_KEY) throw new Error('Facebook connection server configuration is incomplete.')
-  const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data: user, error } = await auth.auth.getUser(token)
   if (error || !user.user) throw new Error('Authentication required.')
+  const { data: isAdministrator, error: roleError } = await auth.rpc('has_role', { required_role: 'administrator' })
+  if (roleError) throw new Error('Could not verify administrator access.')
+  if (!isAdministrator) throw new Error('Administrator access required.')
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
-  const [{ data: profile }, { data: administratorRole }] = await Promise.all([
-    admin.from('profiles').select('active').eq('id', user.user.id).maybeSingle(),
-    admin.from('profile_roles').select('role_id').eq('profile_id', user.user.id).eq('role_id', 'administrator').maybeSingle(),
-  ])
-  if (!profile?.active || !administratorRole) throw new Error('Administrator access required.')
   return { admin }
 }
 
@@ -52,6 +50,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ page_id: result.id, page_name: result.name, status: 'connected' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Facebook connection request failed.'
-    return res.status(message === 'Administrator access required.' ? 403 : 401).json({ detail: message })
+    const status = message === 'Administrator access required.' ? 403 : message === 'Could not verify administrator access.' ? 500 : 401
+    return res.status(status).json({ detail: message })
   }
 }
