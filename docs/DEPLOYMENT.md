@@ -163,7 +163,20 @@ After the migration and the matching frontend are deployed:
 - Confirm direct table requests to `bi` and `bi_data` from the browser fail, including for administrators.
 - Confirm the `bi_agent` role cannot read `public` tables (for example `select * from public.profiles` as `bi_agent` fails).
 
+## Reporting apps checks
 
+Migration `0048_bi_apps.sql` adds the `report_builder` role, apps (`bi.apps`, `bi.app_tables`, `bi.app_access`, `bi.sheets`), the expression compiler and `public.bi_query`, and lets report builders open the Reporting workspace. User guide: `docs/REPORTING_APPS.md`.
+
+After the migration and the matching frontend are deployed:
+
+- Administrator and report builder: **Reporting → Dashboards** shows **Create app**. Create an app from loaded tables, link them, add master measures, share it with a role, add a sheet with a KPI, bar chart, table and filter pane, and save.
+- Click a bar and a filter value: every object on every sheet of the app filters, and the selections bar shows them. Ctrl+click adds values; Clear all resets.
+- A user with the shared role (or added by name) sees the app with no edit controls; a user with neither sees no apps, and a direct `bi_query` for that app is denied.
+- People added to an app by name see the Reporting card even without a Reporting role, but not the Data catalogue.
+- Type an invalid expression (unknown field, missing bracket, an aggregation inside another): the editor explains it and nothing is saved or queried.
+- Delete a test app and confirm its sheets are gone and the deletion is in the Audit Log.
+
+## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.
 - If a database migration fails, do not deploy the frontend and do not manually mark the migration as applied.

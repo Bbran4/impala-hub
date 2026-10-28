@@ -6,11 +6,12 @@ import {
   loadSyncRuns,requestReload,runDuration,scheduleLabel,setLoadEnabled,summarizeLoads,testSourceConnection,
   type AuditEntry,type DataTable,type LoadStatusSnapshot,type LoadUnit,type SyncRun,
 } from './reportingData'
+import ReportingApps from './ReportingApps'
 import './reporting.css'
 
-type Props={page:string;isAdministrator:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
+type Props={page:string;isAdministrator:boolean;canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
 
-export const REPORTING_PAGES=['Data','Data Loads','Run History','Audit Log','Reporting Roadmap'] as const
+export const REPORTING_PAGES=['Dashboards','Data','Data Loads','Run History','Audit Log','Reporting Roadmap'] as const
 export const REPORTING_ADMIN_PAGES=['Data Loads','Run History','Audit Log']
 
 const REPORTING_ROADMAP_ROWS=[
@@ -18,10 +19,12 @@ const REPORTING_ROADMAP_ROWS=[
   ['Load definitions','Qlik data load editor','tables.toml on the agent machine with validate, dry-run test, plan and apply; fingerprint-checked','Implemented'],
   ['Load monitoring','Qlik reload tasks','Agent heartbeat, load status, Reload now, Reload everything, pause/resume, run history and audit log','Implemented'],
   ['Data catalogue','Qlik data model viewer','Loaded tables, columns, row counts and freshness for Reporting users','Implemented'],
-  ['Datasets','Qlik associative model','Admin-defined joins and calculated fields over loaded tables','Planned'],
-  ['Report builder','Qlik sheets and charts','Tables, pivot tables, calculations, bar/line/pie/KPI charts','Planned'],
-  ['Dashboards','Qlik apps','Arrange saved reports on dashboards','Planned'],
-  ['Dashboard access','Qlik section access','Per-dashboard access by user group, enforced in the database','Planned'],
+  ['Apps and data models','Qlik apps and associative model','Apps choose loaded tables and link them on matching fields; queries join only what each chart needs','Implemented'],
+  ['Sheets and charts','Qlik sheets','Drag-and-resize sheets with KPI, bar, line, pie, table, pivot, filter pane and text objects','Implemented'],
+  ['Expressions','Qlik chart expressions','Sum/Count/Avg/Min/Max/Median, Count(DISTINCT), If, Alt, date functions, master measures, row conditions','Implemented'],
+  ['Selections','Qlik associative selections','Click any value to filter every object in the app; Ctrl+click to add; selections bar','Implemented'],
+  ['App access','Qlik spaces','Apps shared with roles or named people; builders are administrators and report builders','Implemented'],
+  ['Row-level access','Qlik section access','Limit rows per user within an app (e.g. own branch only)','Planned'],
   ['Scheduled emails','Qlik NPrinting','Daily report emails filtered by each recipient’s access','Planned'],
   ['Smart Stock feed','ERP stock snapshots','Feed Smart Stock imports from the ERP through the sync agent','Planned'],
 ]
@@ -41,9 +44,10 @@ function usePolling(load:()=>Promise<void>,intervalMs:number){
   },[load,intervalMs])
 }
 
-export default function Reporting({page,isAdministrator,setNotice,setError}:Props){
+export default function Reporting({page,isAdministrator,canBuild,setNotice,setError}:Props){
   if(REPORTING_ADMIN_PAGES.includes(page)&&!isAdministrator)return <section className="rfq-workspace"><div className="rfq-empty-card"><ShieldCheck size={26}/><h3>Administrators only</h3><p>The data loader is managed by administrators.</p></div></section>
   if(!supabase)return <section className="rfq-workspace"><div className="rfq-empty-card"><Database size={26}/><h3>Supabase is not configured</h3><p>Reporting needs the Supabase connection.</p></div></section>
+  if(page==='Dashboards')return <ReportingApps canBuild={canBuild} setNotice={setNotice} setError={setError}/>
   if(page==='Data Loads')return <DataLoads setNotice={setNotice} setError={setError}/>
   if(page==='Run History')return <RunHistory setError={setError}/>
   if(page==='Audit Log')return <AuditLog setError={setError}/>
@@ -227,7 +231,7 @@ function AuditLog({setError}:{setError:(message:string)=>void}){
 function ReportingRoadmap(){
   return <section className="roadmap-page">
     <div className="section-head"><div><h2>Reporting roadmap</h2><p>Replacing the Qlik Sense functions Impala uses, step by step.</p></div></div>
-    <div className="roadmap-priorities"><strong>Next priorities</strong><span>Connect the sync agent to the ERP</span><span>Datasets and report builder</span><span>Dashboards with per-dashboard access</span><span>Scheduled report emails</span></div>
+    <div className="roadmap-priorities"><strong>Next priorities</strong><span>Connect the sync agent to the ERP</span><span>Rebuild the daily Qlik reports as apps</span><span>Scheduled report emails</span><span>Row-level access</span></div>
     <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Qlik equivalent</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
       {REPORTING_ROADMAP_ROWS.map(([capability,reference,impala,status])=><tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status '+(status==='Implemented'?'complete':'partial')}>{status}</span></td></tr>)}
     </tbody></table></div>
