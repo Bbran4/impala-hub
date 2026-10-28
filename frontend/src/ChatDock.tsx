@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, MessageCircle, Minus, Search, Send, X } from 'lucide-react'
+import { Check, CheckCheck, ChevronDown, MessageCircle, Minus, Search, Send, X } from 'lucide-react'
 import { supabase } from './supabase'
 
 type Conversation = {
@@ -8,6 +8,7 @@ type Conversation = {
   other_display_name: string
   other_email: string
   other_avatar_url: string | null
+  other_is_online: boolean
   last_message: string | null
   last_message_at: string
   unread_count: number
@@ -18,6 +19,7 @@ type UserResult = {
   display_name: string
   email: string
   avatar_url: string | null
+  is_online: boolean
 }
 
 type Message = {
@@ -27,6 +29,7 @@ type Message = {
   sender_name: string
   body: string
   created_at: string
+  read_by_recipient: boolean
 }
 
 type DockedChat = { conversationId: string; minimized: boolean }
@@ -69,11 +72,12 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
     setConversations(rows)
     setDocked((current) => {
       const next = [...current]
+      const initialLoad = !bootstrapped.current
       for (const row of rows) {
         const previousUnread = unreadSeen.current[row.conversation_id] || 0
         const shouldOpen = row.unread_count > 0 && (!bootstrapped.current || row.unread_count > previousUnread)
         if (shouldOpen && !next.some((chat) => chat.conversationId === row.conversation_id)) {
-          next.push({ conversationId: row.conversation_id, minimized: false })
+          next.push({ conversationId: row.conversation_id, minimized: initialLoad })
         }
       }
       return next
@@ -96,6 +100,15 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
     window.addEventListener('focus', focus)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', focus) }
   }, [enabled, loadConversations])
+
+  useEffect(() => {
+    if (!enabled || !supabase) return
+    const heartbeat = () => { void supabase!.rpc('chat_presence_heartbeat') }
+    heartbeat()
+    const timer = window.setInterval(heartbeat, 30_000)
+    window.addEventListener('focus', heartbeat)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', heartbeat) }
+  }, [enabled])
 
   useEffect(() => {
     if (!enabled || openRequest < 1) return
@@ -131,6 +144,7 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
       other_display_name: user.display_name,
       other_email: user.email,
       other_avatar_url: user.avatar_url,
+      other_is_online: user.is_online,
       last_message: null,
       last_message_at: new Date().toISOString(),
       unread_count: 0,
@@ -161,10 +175,10 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
       <label className="chat-user-search"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="@name or email" aria-label="Find a user by name or email" /></label>
       <div className="chat-launcher-list">
         {query.trim() ? results.length ? results.map((user) => <button key={user.user_id} className="chat-person-row" onClick={() => void startChat(user)}>
-          <Avatar name={personName(user)} url={user.avatar_url} /><span><b>{personName(user)}</b><small>{user.email}</small></span><MessageCircle size={16} />
+          <Avatar name={personName(user)} url={user.avatar_url} /><span><b>{personName(user)} <Presence online={user.is_online} /></b><small>{user.email}</small></span><MessageCircle size={16} />
         </button>) : <div className="chat-empty">{loading ? 'Searching…' : 'No users match that name or email.'}</div>
         : conversations.length ? conversations.map((conversation) => <button key={conversation.conversation_id} className="chat-person-row" onClick={() => openExisting(conversation.conversation_id)}>
-          <Avatar name={personName(conversation)} url={conversation.other_avatar_url} /><span><b>{personName(conversation)}</b><small>{conversation.last_message || conversation.other_email}</small></span>{conversation.unread_count > 0 && <em>{conversation.unread_count > 99 ? '99+' : conversation.unread_count}</em>}
+          <Avatar name={personName(conversation)} url={conversation.other_avatar_url} /><span><b>{personName(conversation)} <Presence online={conversation.other_is_online} /></b><small>{conversation.last_message || conversation.other_email}</small></span>{conversation.unread_count > 0 && <em>{conversation.unread_count > 99 ? '99+' : conversation.unread_count}</em>}
         </button>) : <div className="chat-empty"><MessageCircle size={26} /><b>No chats yet</b><span>Type @ followed by a name or email to start one.</span></div>}
       </div>
     </section>}
@@ -185,6 +199,10 @@ export default function ChatDock({ enabled, openRequest, onError }: Props) {
 
 function Avatar({ name, url }: { name: string; url?: string | null }) {
   return <span className="chat-avatar">{url ? <img src={url} alt="" /> : initials(name)}</span>
+}
+
+function Presence({ online }: { online: boolean }) {
+  return <i className={`chat-presence ${online ? 'online' : 'offline'}`} title={online ? 'Online' : 'Offline'} aria-label={online ? 'Online' : 'Offline'} />
 }
 
 function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, onError }: {
@@ -241,7 +259,7 @@ function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, o
   return <section className={`chat-window ${minimized ? 'minimized' : ''}`}>
     <header onDoubleClick={onMinimize}>
       <Avatar name={personName(conversation)} url={conversation.other_avatar_url} />
-      <div><b>{personName(conversation)}</b><small>{conversation.other_email}</small></div>
+      <div><b>{personName(conversation)} <Presence online={conversation.other_is_online} /></b><small>{conversation.other_email}</small></div>
       {conversation.unread_count > 0 && <em>{conversation.unread_count}</em>}
       <button className="icon-button" aria-label={minimized ? 'Restore chat' : 'Minimize chat'} onClick={onMinimize}>{minimized ? <ChevronDown size={16} /> : <Minus size={16} />}</button>
       <button className="icon-button" aria-label="Close chat" onClick={onClose}><X size={16} /></button>
@@ -250,7 +268,7 @@ function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, o
       <div className="chat-messages">
         {messages.length ? messages.map((message) => {
           const mine = message.sender_id === currentUserId
-          return <div className={`chat-message ${mine ? 'mine' : 'theirs'}`} key={message.message_id}><span>{message.body}</span><time>{shortTime(message.created_at)}</time></div>
+          return <div className={`chat-message ${mine ? 'mine' : 'theirs'}`} key={message.message_id}><span>{message.body}</span><time>{shortTime(message.created_at)}{mine && <span className="chat-delivery" title={message.read_by_recipient ? 'Read' : 'Sent'}>{message.read_by_recipient ? <CheckCheck size={12} /> : <Check size={12} />}</span>}</time></div>
         }) : <div className="chat-empty"><MessageCircle size={24} /><span>This is the start of your chat with {personName(conversation)}.</span></div>}
         <div ref={bottomRef} />
       </div>

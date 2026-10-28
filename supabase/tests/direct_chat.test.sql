@@ -21,6 +21,7 @@ select ok(not has_function_privilege('anon','public.chat_send_message(uuid,uuid,
 set local role authenticated;
 set local request.jwt.claims='{"sub":"53000000-0000-0000-0000-000000000001","role":"authenticated"}';
 
+select ok(public.chat_presence_heartbeat() is not null,'active chat user records an online heartbeat');
 select is((select count(*) from public.chat_search_users('@brenda')),1::bigint,'@name finds the active recipient');
 select is((select email from public.chat_search_users('brenda.chat@test.invalid')),'brenda.chat@test.invalid','email lookup returns the requested user');
 select throws_ok($sql$select public.chat_open_direct('53000000-0000-0000-0000-000000000001')$sql$,'22023',null,'self-chat is rejected');
@@ -49,6 +50,12 @@ select is((select unread_count from public.chat_list_conversations()),1::bigint,
 select is((select body from public.chat_list_messages((select conversation_id from chat_test_ids))),'Hello Brenda','recipient can read the message');
 select lives_ok(format($sql$select public.chat_mark_read(%L)$sql$,(select conversation_id from chat_test_ids)),'recipient can mark the chat read');
 select is((select unread_count from public.chat_list_conversations()),0::bigint,'marking read clears unread count');
+select ok((select is_online from public.chat_search_users('alice.chat@test.invalid')),'recent heartbeat displays the other user as online');
+reset role;
+
+set local role authenticated;
+set local request.jwt.claims='{"sub":"53000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select ok((select read_by_recipient from public.chat_list_messages((select conversation_id from chat_test_ids))),'sender sees that the recipient read the message');
 reset role;
 
 set local role authenticated;
