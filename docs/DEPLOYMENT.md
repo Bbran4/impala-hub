@@ -165,7 +165,7 @@ After the migration and the matching frontend are deployed:
 
 ## Reporting apps checks
 
-Migration `0047_bi_apps.sql` adds the `report_builder` role, apps (`bi.apps`, `bi.app_tables`, `bi.app_access`, `bi.sheets`), the expression compiler and `public.bi_query`, and lets report builders open the Reporting workspace. User guide: `docs/REPORTING_APPS.md`.
+Migration `0048_bi_apps.sql` adds the `report_builder` role, apps (`bi.apps`, `bi.app_tables`, `bi.app_access`, `bi.sheets`), the expression compiler and `public.bi_query`, and lets report builders open the Reporting workspace. User guide: `docs/REPORTING_APPS.md`.
 
 After the migration and the matching frontend are deployed:
 

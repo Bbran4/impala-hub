@@ -15,6 +15,7 @@ import StockControlConfig from './StockControlConfig'
 import StockReordering from './StockReorderingSupabase'
 import StockImport from './StockImport'
 import ReturnsClaims from './ReturnsClaims'
+import NotificationCentre, { type NotificationChannel, type UserNotification } from './NotificationCentre'
 import Reporting, { REPORTING_PAGES } from './Reporting'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 import { supabase, supabaseConfigured } from './supabase'
@@ -62,7 +63,7 @@ const SALES_ROADMAP_ROWS = [
   ['Workspace permissions', 'Role-based application access', 'Salespeople currently see Sales Desk only; Supabase workspace permission contract added', 'Partial; enforce on every workspace backend'],
   ['RFQ analytics', 'Not applicable', 'Period-filtered analytics', 'Implemented; funnel improvements planned'],
   ['Search and filtering', 'Advanced search panels', 'Basic filters', 'Partial'],
-  ['Notifications', 'Activities/messages', 'Not implemented', 'Missing'],
+  ['Notifications', 'Activities/messages', 'Shared bell, unread state, app channels and RFQ In Progress links', 'Implemented foundation; additional Sales Desk events planned'],
   ['Bulk operations', 'Mass actions', 'Not implemented', 'Missing'],
   ['Export and reporting', 'List/report exports', 'CSV/XLSX/print RFQ export is not implemented', 'Missing'],
   ['Evolve DMS/Qlik reconciliation', 'Not applicable', 'External data integration is intentionally postponed', 'Deferred'],
@@ -100,7 +101,7 @@ const ROADMAP_ROWS = [
   ['Search/filtering', 'Extensive search panels', 'Basic search and filters', 'Partial'],
   ['Social conversations', 'Channels and chats', 'Not implemented', 'Missing'],
   ['Sentiment analysis', 'Visible in Channels', 'Not implemented', 'Missing'],
-  ['Notifications', 'Odoo activities/messages', 'Not implemented', 'Missing'],
+  ['Notifications', 'Odoo activities/messages', 'Shared notification centre and Marketing channel; Marketing event producers are not connected', 'Partial'],
 ]
 export default function App() {
   const [key, setKey] = useState(getKey())
@@ -137,12 +138,20 @@ export default function App() {
   const [profileBusy, setProfileBusy] = useState(false)
   const [isAdministrator, setIsAdministrator] = useState(false)
   const [assignedRoles, setAssignedRoles] = useState<string[]>([])
+  const [notificationRfqId, setNotificationRfqId] = useState<string | null>(null)
   const canAccessMarketing = isAdministrator || assignedRoles.includes('marketing') || assignedRoles.includes('management')
-  const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('management') || Boolean(profile.sales_code)
+  const canAccessSalesDesk = isAdministrator || assignedRoles.includes('sales') || assignedRoles.includes('sales_manager') || assignedRoles.includes('management') || Boolean(profile.sales_code)
   const canAccessReturns = isAdministrator || assignedRoles.includes('returns') || assignedRoles.includes('management')
   const canAccessStock = isAdministrator || assignedRoles.includes('stock') || assignedRoles.includes('management')
   const [reportingAccess, setReportingAccess] = useState({ admin: false, builder: false, catalogue: false, apps: 0 })
   const canAccessReporting = isAdministrator || assignedRoles.includes('reporting') || assignedRoles.includes('management') || assignedRoles.includes('report_builder') || reportingAccess.apps > 0
+  const notificationChannels: NotificationChannel[] = [
+    ...(canAccessMarketing ? ['marketing' as const] : []),
+    ...(canAccessSalesDesk ? ['sales_desk' as const] : []),
+    ...(canAccessReturns ? ['returns_claims' as const] : []),
+    ...(canAccessStock ? ['stock_control' as const] : []),
+    ...(canAccessReporting ? ['reporting' as const] : []),
+  ]
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -568,6 +577,39 @@ export default function App() {
   const selected = posts.find((p) => p.id === detailId)
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
+
+  function openNotificationTarget(notification: UserNotification) {
+    setError('')
+    setNotice('')
+    if (notification.channel === 'sales_desk' && canAccessSalesDesk) {
+      setNotificationRfqId(notification.target_record_id)
+      setPage('RFQs')
+      return
+    }
+    if (notification.channel === 'marketing' && canAccessMarketing) {
+      if (notification.target_record_id) setDetailId(notification.target_record_id)
+      setPage(notification.target_page === 'Post' && notification.target_record_id ? 'Post' : notification.target_page || 'Feed')
+      return
+    }
+    if (notification.channel === 'returns_claims' && canAccessReturns) {
+      setPage('Returns & Claims')
+      return
+    }
+    if (notification.channel === 'stock_control' && canAccessStock) {
+      setPage(notification.target_page || 'Stock Booking')
+      return
+    }
+    if (notification.channel === 'reporting' && canAccessReporting) {
+      setPage(notification.target_page || 'Dashboards')
+      return
+    }
+    if (notification.channel === 'system') {
+      setPage(notification.target_page || 'Apps')
+      return
+    }
+    setPage('Apps')
+    setError('You do not have access to the application linked to this notification.')
+  }
   const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims with RC date/sequence references','Implemented'],['Customer and invoice search','Record investigation','Substring search across claim fields, including customer and invoice','Implemented'],['Outcome handling','Unknown until decided','Validated status transitions, rejection/reopen reasons and receipt checks','Implemented'],['Attachments','Evidence files','New-tab images, PDF previews, downloads and audited permanent deletion','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response, dated credit/replacement receipts and pickup/drop-off tracking','Implemented'],['Ageing and SLA','Claim ageing reports','7-day calendar SLA, 2-day warning, date-range/overdue filters and closure age','Implemented'],['Exports and audit','Traceable reporting','Filtered CSV/XLSX reports, summary breakdowns and named audit history','Implemented'],['Wildcard syntax','Advanced search','Literal substring search exists; * and ? pattern semantics are not implemented','Planned'],['Hosted verification','Production readiness','Signed URL, preview, concurrency and role smoke tests','Planned']]
 const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Supabase CRUD, atomic supplier replacement, archival and named history','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','Active Supabase snapshot, persisted transfers and Evolve export','Implemented'],['Stock Reordering','Inventory planning','Active Supabase snapshot, shared mover rules, supply metrics and filters','Implemented'],['Shared configuration','Locations, thresholds and statuses','Supabase-backed settings with audited administrator controls','Implemented'],['Versioned imports','Safe snapshot replacement','Chunked staging, validation, audit and transactional activation','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['CSV/XLSX import','Administrator upload','Mapping, preview validation, hashing, staging and activation','Implemented'],['Google Sheets ingestion','Private inventory feed','Removed from the deployed application; database history retained but disabled','Retired'],['Qlik/ODBC adapter','ERP inventory feed','Real external stock data is intentionally postponed','Deferred'],['Historical SQLite reconciliation','Legacy data','Reconcile legacy records only when production data work resumes','Deferred'],['Supplier response workflow','Quote lifecycle','Track quote requests and responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Reorder recommendations','Inventory action','Turn approved queries into stock actions','Planned'],['Search','Parts and suppliers','Substring search across parts, descriptions, suppliers, alternatives and sales codes','Implemented']]
 
@@ -586,6 +628,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
         <button className="nav-item app-home-link" onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
         {(page === 'Apps' || page === 'Account') && (
           <div className="sidebar-bottom">
+            {key && <NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />}
             <div className="connection-dot" /> <span>Local workspace</span>
           <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
             {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
@@ -613,6 +656,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               </button>
             ))}
             <div className="sidebar-bottom">
+              {key && <NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />}
               <div className="connection-dot" /> <span>Local workspace</span>
               <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
               {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
@@ -735,7 +779,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <div className="section-head">
               <div><h2>RFQ capability workspace</h2><p>Current Sales Desk coverage, known gaps, and improvement priorities.</p></div>
             </div>
-            <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ approval review queue</span><span>Notifications and SLA reminders</span><span>Bulk actions and exports</span><span>Granular server-side permissions</span></div>
+            <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ approval review queue</span><span>Expand notifications to assignment, overdue work and SLA reminders</span><span>Bulk actions and exports</span><span>Granular server-side permissions</span></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
               {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
@@ -748,7 +792,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
-        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Reordering' ? <StockReordering token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Data Import' ? <StockImport token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <PartsQueries token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} /> : null}
+        ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Reordering' ? <StockReordering token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Data Import' ? <StockImport token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <PartsQueries token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} openRfqId={notificationRfqId} onOpenRfqHandled={() => setNotificationRfqId(null)} /> : null}
 
         {key && page === 'Roadmap' && (
           <section className="roadmap-page">

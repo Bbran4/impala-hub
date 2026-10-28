@@ -7,7 +7,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and the 
 ## Current priorities
 
 1. Expand search to campaigns and advanced filters.
-2. Add notifications and social conversations.
+2. Connect Marketing-specific events to the shared notification centre, then add social conversations.
 3. Add sentiment analysis and advanced reporting.
 4. Keep Instagram connectivity, publishing and insights deferred until that migration resumes.
 
@@ -50,7 +50,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and the 
 | Search/filtering | Extensive search panels | Basic search, status, campaign, month filters | Partial |
 | Social conversations | Channels and chats | Not implemented | Missing |
 | Sentiment analysis | Visible in Channels | Not implemented | Missing |
-| Notifications | Odoo activities/messages | Not implemented | Missing |
+| Notifications | Odoo activities/messages | Shared bell, unread state and Marketing channel implemented; Marketing event producers are not connected | Partial |
 | RFQ dashboard | Not applicable | Sales Desk dashboard | Implemented separately |
 | RFQ analytics | Not applicable | Sales Desk analytics | Implemented separately |
 | User-to-sales-code mapping | Not applicable | Sales Desk mapping | Implemented |

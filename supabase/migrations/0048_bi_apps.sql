@@ -1,4 +1,5 @@
 -- Impala Hub Reporting: Qlik-style apps, sheets and the query engine.
+-- (Runs after 0047_user_notifications.sql; can_access_workspace below keeps its sales_manager rule.)
 --
 -- An app chooses loaded tables (bi.data_tables) and how they link (its data model),
 -- holds dashboard sheets, master measures, and an access list of roles and users.
@@ -25,7 +26,7 @@ returns boolean language sql stable security definer set search_path = public
 as $$
   select public.is_active_user() and (
     public.has_role('administrator') or
-    (workspace_name = 'sales_desk' and (public.has_role('sales') or public.has_role('management'))) or
+    (workspace_name = 'sales_desk' and (public.has_role('sales') or public.has_role('sales_manager') or public.has_role('management'))) or
     (workspace_name = 'returns_claims' and (public.has_role('returns') or public.has_role('management'))) or
     (workspace_name = 'marketing' and (public.has_role('marketing') or public.has_role('management'))) or
     (workspace_name = 'stock_control' and (public.has_role('stock') or public.has_role('management'))) or
