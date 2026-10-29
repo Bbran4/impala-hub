@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react'
-import {BookOpen,Database,Maximize2,Play,Search,Sigma,X,FunctionSquare} from 'lucide-react'
+import {BookOpen,Database,Maximize2,Play,Search,Sigma,Variable,X,FunctionSquare} from 'lucide-react'
 import {createPortal} from 'react-dom'
 import {supabase} from './supabase'
 import {asColorMeasure,asMeasure,checkFields,ExpressionError,hasAggregation,parseExpression,type MasterMeasure} from './biExpression'
@@ -7,7 +7,7 @@ import {CATEGORIES,FUNCTION_CATALOGUE,OPERATORS,searchFunctions,type FunctionCat
 import {displayValue,orderedModel,runQuery,safeColor,type ModelTable,type Selection} from './biApps'
 
 export type ExpressionKind='dimension'|'measure'|'condition'|'color'
-export type ExpressionContext={appId?:string;model:ModelTable[];measures:MasterMeasure[];selections?:Selection[]}
+export type ExpressionContext={appId?:string;model:ModelTable[];measures:MasterMeasure[];selections?:Selection[];variables?:Record<string,string>}
 
 // ---------------------------------------------------------------------------
 // Checking
@@ -17,7 +17,7 @@ export type ExpressionProblem={message:string;line:number;column:number}
 export function checkExpression(text:string,kind:ExpressionKind,ctx:ExpressionContext):ExpressionProblem|null{
   if(!text.trim())return null
   try{
-    const node=parseExpression(text,{measures:ctx.measures})
+    const node=parseExpression(text,{measures:ctx.measures,variables:ctx.variables})
     const fieldProblem=checkFields(node,ctx.model)
     if(fieldProblem)return {message:fieldProblem,...locate(text,text.length)}
     if(kind==='color')return null
@@ -38,7 +38,7 @@ function locate(text:string,position:number){
 // ---------------------------------------------------------------------------
 // Searchable list of master measures, fields and functions
 // ---------------------------------------------------------------------------
-type PickItem={key:string;group:'Master measures'|'Fields'|'Functions';label:string;detail:string;insert:string;caretBack?:number;replaceAll?:boolean;spec?:FunctionSpec}
+type PickItem={key:string;group:'Master measures'|'Variables'|'Fields'|'Functions';label:string;detail:string;insert:string;caretBack?:number;replaceAll?:boolean;spec?:FunctionSpec}
 
 export function fieldRefFor(field:{table:string;name:string},all:{table:string;name:string}[]){
   const shared=all.filter(f=>f.name===field.name).length>1
@@ -53,6 +53,10 @@ function buildItems(kind:ExpressionKind,ctx:ExpressionContext,query:string,inlin
   if(kind==='measure'||kind==='color')for(const m of ctx.measures){
     if(needle&&!m.name.toLowerCase().includes(needle))continue
     items.push({key:'m:'+m.name,group:'Master measures',label:`[${m.name}]`,detail:m.expression,insert:`[${m.name}]`})
+  }
+  for(const [name,value] of Object.entries(ctx.variables||{})){
+    if(needle&&!name.toLowerCase().includes(needle))continue
+    items.push({key:'v:'+name,group:'Variables',label:`$(${name})`,detail:value===''?'(empty)':value,insert:`$(${name})`})
   }
   for(const f of fields){
     const ref=fieldRefFor(f,fields)
@@ -79,7 +83,7 @@ export function ExpressionPicker({kind,ctx,query,onQuery,onPick,autoFocus,showSe
       onKeyDown={event=>pickerKeys(event,items,activeIndex,onActiveIndex,onPick)}/>{query&&<button type="button" aria-label="Clear search" onClick={()=>onQuery?.('')}><X size={12}/></button>}</label>}
     <div className="bi-picker-list" ref={listRef} role="listbox">
       {items.map((item,i)=>{const head=item.group!==lastGroup;lastGroup=item.group
-        const Icon=item.group==='Fields'?Database:item.group==='Master measures'?Sigma:FunctionSquare
+        const Icon=item.group==='Fields'?Database:item.group==='Master measures'?Sigma:item.group==='Variables'?Variable:FunctionSquare
         return <div key={item.key}>{head&&<span className="bi-picker-group">{item.group}</span>}
           <button type="button" role="option" aria-selected={i===activeIndex} className={i===activeIndex?'active':''} onMouseEnter={()=>onActiveIndex(i)} onClick={()=>onPick(item)}>
             <Icon size={12}/><code>{item.label}</code><small>{item.detail}</small></button></div>})}
@@ -175,7 +179,7 @@ export function ExpressionEditorModal({value,kind,ctx,title,onApply,onCancel}:{v
     if(!supabase||!ctx.appId||problem||!text.trim())return
     setTesting(true);setResult(null)
     try{
-      const parsed=parseExpression(text,{measures:ctx.measures})
+      const parsed=parseExpression(text,{measures:ctx.measures,variables:ctx.variables})
       const node=kind==='measure'?asMeasure(parsed):kind==='color'?asColorMeasure(parsed):parsed
       const selections=(ctx.selections||[]).map(item=>({expr:item.node,values:item.values}))
       if(kind==='color'){

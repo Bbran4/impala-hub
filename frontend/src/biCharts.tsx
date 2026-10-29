@@ -2,9 +2,11 @@ import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react'
 import {ChevronDown,ChevronUp,Download,Search,X} from 'lucide-react'
 import {supabase} from './supabase'
 import {BulletChart,ComboChart,FunnelChart,GaugeChart,GridChart,HistogramChart,MekkoChart,RadarChart,ScatterChart,SpreadChart,TreemapChart,WaterfallChart,WordCloud} from './biChartsMore'
+import {ButtonObject,DatePicker,DividerObject,ImageObject,LayoutContainer,NavigationMenu,SliderObject,TabContainer,TextImageObject,TrellisContainer,VariableInput,VideoObject} from './biControls'
+import {type ExprNode} from './biExpression'
 import {Legend,Message,Tooltip,selectedValues,truncate,useQuery,useSize,type Compiled,type ObjectProps,type SelectFn,type Tip} from './biChartKit'
 import {
-  SERIES_COLORS,buildSpec,cellStyle,columnOrder,compactNumber,compareValues,compileObject,defaultSort,displayValue,formatNumber,niceTicks,
+  SERIES_COLORS,buildSpec,cellStyle,columnOrder,contrastText,safeColor,compactNumber,compareValues,compileObject,defaultSort,displayValue,formatNumber,niceTicks,
   runQuery,sameValue,toCsv,toNumber,toPivot,toSeries,
   type AppDetail,type CompiledObject,type FieldValue,type NumberFormat,type Selection,type SheetObject,
 } from './biApps'
@@ -14,12 +16,29 @@ import {
 // ---------------------------------------------------------------------------
 export type {SelectFn}
 
-export function ObjectBody(props:ObjectProps){
+export function ObjectBody(props:ObjectProps&{extraConditions?:ExprNode[]}){
   const {object,app}=props
-  const compiled=useMemo(()=>compileObject(object,app),[object,app])
-  if(object.kind==='text')return <TextObject object={object}/>
+  const extraKey=JSON.stringify(props.extraConditions||[])
+  const extraConditions=useMemo(()=>props.extraConditions||[],[extraKey])// eslint-disable-line react-hooks/exhaustive-deps
+  const compiled=useMemo(()=>compileObject(object,app,extraConditions),[object,app,extraConditions])
+  const renderChild=(child:SheetObject,extra?:ExprNode[])=><ObjectBody {...props} object={child} extraConditions={[...extraConditions,...(extra||[])]}/>
+  switch(object.kind){
+    case 'text':return <TextObject object={object}/>
+    case 'variable':return <VariableInput {...props}/>
+    case 'slider':return <SliderObject {...props}/>
+    case 'navigation':return <NavigationMenu {...props}/>
+    case 'image':return <ImageObject {...props}/>
+    case 'textimage':return <TextImageObject {...props}/>
+    case 'divider':return <DividerObject {...props}/>
+    case 'video':return <VideoObject {...props}/>
+    case 'tabs':return <TabContainer {...props} compiled={compiled} renderChild={renderChild}/>
+    case 'layout':return <LayoutContainer {...props} compiled={compiled} renderChild={renderChild}/>
+    case 'button':return compiled.errors.length&&object.options.action==='select'?<Message kind="error">{compiled.errors[0]}</Message>:<ButtonObject {...props} selectTarget={compiled.dimensions[0]||null}/>
+  }
   if(compiled.errors.length)return <Message kind="error">{compiled.errors[0]}</Message>
   switch(object.kind){
+    case 'datepicker':return <DatePicker {...props} compiled={compiled}/>
+    case 'trellis':return <TrellisContainer {...props} compiled={compiled} renderChild={renderChild}/>
     case 'kpi':return <KpiObject {...props} compiled={compiled}/>
     case 'bar':case 'line':return <XYChart {...props} compiled={compiled}/>
     case 'pie':return <PieObject {...props} compiled={compiled}/>
@@ -279,14 +298,26 @@ function PivotObject({app,selections,onSelect,dataVersion,compiled}:ObjectProps&
   const result=useQuery(app.id,spec,dataVersion)
   const pivot=useMemo(()=>toPivot(result.rows,rowDims),[result.rows,rowDims])
   const colDim=compiled.dimensions[rowDims]
+  // dimension colours: row headers per row, column headers per column (their own small queries)
+  const rowStyles=compiled.styles.filter(style=>style.column<rowDims),colStyles=compiled.styles.filter(style=>style.column===rowDims)
+  const rowStyleSpec=useMemo(()=>rowStyles.length?{...buildSpec(compiled,selections,{dimensions:compiled.dimensions.slice(0,rowDims).map((_,i)=>i),measures:[],limit:5000}),measures:rowStyles.map(style=>({expr:style.node}))}:null,[compiled,selections])// eslint-disable-line react-hooks/exhaustive-deps
+  const colStyleSpec=useMemo(()=>colStyles.length?{...buildSpec(compiled,selections,{dimensions:[rowDims],measures:[],limit:500}),measures:colStyles.map(style=>({expr:style.node}))}:null,[compiled,selections])// eslint-disable-line react-hooks/exhaustive-deps
+  const rowStyleRows=useQuery(app.id,rowStyleSpec,dataVersion),colStyleRows=useQuery(app.id,colStyleSpec,dataVersion)
+  const headerStyle=(styles:typeof rowStyles,rows:FieldValue[][],keyCount:number,key:FieldValue[],column:number)=>{
+    const row=rows.find(r=>JSON.stringify(r.slice(0,keyCount))===JSON.stringify(key));if(!row)return undefined
+    const style:{background?:string;color?:string}={}
+    styles.forEach((item,k)=>{if(item.column!==column)return;const color=safeColor(row[keyCount+k]);if(!color)return;if(item.kind==='background')style.background=color;else style.color=color})
+    if(style.background&&!style.color)style.color=contrastText(style.background)
+    return style
+  }
   if(result.error)return <Message kind="error">{result.error}</Message>
   if(!result.loading&&!result.rows.length)return <Message kind="empty">No data for the current selections</Message>
   const cols=pivot.colKeys.slice(0,60)
   return <div className={`bi-table-wrap ${result.loading?'is-loading':''}`}><div className="bi-table-scroll"><table className="bi-table bi-pivot">
     <thead><tr>{compiled.dimensions.slice(0,rowDims).map((d,i)=><th key={i} rowSpan={compiled.measures.length>1?2:1}>{d.label}</th>)}
-      {cols.map((c,i)=><th key={i} colSpan={compiled.measures.length} className="num bi-selectable" onClick={event=>onSelect({key:colDim.selectKey,label:colDim.label,node:colDim.node},c,event.ctrlKey||event.metaKey)}>{displayValue(c,colDim.format)}</th>)}</tr>
+      {cols.map((c,i)=><th key={i} colSpan={compiled.measures.length} className="num bi-selectable" style={colStyles.length?headerStyle(colStyles,colStyleRows.rows,1,[c],rowDims):undefined} onClick={event=>onSelect({key:colDim.selectKey,label:colDim.label,node:colDim.node},c,event.ctrlKey||event.metaKey)}>{displayValue(c,colDim.format)}</th>)}</tr>
       {compiled.measures.length>1&&<tr>{cols.flatMap((_,i)=>compiled.measures.map((m,j)=><th key={`${i}-${j}`} className="num">{m.label}</th>))}</tr>}</thead>
-    <tbody>{pivot.rowKeys.map((rk,r)=><tr key={r}>{rk.map((value,i)=>{const dim=compiled.dimensions[i];return <td key={i} className="bi-selectable" onClick={event=>onSelect({key:dim.selectKey,label:dim.label,node:dim.node},value,event.ctrlKey||event.metaKey)}>{displayValue(value,dim.format)}</td>})}
+    <tbody>{pivot.rowKeys.map((rk,r)=><tr key={r}>{rk.map((value,i)=>{const dim=compiled.dimensions[i];return <td key={i} className="bi-selectable" style={rowStyles.length?headerStyle(rowStyles,rowStyleRows.rows,rowDims,rk,i):undefined} onClick={event=>onSelect({key:dim.selectKey,label:dim.label,node:dim.node},value,event.ctrlKey||event.metaKey)}>{displayValue(value,dim.format)}</td>})}
       {cols.flatMap((c,i)=>{const cell=pivot.cells.get(JSON.stringify(rk)+'|'+JSON.stringify(c));return compiled.measures.map((m,j)=><td key={`${i}-${j}`} className="num" style={cell?cellStyle(compiled,[...Array(compiled.dimensions.length).fill(null),...cell],compiled.dimensions.length+j,compiled.dimensions.length+compiled.measures.length):undefined}>{cell?formatNumber(toNumber(cell[j]),m.format):''}</td>)})}</tr>)}</tbody>
   </table></div>{pivot.colKeys.length>60&&<small className="bi-note">Showing the first 60 columns</small>}</div>
 }

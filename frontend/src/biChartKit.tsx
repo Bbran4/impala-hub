@@ -3,10 +3,19 @@ import {useEffect,useLayoutEffect,useState,type ReactNode} from 'react'
 import {AlertTriangle,Loader2} from 'lucide-react'
 import {supabase} from './supabase'
 import {runQuery,sameValue,type AppDetail,type CompiledObject,type FieldValue,type Selection,type SheetObject} from './biApps'
+import {type AppVariable} from './biExpression'
 
 export type SelectFn=(dimension:{key:string;label:string;node:CompiledObject['dimensions'][number]['node']},value:FieldValue,additive:boolean)=>void
 
-export type ObjectProps={object:SheetObject;app:AppDetail;selections:Selection[];onSelect:SelectFn;dataVersion:string}
+// What objects such as buttons, variable inputs and containers can do in the open app.
+export type AppRuntime={
+  objects:SheetObject[];sheets:{id:string;title:string}[];sheetId:string|null;editing:boolean
+  variables:AppVariable[];values:Record<string,string>
+  goToSheet:(id:string)=>void;setVariable:(name:string,value:string)=>void;clearSelections:()=>void
+  setSelection:(dimension:{key:string;label:string;node:CompiledObject['dimensions'][number]['node']},values:FieldValue[])=>void
+}
+
+export type ObjectProps={object:SheetObject;app:AppDetail;selections:Selection[];onSelect:SelectFn;dataVersion:string;runtime?:AppRuntime}
 
 // ---------------------------------------------------------------------------
 // Data fetching
