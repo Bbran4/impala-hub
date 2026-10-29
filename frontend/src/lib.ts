@@ -144,10 +144,8 @@ async function supabaseApi(path: string, options: RequestInit) {
   }
   if (path === '/api/campaign-types/order' && method === 'PUT') {
     const names = Array.isArray(body?.names) ? body.names : []
-    for (const [position, name] of names.entries()) {
-      const { error } = await client.from('campaign_types').update({ position }).eq('name', name)
-      if (error) throw new Error(error.message)
-    }
+    const { error } = await client.rpc('admin_reorder_campaign_types', { p_names: names })
+    if (error) throw new Error(error.message)
     return names.map((name: string, position: number) => ({ name, position }))
   }
   if (path === '/api/media' && method === 'POST' && options.body && typeof (options.body as FormData).get === 'function') {

@@ -28,6 +28,7 @@ type Props = {
   enabled: boolean;
   channels: NotificationChannel[];
   onNavigate: (notification: UserNotification) => void;
+  onOpenChat: () => void;
   onError: (message: string) => void;
 };
 
@@ -53,10 +54,10 @@ export default function NotificationCentre({
   enabled,
   channels,
   onNavigate,
+  onOpenChat,
   onError,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [showChat, setShowChat] = useState(false);
   const [activeChannel, setActiveChannel] = useState<
     "all" | NotificationChannel
   >("all");
@@ -65,12 +66,35 @@ export default function NotificationCentre({
     __all__: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const loadGeneration = useRef(0);
+  const hadLoadError = useRef(false);
+  const active = enabled && authenticated;
+
+  useEffect(() => {
+    if (!enabled || !supabase) {
+      setAuthenticated(false);
+      return;
+    }
+    let mounted = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (mounted) setAuthenticated(Boolean(data.session));
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (mounted) setAuthenticated(Boolean(session));
+      },
+    );
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [enabled]);
 
   const load = useCallback(
     async (quiet = false) => {
-      if (!enabled || !supabase) return;
+      if (!active || !supabase) return;
       const generation = ++loadGeneration.current;
       if (!quiet) setLoading(true);
       const [listResult, countResult] = await Promise.all([
@@ -86,8 +110,13 @@ export default function NotificationCentre({
       if (generation !== loadGeneration.current) return;
       const error = listResult.error || countResult.error;
       if (error) {
+        hadLoadError.current = true;
         if (!quiet) onError(`Could not load notifications: ${error.message}`);
       } else {
+        if (hadLoadError.current) {
+          hadLoadError.current = false;
+          onError("");
+        }
         setNotifications((listResult.data || []) as UserNotification[]);
         setUnreadCounts(
           Object.fromEntries(
@@ -100,11 +129,11 @@ export default function NotificationCentre({
       }
       if (!quiet) setLoading(false);
     },
-    [enabled, onError],
+    [active, onError],
   );
 
   useEffect(() => {
-    if (!enabled) {
+    if (!active) {
       loadGeneration.current += 1;
       setNotifications([]);
       setUnreadCounts({ __all__: 0 });
@@ -120,7 +149,7 @@ export default function NotificationCentre({
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [enabled, load]);
+  }, [active, load]);
 
   useEffect(() => {
     if (!open) return;
@@ -151,7 +180,7 @@ export default function NotificationCentre({
   }
 
   async function markRead(notification: UserNotification) {
-    if (!supabase || notification.read_at) return;
+    if (!active || !supabase || notification.read_at) return;
     const { error } = await supabase.rpc("mark_user_notification_read", {
       notification_id: notification.id,
     });
@@ -162,7 +191,7 @@ export default function NotificationCentre({
   }
 
   async function markAllRead() {
-    if (!supabase || !unreadInView) return;
+    if (!active || !supabase || !unreadInView) return;
     const channel = activeChannel === "all" ? null : activeChannel;
     const { error } = await supabase.rpc("mark_all_user_notifications_read", {
       notification_channel: channel,
@@ -179,6 +208,8 @@ export default function NotificationCentre({
     onNavigate(notification);
   }
 
+  if (!active) return null;
+
   return (
     <div className="notification-centre">
       <button
@@ -192,7 +223,6 @@ export default function NotificationCentre({
         aria-controls="impala-notification-panel"
         onClick={() => {
           setOpen((value) => !value);
-          setShowChat(false);
           if (!open) void load();
         }}
       >
@@ -212,19 +242,17 @@ export default function NotificationCentre({
           <header className="notification-panel-head">
             <div>
               <span className="eyebrow">IMPALA HUB</span>
-              <h2>{showChat ? "Team chat" : "Notifications"}</h2>
+              <h2>Notifications</h2>
             </div>
             <div className="notification-head-actions">
-              {!showChat && (
-                <button
-                  className="icon-button"
-                  title="Refresh"
-                  aria-label="Refresh notifications"
-                  onClick={() => void load()}
-                >
-                  <RefreshCw size={16} />
-                </button>
-              )}
+              <button
+                className="icon-button"
+                title="Refresh"
+                aria-label="Refresh notifications"
+                onClick={() => void load()}
+              >
+                <RefreshCw size={16} />
+              </button>
               <button
                 className="icon-button"
                 aria-label="Close notifications"
@@ -237,12 +265,12 @@ export default function NotificationCentre({
 
           <div className="notification-panel-actions">
             <button
-              className={showChat ? "secondary active" : "secondary"}
-              onClick={() => setShowChat((value) => !value)}
+              className="secondary"
+              onClick={() => { closePanel(false); onOpenChat() }}
             >
               <MessageCircle size={15} /> Chat
             </button>
-            {!showChat && unreadInView > 0 && (
+            {unreadInView > 0 && (
               <button
                 className="text-button"
                 onClick={() => void markAllRead()}
@@ -252,21 +280,7 @@ export default function NotificationCentre({
             )}
           </div>
 
-          {showChat ? (
-            <div className="notification-chat-placeholder">
-              <MessageCircle size={30} />
-              <h3>Team chat is the next collaboration step</h3>
-              <p>
-                The entry point is ready. Direct and group messaging still needs
-                its own conversation, message, presence and attachment model
-                before it can be safely enabled.
-              </p>
-              <button className="secondary" onClick={() => setShowChat(false)}>
-                Back to notifications
-              </button>
-            </div>
-          ) : (
-            <>
+          <>
               <nav
                 className="notification-channels"
                 aria-label="Notification channels"
@@ -324,7 +338,6 @@ export default function NotificationCentre({
                 )}
               </div>
             </>
-          )}
         </section>
       )}
     </div>

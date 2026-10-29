@@ -1,0 +1,145 @@
+# Reporting apps — user guide
+
+Reporting replaces the parts of Qlik Sense that Impala uses: apps with a data model, dashboard sheets,
+charts and tables with calculations, and selections that filter everything at once.
+
+Data comes from the ERP through the Impala BI sync agent (see `bi-agent/README.md`). Apps only ever read
+those loaded tables.
+
+## Who can do what
+
+| Role | Can |
+|---|---|
+| `administrator` | Everything, including the data loader (Data Loads, Run History, Audit Log) |
+| `report_builder` | Create, edit and delete apps and sheets; choose who can open each app |
+| everyone else | Open the apps shared with one of their roles or with them by name, and use selections |
+
+Give someone the builder role in the Supabase SQL editor:
+```sql
+insert into public.profile_roles (profile_id, role_id)
+select id, 'report_builder' from public.profiles where email = 'someone@impalaspares.co.za';
+```
+
+## Concepts (same as Qlik)
+
+- **App**: a data model, a set of master measures, a list of sheets and an access list.
+- **Data model**: the loaded tables the app uses and how they link, like Qlik's associations. There is no
+  main table: every table is linked to another on one or more matching key fields, and links work both
+  ways. Same-named fields are suggested, and key-like ones (`*_no`, `*_code`, `*_id`) are linked
+  automatically when you add a table. Each table's **Linked to** can be changed after it is added; the links
+  cannot form a loop. Charts only join the tables they use (plus the ones that connect them), and records
+  without a match are kept: stock items that never sold still appear in a stock chart, and selections
+  narrow them like any other record.
+- **Sheet**: one dashboard page. Objects sit on a 24-column grid; drag the header to move, the bottom-right
+  corner to resize.
+- **Selections**: clicking a bar, slice, table cell, legend entry or filter-pane value filters every object in
+  the app, on every sheet. Ctrl+click adds to a selection. The bar under the sheet tabs shows the current
+  selections; clear them one by one or all at once. Filter panes keep showing all values of their own field
+  so you can pick more.
+
+## Objects
+
+| Object | Dimensions | Measures | Notes |
+|---|---|---|---|
+| KPI | – | 1–2 | Big number; the second measure shows underneath |
+| Bar chart | 1–2 | 1–4 | A second dimension splits each bar (grouped, or stacked); more than 14 categories turn horizontal |
+| Line chart | 1–2 | 1–4 | A second dimension draws one line per value |
+| Pie chart | 1 | 1 | Top 7 slices, the rest are "Other" |
+| Combo chart | 1 | 2–6 | First measure(s) as bars, the rest as lines; lines can use a second (right) axis |
+| Scatter plot | 1 | 2–3 | One point per value: x, y and an optional bubble size |
+| Gauge | – | 1–2 | One value on a half-circle; second measure is the target; minimum/maximum in Chart options |
+| Bullet chart | 0–1 | 1–3 | Value bar, target marker (second measure) and range (third) |
+| Funnel chart | 1 | 1 | Stages from largest to smallest with % of the first stage |
+| Waterfall chart | 1 | 1 | How each value moves a running total; total bar at the end |
+| Treemap | 1–2 | 1 | Rectangles sized by value; a second dimension nests inside the first |
+| Histogram | 1 | – | Counts of a number field in ranges; number of bars in Chart options |
+| Box plot | 1–2 | 1 | Median, quartiles, whiskers and outliers; with two dimensions one box per value of the first |
+| Distribution plot | 1–2 | 1 | Every value as a dot, with the median |
+| Radar chart | 1–2 | 1–4 | One axis per value of the first dimension (3 or more values) |
+| Mekko chart | 2 | 1 | Column width = total per first dimension; segments = share of the second |
+| Grid chart | 2 | 1 | Heat map: first dimension down, second across |
+| Word cloud | 1 | 1 | Values sized by the measure |
+| Table | 0–10 | 0–20 | Click headers to sort, totals row, loads 200 rows at a time, CSV export (up to 10,000 rows); column order and cell colours |
+| Pivot table | 2–4 | 1–4 | The last dimension becomes the columns; cell colours per measure |
+| Filter pane | 1 | – | Searchable list of values |
+| Text | – | – | Headings and notes |
+
+Straight table = Table, pivot table = Pivot table. Every chart supports click-to-select. The object list in
+edit mode has a search box.
+
+**Order.** Drag dimensions and measures by their grip (⋮⋮) in the side panel, or focus the grip and press
+Alt+↑/↓. The first dimension is the chart's axis and the order of measures is the order of bars, lines and
+columns. In a table, **Column order** can put any column first, including a measure before the dimensions.
+
+**Cell colours.** In tables (every column) and pivot tables (measures), open **Colours** under a column and
+write a background and/or text colour expression. It is calculated per row like a measure, e.g.
+`If(Sum(qty_on_hand) < 30, '#fbe3dd')`, `If(qty_on_hand < 30, 'red', 'green')`, `RGB(27, 175, 122)` or
+`ColorMix1(Sum(qty) / 1000, '#ffffff', '#2a78d6')`. Results that are not a colour (a name, `#rrggbb` or
+`rgb(…)`) are ignored; text on a coloured background is made dark or white automatically.
+
+Rows where every measure is empty are left out (like Qlik), e.g. a branch value that only exists because a
+stock item never sold.
+
+Every object can have **conditions**: row filters that only apply to that object, e.g.
+`invoice_date = Today() - 1` for "yesterday" reports.
+
+## Expressions
+
+Dimensions are usually a field (`branch`, `[Cost Price]`, `invoices.branch` if two tables share the
+name) but can be calculated (`Year(invoice_date)`, `YearMonth(invoice_date)`). Measures combine records with an
+aggregation; a field on its own in a measure means `Only(field)`, as in Qlik (its value when every record
+in the chart row has the same value, otherwise empty), so `reorder_level - qty_on_hand` works in a table
+per item.
+
+There are 71 functions (aggregation, text, number, date and logic) plus `&` to join text and `//` or
+`/* */` comments. The full list with examples is in [REPORTING_FUNCTIONS.md](REPORTING_FUNCTIONS.md) and in
+the app under **Reporting → Function Reference**. A few common ones:
+
+| | |
+|---|---|
+| Aggregations | `Sum(x)` `Avg(x)` `Count(DISTINCT x)` `Count(*)` `Concat(DISTINCT x, ', ')` `Only(x)` |
+| Text | `branch & ' - ' & item_code` `Upper` `Left(x, n)` `Mid(x, start, n)` `Replace(x, from, to)` `SubField(x, '-', 2)` |
+| Numbers | `Round(x, 2)` `Floor` `Ceil` `Mod` `RangeSum(a, b)` |
+| Dates | `Today()` `YearMonth(d)` `MonthStart(d)` `AddMonths(d, n)` `DaysBetween(a, b)` |
+| Logic | `If(condition, then, else)` `Alt(value, fallback)` `Match(x, 'a', 'b')` `WildMatch(x, 'BOSCH*')` `Pick(n, a, b)` |
+
+**How records are counted.** Like Qlik, every aggregation counts each record of the tables it uses
+once. In an app with invoice lines and stock items linked on `item_code`, `Sum(qty_on_hand)` adds each
+item's stock once (not once per invoice line it appears on), `Sum(qty)` adds every invoice line, and
+`Sum(qty * cost_price)` works per invoice line because it uses both tables. `Count(*)` counts records of
+the table chosen under **Count(*) counts records of** in the data model; `Count(DISTINCT item_code)` counts
+anything else.
+
+**Writing expressions.** Every expression box suggests master measures, fields and functions as you
+type (↑ ↓ and Enter insert at the cursor). The expand button opens a large editor with line numbers,
+errors by line and column, a searchable function list with examples, and **Test**, which runs the
+expression against the app's data. Ctrl+Enter applies it.
+
+**Master measures** are defined once per app (Data model & sharing) and used as `[Name]`, for example:
+
+| Name | Expression | Format |
+|---|---|---|
+| Sales | `Sum(qty * unit_price)` | Rand |
+| Cost | `Sum(qty * cost_price)` | Rand |
+| Gross profit | `[Sales] - [Cost]` | Rand |
+| Margin % | `([Sales] - [Cost]) / [Sales]` | Percent |
+| Invoices | `Count(DISTINCT invoices.invoice_no)` | Whole number |
+
+Expressions are checked as you type: unknown functions, wrong numbers of arguments, unknown fields,
+missing brackets and measures without an aggregation are reported before anything runs.
+
+New functions are added in one place, `frontend/src/biFunctions.ts`, plus the SQL in a migration
+(`bi.compile_expr`). `npm test` fails if a function is missing from the migration, the generated database
+tests (`scripts/gen-function-tests.mjs`) or the generated docs (`scripts/gen-function-docs.mjs`).
+
+## Security
+
+- The browser never sends SQL. Expressions are parsed into a syntax tree in the browser, and the database
+  (`bi.compile_expr`) turns that tree into SQL using only the functions and operators listed above, quoted
+  field names that must exist in the app's data model, and quoted literal values.
+- Every query checks that the user may open that app (`bi.can_view_app`). Users can only reach the
+  tables in the app's data model; the loaded data in `bi_data` is never readable directly.
+- Queries time out after 20 seconds and return at most 10,000 rows.
+- Creating, changing and deleting apps is recorded in the Reporting audit log.
+- Not yet available: row-level access within an app (Qlik section access, e.g. "own branch only").
+  Until then, share apps only with people who may see all of their data.

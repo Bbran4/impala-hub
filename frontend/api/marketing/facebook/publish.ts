@@ -17,14 +17,22 @@ export default async function handler(req: any, res: any) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const encryptionKey = process.env.META_TOKEN_ENCRYPTION_KEY
   if (!url || !key || !serviceKey || !encryptionKey) return res.status(503).json({ detail: 'Facebook publishing server configuration is incomplete.' })
-  const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data: user, error: authError } = await auth.auth.getUser(token)
   if (authError || !user.user) return res.status(401).json({ detail: 'Authentication required.' })
+  const permissionChecks = await Promise.all([
+    auth.rpc('has_marketing_permission', { required_permission: 'feed.create' }),
+    auth.rpc('has_marketing_permission', { required_permission: 'feed.edit' }),
+    auth.rpc('has_marketing_permission', { required_permission: 'posts.create' }),
+    auth.rpc('has_marketing_permission', { required_permission: 'posts.edit' }),
+  ])
+  if (permissionChecks.some((check) => check.error)) return res.status(500).json({ detail: 'Could not verify Marketing publishing access.' })
+  if (!permissionChecks.some((check) => check.data === true)) return res.status(403).json({ detail: 'Create or edit post permission required.' })
   const postId = String(req.query?.post_id || '')
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const [{ data: post }, { data: connection }] = await Promise.all([
     admin.from('posts').select('*').eq('id', postId).eq('created_by', user.user.id).maybeSingle(),
-    admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('owner_id', user.user.id).maybeSingle(),
+    admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('is_workspace_connection', true).maybeSingle(),
   ])
   if (!post) return res.status(404).json({ detail: 'Post not found.' })
   if (!connection?.page_id || !connection.token_ciphertext) return res.status(409).json({ detail: 'Facebook is not connected. Connect Facebook first.' })

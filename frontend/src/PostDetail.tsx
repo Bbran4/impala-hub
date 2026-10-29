@@ -12,6 +12,9 @@ type Props = {
   onSaveCampaign: (postId: string, campaignId: string | null) => Promise<void>
   onOpenImage: (images: Post['media'], index: number) => void
   onError: (e: unknown) => void
+  canEdit: boolean
+  canDelete: boolean
+  canAssignCampaign: boolean
 }
 
 const VERBS: Record<string, string> = { created: 'Created', updated: 'Updated', deleted: 'Deleted' }
@@ -23,7 +26,7 @@ function describeEntry(h: HistoryEntry): string {
   return `${VERBS[h.action] ?? h.action}${parts.length ? ' — ' + parts.join(' · ') : ''}`
 }
 
-export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedule, onDelete, onSaveCampaign, onError }: Props) {
+export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedule, onDelete, onSaveCampaign, onError, canEdit, canDelete, canAssignCampaign }: Props) {
   const [campaignId, setCampaignId] = useState(post.campaign_id || '')
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
   const [saving, setSaving] = useState(false)
@@ -72,9 +75,9 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
           <h2>{heading}</h2>
         </div>
         <div className="row-actions">
-          {editable && <button className="secondary" onClick={() => onEdit(post)}><Pencil size={15} /> Edit post</button>}
-          {post.status === 'failed' && <button className="secondary" onClick={() => onReschedule(post)}><CalendarClock size={15} /> Reschedule</button>}
-          <button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(post.id)}><Trash2 size={16} /></button>
+          {canEdit && editable && <button className="secondary" onClick={() => onEdit(post)}><Pencil size={15} /> Edit post</button>}
+          {canEdit && post.status === 'failed' && <button className="secondary" onClick={() => onReschedule(post)}><CalendarClock size={15} /> Reschedule</button>}
+          {canDelete && <button className="icon-button" title="Delete local record (only after it is absent from Facebook)" aria-label="Delete post" onClick={() => onDelete(post.id)}><Trash2 size={16} /></button>}
         </div>
       </div>
 
@@ -129,7 +132,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         </p>
       </div>
 
-      <div className="detail-card campaign-assignment-card">
+      {canAssignCampaign && <div className="detail-card campaign-assignment-card">
         <div className="campaign-assignment-heading">
           <div>
             <h3>Campaign</h3>
@@ -149,7 +152,7 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
             {saving ? 'Saving...' : 'Save campaign'}
           </button>
         </div>
-      </div>
+      </div>}
 
       <div className="detail-card">
         <h3>History</h3>

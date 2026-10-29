@@ -16,9 +16,11 @@ type Props = {
   onChangeDate: (id: string, isoDate: string, message: string) => void
   onCreate: (localDateTime: string) => void
   onError: (message: string) => void
+  canCreate: boolean
+  canEdit: boolean
 }
 
-export default function PostCalendar({ posts, month, onOpen, onChangeDate, onCreate, onError }: Props) {
+export default function PostCalendar({ posts, month, onOpen, onChangeDate, onCreate, onError, canCreate, canEdit }: Props) {
   const [over, setOver] = useState<string | null>(null)
   const todayKey = dayKey(new Date())
 
@@ -53,7 +55,7 @@ export default function PostCalendar({ posts, month, onOpen, onChangeDate, onCre
 
   return (
     <div className="cal">
-      {unscheduled.length > 0 && (
+      {canEdit && unscheduled.length > 0 && (
         <div className="cal-tray">
           <b>Unscheduled</b>
           {unscheduled.map((p) => (
@@ -77,19 +79,19 @@ export default function PostCalendar({ posts, month, onOpen, onChangeDate, onCre
             <div
               key={key}
               className={`cal-cell ${key === todayKey ? 'today' : ''} ${over === key ? 'over' : ''} ${past ? 'past' : ''}`}
-              onDragOver={(e) => { if (!past) { e.preventDefault(); setOver(key) } }}
+              onDragOver={(e) => { if (canEdit && !past) { e.preventDefault(); setOver(key) } }}
               onDragLeave={() => setOver((o) => (o === key ? null : o))}
-              onDrop={(e) => { e.preventDefault(); setOver(null); drop(day, e.dataTransfer.getData('text/plain')) }}
+              onDrop={(e) => { e.preventDefault(); setOver(null); if (canEdit) drop(day, e.dataTransfer.getData('text/plain')) }}
             >
               <div className="cal-day">
                 <span>{day.getDate()}</span>
-                {!past && (
+                {canCreate && !past && (
                   <button className="icon-button" aria-label={`New post on ${day.toLocaleDateString()}`}
                     onClick={() => onCreate(`${key}T09:00`)}><Plus size={14} /></button>
                 )}
               </div>
               {items.slice(0, 3).map((p) => (
-                <button key={p.id} className="cal-chip" data-status={p.status} draggable={MOVABLE.includes(p.status)}
+                <button key={p.id} className="cal-chip" data-status={p.status} draggable={canEdit && MOVABLE.includes(p.status)}
                   onDragStart={(e) => e.dataTransfer.setData('text/plain', p.id)} onClick={() => onOpen(p.id)}
                   title={`${headingOf(p)} (${p.status.replace(/_/g, ' ')})`}>
                   {headingOf(p)}

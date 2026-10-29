@@ -2,6 +2,18 @@
 
 This directory contains versioned Supabase configuration and database migrations.
 
+Starting after migration `0047`, the two people working on the database use separate number series
+so their branches never collide:
+
+- **Odd numbers** (`0049`, `0051`, `0053`, …): core platform (Marketing, Sales Desk, Smart Stock,
+  Returns & Claims, admin settings).
+- **Even numbers** (`0046`, `0048`, `0062`, `0064`, …): Reporting (`bi` schema).
+
+Before creating a migration, inspect the directory (and the target branch) and choose the next unused
+number in your series that is **higher than every migration already there**: Supabase refuses to apply a
+migration numbered lower than one already applied (which is why `0050`–`0060` are skipped). Never renumber a
+migration that has already been applied.
+
 ## First-time project setup
 
 1. Install the Supabase CLI.

@@ -20,8 +20,10 @@ export default async function handler(req: any, res: any) {
   const auth = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${token}` } } })
   const { data: user, error: authError } = await auth.auth.getUser(token)
   if (authError || !user.user) return res.status(401).json({ detail: 'Authentication required.' })
+  const { data: canAccess } = await auth.rpc('can_access_workspace', { workspace_name: 'marketing' })
+  if (!canAccess) return res.status(403).json({ detail: 'Marketing access required.' })
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
-  const { data: connection } = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('owner_id', user.user.id).maybeSingle()
+  const { data: connection } = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('is_workspace_connection', true).maybeSingle()
   if (!connection?.page_id || !connection.token_ciphertext) return res.status(409).json({ detail: 'Facebook is not connected.' })
   try {
     const pageToken = decrypt(connection.token_ciphertext, encryptionKey)
@@ -41,7 +43,7 @@ export default async function handler(req: any, res: any) {
     let metricsUnavailable = 0
     const metricsErrors: string[] = []
     for (const item of result.data || []) {
-      const { data: existing } = await admin.from('posts').select('id').contains('provider_ids', { facebook: item.id }).eq('created_by', user.user.id).maybeSingle()
+      const { data: existing } = await admin.from('posts').select('id').contains('provider_ids', { facebook: item.id }).limit(1).maybeSingle()
       let attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
       if (attachments.length < 2) {
         try {

@@ -18,9 +18,10 @@ type Props = {
   onOpen: (id: string) => void
   onMove: (id: string, status: string) => void
   onError: (message: string) => void
+  canEdit: boolean
 }
 
-export default function PostBoard({ posts, campaigns, onOpen, onMove, onError }: Props) {
+export default function PostBoard({ posts, campaigns, onOpen, onMove, onError, canEdit }: Props) {
   const [over, setOver] = useState<string | null>(null)
 
   function move(post: Post, target: string) {
@@ -42,12 +43,12 @@ export default function PostBoard({ posts, campaigns, onOpen, onMove, onError }:
             key={status}
             className={`board-col ${over === status ? 'over' : ''}`}
             aria-label={`${label} column`}
-            onDragOver={(e) => { if (droppable) { e.preventDefault(); setOver(status) } }}
+            onDragOver={(e) => { if (canEdit && droppable) { e.preventDefault(); setOver(status) } }}
             onDragLeave={() => setOver((o) => (o === status ? null : o))}
             onDrop={(e) => {
               e.preventDefault(); setOver(null)
               const post = posts.find((p) => p.id === e.dataTransfer.getData('text/plain'))
-              if (post && droppable) move(post, status)
+              if (canEdit && post && droppable) move(post, status)
             }}
           >
             <header><b>{label}</b><span>{items.length}</span></header>
@@ -55,7 +56,7 @@ export default function PostBoard({ posts, campaigns, onOpen, onMove, onError }:
               const editable = EDITABLE.includes(p.status)
               return (
                 <article
-                  key={p.id} className="board-card" data-status={p.status} draggable={editable}
+                  key={p.id} className="board-card" data-status={p.status} draggable={canEdit && editable}
                   onDragStart={(e) => e.dataTransfer.setData('text/plain', p.id)}
                 >
                   <button className="board-title" onClick={() => onOpen(p.id)}>
@@ -65,7 +66,7 @@ export default function PostBoard({ posts, campaigns, onOpen, onMove, onError }:
                   <small>{p.channels.join(' · ') || 'No channel'}</small>
                   <small>{p.published_at ? `Posted ${fmt(p.published_at)}` : fmt(p.publish_at)}</small>
                   <small>{campaigns.find((c) => c.id === p.campaign_id)?.name || 'No campaign'}</small>
-                  {editable && (
+                  {canEdit && editable && (
                     <select aria-label={`Move ${headingOf(p)}`} value="" onChange={(e) => move(p, e.target.value)}>
                       <option value="">Move to…</option>
                       {DROP_TARGETS.filter((t) => t !== p.status).map((t) => <option key={t} value={t}>{LABELS[t]}</option>)}

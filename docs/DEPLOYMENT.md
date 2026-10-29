@@ -163,7 +163,56 @@ After the migration and the matching frontend are deployed:
 - Confirm direct table requests to `bi` and `bi_data` from the browser fail, including for administrators.
 - Confirm the `bi_agent` role cannot read `public` tables (for example `select * from public.profiles` as `bi_agent` fails).
 
+## Administrator Settings checks
 
+Migration `0049_admin_settings.sql` is the first migration in the odd-number-only
+sequence. It adds the Fleet and E-commerce access roles, administrator RPCs for
+application access, immutable access-change auditing, administrator-only
+campaign-type mutation policies and the final shared workspace-access function.
+
+After the migration and matching frontend are deployed:
+
+- Administrator: confirm **Settings** appears directly below **Apps Dashboard**.
+- Non-administrator and signed-out user: confirm Settings is absent and direct
+  calls to `admin_list_app_access` and `admin_set_app_access` are denied.
+- Open each of the seven application entries and confirm only active employee
+  accounts appear under **Who can open this app**.
+- Grant and revoke a normal employee's access, refresh that employee's session,
+  and confirm the dashboard card and direct workspace entry agree.
+- Confirm administrator, management and Sales Manager inherited access is
+  labelled and cannot be removed with an individual app toggle.
+- Confirm Fleet Management and E-commerce access can be prepared but their app
+  cards remain planned and unavailable.
+- In Marketing settings, check Facebook, reconnect/select a Page and disconnect.
+  Confirm a non-administrator receives `403` from every connection-changing
+  endpoint.
+- Sign in as a different Marketing user and confirm the same shared Facebook
+  Page appears, sync does not duplicate already imported provider posts, and
+  publish-now uses the shared Page connection.
+- Confirm authenticated browsers cannot select or mutate
+  `provider_connections` directly; encrypted provider tokens remain available
+  only to the server-side functions.
+- Add, reorder and remove an unused campaign type as administrator. Confirm an
+  ordinary active user can read campaign types but cannot mutate them directly.
+- Confirm `admin_app_access_audit` records each effective grant/revoke with the
+  administrator, target profile, application and role.
+- Confirm users can still edit their permitted Profile fields but cannot update
+  their own `active` state.
+
+## Reporting apps checks
+
+Migration `0048_bi_apps.sql` adds the `report_builder` role, apps (`bi.apps`, `bi.app_tables`, `bi.app_access`, `bi.sheets`), the expression compiler and `public.bi_query`, and lets report builders open the Reporting workspace. User guide: `docs/REPORTING_APPS.md`.
+
+After the migration and the matching frontend are deployed:
+
+- Administrator and report builder: **Reporting → Dashboards** shows **Create app**. Create an app from loaded tables, link them, add master measures, share it with a role, add a sheet with a KPI, bar chart, table and filter pane, and save.
+- Click a bar and a filter value: every object on every sheet of the app filters, and the selections bar shows them. Ctrl+click adds values; Clear all resets.
+- A user with the shared role (or added by name) sees the app with no edit controls; a user with neither sees no apps, and a direct `bi_query` for that app is denied.
+- People added to an app by name see the Reporting card even without a Reporting role, but not the Data catalogue.
+- Type an invalid expression (unknown field, missing bracket, an aggregation inside another): the editor explains it and nothing is saved or queried.
+- Delete a test app and confirm its sheets are gone and the deletion is in the Audit Log.
+
+## Failure and rollback
 
 - If migration 0035 reports unsupported legacy statuses, stop. Correct the listed records and rerun the migration.
 - If a database migration fails, do not deploy the frontend and do not manually mark the migration as applied.
