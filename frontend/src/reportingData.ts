@@ -8,7 +8,7 @@ export type DataColumn={name:string;type:string}
 export type DataTable={
   table_name:string;description:string|null;group_name:string|null;columns:DataColumn[]
   row_count:number|null;last_loaded_at:string|null;last_status:LoadStatus;interval_minutes:number|null
-  source?:'erp'|'upload'|'web'|'folder'|'other'|null
+  source?:'erp'|'upload'|'web'|'folder'|'sharepoint'|'gsheet'|'other'|null
 }
 export type BiAgent={name:string;sources:string[];app_requests:Record<string,string[]>;version:string|null;hostname:string|null;started_at:string|null;last_seen_at:string|null}
 export type BiGroup={

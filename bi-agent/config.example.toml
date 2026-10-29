@@ -47,8 +47,16 @@ query_timeout_seconds = 0       # 0 = no limit
 # read any ERP table the ERP login can see. Turn on only when you need them.
 app_requests = ["test_connection"]
 
+# A second database (another system, a web shop, a SQL Server for Smart Stock, ...) is simply another
+# source. Give it its own read-only login, then use  source = "webshop"  on its tables in tables.toml.
+# [sources.webshop]
+# odbc = "Driver={MySQL ODBC 8.0 Unicode Driver};Server=shop-db;Database=shop;User=bi_reader;Password=${SHOP_DB_PASSWORD}"
+# isolation = "default"
+# app_requests = ["test_connection"]
+
 # -----------------------------------------------------------------------------
-# Connectors for data that does NOT come from the ERP (web APIs and files in folders).
+# Connectors for data that does NOT come from the ERP (web APIs, files in folders, SharePoint/OneDrive
+# and Google Sheets).
 # They are created in the app (Reporting -> Data Connections) by administrators, but this
 # agent only fetches what is allowed here. Nothing is allowed unless it is listed.
 # -----------------------------------------------------------------------------
@@ -67,3 +75,24 @@ allow_hosts = []                 # e.g. ["api.courier.co.za"]
 # Values in .env that a web connector may put in a header as ${NAME}, and the ONE host each may
 # be sent to. The app never sees the value. Anything not listed here cannot be sent.
 # COURIER_API_KEY = "api.courier.co.za"
+
+# --- SharePoint and OneDrive (agent 0.4.0) --------------------------------------
+# Locations SharePoint/OneDrive connectors may read, by name; optionally only one folder in each.
+# The app only sees the names. Files: .xlsx, .xlsm, .csv, .txt.
+[connectors.sharepoint]
+# finance = { site = "impalaspares.sharepoint.com:/sites/Finance", library = "Documents", folder = "Budgets" }
+# sales   = "impalaspares.sharepoint.com:/sites/Sales"         # the site's default library, any folder
+# jaco    = { onedrive = "jaco@impalaspares.co.za", folder = "Reports" }
+
+# The Microsoft Entra app registration the agent signs in with (see README: "SharePoint and OneDrive").
+# Put its client secret in .env as MS_GRAPH_CLIENT_SECRET=...
+# [connectors.microsoft]
+# tenant_id = "00000000-0000-0000-0000-000000000000"
+# client_id = "00000000-0000-0000-0000-000000000000"
+# client_secret_env = "MS_GRAPH_CLIENT_SECRET"
+
+# --- Google Sheets (agent 0.4.0, needs: pip install cryptography) ----------------
+# The JSON key of a Google service account. It can only read sheets that are shared with its
+# e-mail address (shown in the app). Lock the key file down like this folder.
+# [connectors.google]
+# key_file = 'C:\ImpalaBI\google-service-account.json'

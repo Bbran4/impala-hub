@@ -8,7 +8,8 @@ Runs on a machine inside your network that can reach your SQL sources over ODBC
 
 WHAT gets loaded from the ERP is defined in tables.toml on this machine (like a Qlik
 load script). Web and folder connectors are created in the app, but only run within the
-limits of [connectors] in config.toml here (allowed hosts, folders and secrets). You publish changes to Supabase with --plan / --apply. The agent only
+limits of [connectors] in config.toml here (allowed hosts, folders, secrets, SharePoint/OneDrive
+locations and the Google service account). You publish changes to Supabase with --plan / --apply. The agent only
 ever runs queries that are in tables.toml here, so nobody can make it run a
 different query against your ERP by changing things in Supabase.
 
@@ -59,7 +60,7 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 PLACEHOLDER = "{{watermark}}"
 DATA_SCHEMA = "bi_data"
 LOADED_AT_COLUMN = "_bi_loaded_at"
@@ -251,6 +252,72 @@ def load_config(path: str) -> dict:
     return cfg
 
 
+def parse_sharepoint_locations(raw: dict) -> dict:
+    """[connectors.sharepoint]: named SharePoint document libraries or OneDrives (optionally one folder in them).
+       finance = { site = "impalaspares.sharepoint.com:/sites/Finance", library = "Documents", folder = "Budgets" }
+       jaco    = { onedrive = "jaco@impalaspares.co.za", folder = "Reports" }
+       sales   = "impalaspares.sharepoint.com:/sites/Sales"          (the site's default library)"""
+    if not isinstance(raw, dict):
+        raise AgentError("[connectors.sharepoint] must map a name to a site or OneDrive")
+    out = {}
+    for name, loc in raw.items():
+        if isinstance(loc, str):
+            loc = {"site": loc}
+        if not NAME_RE.match(name) or not isinstance(loc, dict):
+            raise AgentError(f"[connectors.sharepoint] '{name}': names are lower case letters, digits and _")
+        bad = set(loc) - {"site", "library", "onedrive", "folder"}
+        if bad:
+            raise AgentError(f"[connectors.sharepoint.{name}]: unknown setting(s) {', '.join(sorted(bad))}")
+        site, drive = str(loc.get("site") or ""), str(loc.get("onedrive") or "")
+        if bool(site) == bool(drive):
+            raise AgentError(f"[connectors.sharepoint.{name}]: set either site (host:/sites/Name) or onedrive (a user's email)")
+        if site and not re.fullmatch(r"[a-z0-9-]+\.sharepoint\.com:/(sites|teams)/[^/?#]+", site, re.I):
+            raise AgentError(f"[connectors.sharepoint.{name}]: site must look like impalaspares.sharepoint.com:/sites/Finance")
+        if drive and not re.fullmatch(r"[^@\s/]+@[^@\s/]+", drive):
+            raise AgentError(f"[connectors.sharepoint.{name}]: onedrive must be the user's email address")
+        folder = str(loc.get("folder") or "").strip("/")
+        if ".." in folder.split("/") or "\\" in folder:
+            raise AgentError(f"[connectors.sharepoint.{name}]: invalid folder")
+        out[name] = {"site": site, "library": str(loc.get("library") or ""), "onedrive": drive, "folder": folder}
+    return out
+
+
+def parse_microsoft(raw: dict) -> dict | None:
+    """[connectors.microsoft]: the app registration the agent uses for Microsoft Graph (client credentials).
+    The client secret stays in .env under client_secret_env (default MS_GRAPH_CLIENT_SECRET)."""
+    if not raw:
+        return None
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}|[a-z0-9.-]+\.onmicrosoft\.com", str(raw.get("tenant_id") or "")):
+        raise AgentError("[connectors.microsoft] tenant_id must be the directory (tenant) ID")
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", str(raw.get("client_id") or "")):
+        raise AgentError("[connectors.microsoft] client_id must be the application (client) ID")
+    env = str(raw.get("client_secret_env") or "MS_GRAPH_CLIENT_SECRET")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env):
+        raise AgentError("[connectors.microsoft] client_secret_env must be the name of a value in .env")
+    return {"tenant_id": str(raw["tenant_id"]), "client_id": str(raw["client_id"]), "secret_env": env,
+            # only for the agent's own tests: where Microsoft's login and Graph are
+            "login_url": test_endpoint(raw, "login_url", "https://login.microsoftonline.com"),
+            "graph_url": test_endpoint(raw, "graph_url", "https://graph.microsoft.com")}
+
+
+def parse_google(raw: dict) -> dict | None:
+    """[connectors.google]: the service account key file used to read Google Sheets shared with it."""
+    if not raw:
+        return None
+    key_file = str(raw.get("key_file") or "")
+    if not key_file:
+        raise AgentError("[connectors.google] key_file must be the path of the service account's JSON key")
+    return {"key_file": key_file, "sheets_url": test_endpoint(raw, "sheets_url", "https://sheets.googleapis.com")}
+
+
+def test_endpoint(raw: dict, key: str, default: str) -> str:
+    """Microsoft and Google addresses are fixed; only the agent's own tests may point them at this machine."""
+    value = str(raw.get(key) or default).rstrip("/")
+    if value != default and not re.fullmatch(r"http://(127\.0\.0\.1|localhost):\d+", value):
+        raise AgentError(f"{key} can only be changed for local tests")
+    return value
+
+
 def parse_connector_config(raw: dict) -> dict:
     """[connectors]: what web and folder connectors created in the app are allowed to do.
     Nothing is allowed unless it is listed here."""
@@ -273,6 +340,9 @@ def parse_connector_config(raw: dict) -> dict:
         "allow_hosts": sorted({h.lower() for h in hosts}),
         "folders": {n: str(p) for n, p in folders.items()},
         "secrets": {n: h.lower() for n, h in secrets.items()},
+        "sharepoint": parse_sharepoint_locations(raw.get("sharepoint") or {}),
+        "microsoft": parse_microsoft(raw.get("microsoft") or {}),
+        "google": parse_google(raw.get("google") or {}),
         "max_bytes": int(raw.get("max_mb", 50)) * 1024 * 1024,
         "max_rows": int(raw.get("max_rows", 1_000_000)),
         "timeout_seconds": int(raw.get("timeout_seconds", 60)),
@@ -876,7 +946,7 @@ def csv_records(raw: bytes) -> list[dict]:
     return [{header[i] if i < len(header) else f"col_{i + 1}": (v if v != "" else None) for i, v in enumerate(r)} for r in rows[1:]]
 
 
-def xlsx_records(path: Path, sheet: str) -> list[dict]:
+def xlsx_records(path: Path | io.BytesIO, sheet: str, label: str = "") -> list[dict]:
     try:
         import openpyxl  # optional: only needed for Excel files
     except ImportError:
@@ -884,7 +954,7 @@ def xlsx_records(path: Path, sheet: str) -> list[dict]:
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
         if sheet and sheet not in wb.sheetnames:
-            raise AgentError(f"Sheet '{sheet}' is not in {path.name} (sheets: {', '.join(wb.sheetnames)})")
+            raise AgentError(f"Sheet '{sheet}' is not in {label or getattr(path, 'name', 'the file')} (sheets: {', '.join(wb.sheetnames)})")
         ws = wb[sheet] if sheet else wb.worksheets[0]
         rows = [list(r) for r in ws.iter_rows(values_only=True)]
     finally:
@@ -926,6 +996,222 @@ def read_folder(cfg_c: dict, ccfg: dict) -> list[dict]:
                 r["source_file"] = f.name
         out.extend(recs)
     return out
+
+
+# --- SharePoint / OneDrive (Microsoft Graph) ------------------------------------------
+
+_TOKENS: dict[str, tuple[str, float]] = {}
+
+
+def http_call(url: str, ccfg: dict, what: str, *, data: bytes | None = None, headers: dict | None = None,
+              max_bytes: int | None = None) -> bytes:
+    """One HTTPS request without following redirects, with the connector size and time limits."""
+    limit = max_bytes or ccfg["max_bytes"]
+    req = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET",
+                                 headers={"User-Agent": f"impala-bi-agent/{VERSION}", **(headers or {})})
+    try:
+        with urllib.request.build_opener(_NoRedirect()).open(req, timeout=ccfg["timeout_seconds"]) as resp:
+            body = resp.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            err = json.loads(e.read(20000).decode("utf-8", "replace"))
+            detail = (err.get("error_description") or (err.get("error") or {}).get("message") if isinstance(err.get("error"), dict)
+                      else err.get("error_description") or err.get("error") or "")
+        except Exception:
+            pass
+        raise AgentError(f"{what} answered {e.code} {e.reason}{': ' + str(detail)[:300] if detail else ''}") from None
+    except urllib.error.URLError as e:
+        raise AgentError(f"Could not reach {what}: {e.reason}") from None
+    if len(body) > limit:
+        raise AgentError(f"The file from {what} is larger than {limit // (1024 * 1024)} MB ([connectors] max_mb)")
+    return body
+
+
+def graph_token(ms: dict, ccfg: dict) -> str:
+    key = f"ms:{ms['tenant_id']}:{ms['client_id']}"
+    cached = _TOKENS.get(key)
+    if cached and cached[1] > time.time() + 60:
+        return cached[0]
+    secret = os.environ.get(ms["secret_env"])
+    if not secret:
+        raise AgentError(f"{ms['secret_env']} (the app registration's client secret) is not set in this agent's .env")
+    remember_secret(secret)
+    body = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": ms["client_id"], "client_secret": secret,
+                                   "scope": "https://graph.microsoft.com/.default"}).encode()
+    resp = json.loads(http_call(f"{ms['login_url']}/{urllib.parse.quote(ms['tenant_id'])}/oauth2/v2.0/token", ccfg,
+                                "Microsoft sign-in", data=body, headers={"Content-Type": "application/x-www-form-urlencoded"},
+                                max_bytes=1024 * 1024))
+    token = resp.get("access_token")
+    if not token:
+        raise AgentError("Microsoft sign-in returned no access token")
+    remember_secret(token)
+    _TOKENS[key] = (token, time.time() + int(resp.get("expires_in", 3600)))
+    return token
+
+
+def graph_json(path_or_url: str, ms: dict, ccfg: dict) -> dict:
+    url = path_or_url if path_or_url.startswith(ms["graph_url"] + "/") else f"{ms['graph_url']}/v1.0{path_or_url}"
+    if not url.startswith(ms["graph_url"] + "/"):
+        raise AgentError("Microsoft Graph returned a link to another host")
+    return json.loads(http_call(url, ccfg, "Microsoft Graph", headers={"Authorization": f"Bearer {graph_token(ms, ccfg)}",
+                                                                     "Accept": "application/json"}, max_bytes=20 * 1024 * 1024))
+
+
+def graph_drive(loc: dict, ms: dict, ccfg: dict) -> str:
+    """The Graph path of the location's document library or OneDrive."""
+    q = urllib.parse.quote
+    if loc["onedrive"]:
+        return f"/users/{q(loc['onedrive'])}/drive"
+    host, site_path = loc["site"].split(":", 1)
+    site = graph_json(f"/sites/{q(host)}:{q(site_path)}", ms, ccfg)
+    if not loc["library"]:
+        return f"/sites/{q(site['id'])}/drive"
+    drives = graph_json(f"/sites/{q(site['id'])}/drives?$select=id,name", ms, ccfg).get("value", [])
+    for d in drives:
+        if d.get("name", "").lower() == loc["library"].lower():
+            return f"/drives/{q(d['id'])}"
+    raise AgentError(f"The site has no library '{loc['library']}' (libraries: {', '.join(d.get('name', '') for d in drives)})")
+
+
+def graph_download(item: dict, ms: dict, ccfg: dict) -> bytes:
+    url = item.get("@microsoft.graph.downloadUrl") or ""
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    graph_host = (urllib.parse.urlsplit(ms["graph_url"]).hostname or "").lower()
+    if not (host.endswith(".sharepoint.com") or host == graph_host) or not url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+        raise AgentError(f"Unexpected download location for {item.get('name')}")
+    if int(item.get("size") or 0) > ccfg["max_bytes"]:
+        raise AgentError(f"{item.get('name')} is larger than {ccfg['max_bytes'] // (1024 * 1024)} MB ([connectors] max_mb)")
+    return http_call(url, ccfg, "SharePoint")  # pre-authorised, short-lived link: no token sent
+
+
+def read_sharepoint(cfg_c: dict, ccfg: dict) -> list[dict]:
+    ms = ccfg["microsoft"]
+    if not ms:
+        raise AgentError("This agent has no [connectors.microsoft] app registration in config.toml")
+    alias = str(cfg_c.get("location") or "")
+    loc = ccfg["sharepoint"].get(alias)
+    if not loc:
+        raise AgentError(f"Location '{alias}' is not in [connectors.sharepoint] in this agent's config.toml")
+    rel = str(cfg_c.get("path") or "").strip("/")
+    parts = rel.split("/")
+    if not rel or ".." in parts or "\\" in rel or any(ch in "".join(parts[:-1]) for ch in "*?") \
+            or not re.search(r"\.(xlsx|xlsm|csv|txt)$", parts[-1], re.I):
+        raise AgentError("Invalid file path")
+    folder = "/".join(p for p in [loc["folder"], *parts[:-1]] if p)
+    drive = graph_drive(loc, ms, ccfg)
+    q = urllib.parse.quote
+    pattern = parts[-1]
+    if any(ch in pattern for ch in "*?"):
+        url = f"{drive}/root:/{q(folder)}:/children" if folder else f"{drive}/root/children"
+        items: list[dict] = []
+        while url and len(items) < 5000:
+            page = graph_json(url + ("" if "?" in url else "?$top=500"), ms, ccfg)
+            items += page.get("value", [])
+            url = page.get("@odata.nextLink")
+        files = [i for i in items if "file" in i and fnmatch.fnmatch(i.get("name", "").lower(), pattern.lower())
+                 and not i.get("name", "").startswith("~$")]
+        if not files:
+            raise AgentError(f"No files match '{pattern}' in {alias}{'/' + folder if folder else ''}")
+        files.sort(key=lambda i: (i.get("lastModifiedDateTime") or "", i.get("name") or ""))
+        if cfg_c.get("combine") != "all":
+            files = files[-1:]
+    else:
+        files = [graph_json(f"{drive}/root:/{q('/'.join(p for p in [folder, pattern] if p))}", ms, ccfg)]
+    out: list[dict] = []
+    for f in files:
+        raw = graph_download(f, ms, ccfg)
+        name = f.get("name", "")
+        recs = (xlsx_records(io.BytesIO(raw), str(cfg_c.get("sheet") or ""), name)
+                if name.lower().endswith((".xlsx", ".xlsm")) else csv_records(raw))
+        if len(files) > 1:
+            for r in recs:
+                r["source_file"] = name
+        out.extend(recs)
+    return out
+
+
+# --- Google Sheets (service account) ---------------------------------------------------
+
+def google_key(g: dict) -> dict:
+    try:
+        key = json.loads(Path(g["key_file"]).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise AgentError(f"Cannot read the Google key file {g['key_file']}: {e}") from None
+    if key.get("type") != "service_account" or not key.get("client_email") or not key.get("private_key"):
+        raise AgentError("The Google key file is not a service account key (JSON)")
+    remember_secret(key["private_key"])
+    return key
+
+
+def google_account(g: dict | None) -> str | None:
+    if not g:
+        return None
+    try:
+        return google_key(g)["client_email"]
+    except AgentError:
+        return "key file missing"
+
+
+def google_token(g: dict, ccfg: dict) -> str:
+    key = google_key(g)
+    cached = _TOKENS.get("g:" + key["client_email"])
+    if cached and cached[1] > time.time() + 60:
+        return cached[0]
+    try:
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+    except ImportError:
+        raise AgentError("Google Sheets needs the cryptography package: run  pip install cryptography") from None
+    token_uri = key.get("token_uri") or "https://oauth2.googleapis.com/token"
+    if not (token_uri == "https://oauth2.googleapis.com/token" or token_uri.startswith(g["sheets_url"] + "/")):
+        raise AgentError("The key file's token_uri is not Google's")
+    b64 = lambda b: __import__("base64").urlsafe_b64encode(b).rstrip(b"=")  # noqa: E731
+    now = int(time.time())
+    claims = {"iss": key["client_email"], "scope": "https://www.googleapis.com/auth/spreadsheets.readonly",
+              "aud": token_uri, "iat": now, "exp": now + 3600}
+    signing_input = b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode()) + b"." + b64(json.dumps(claims).encode())
+    pk = serialization.load_pem_private_key(key["private_key"].encode(), password=None)
+    assertion = signing_input + b"." + b64(pk.sign(signing_input, padding.PKCS1v15(), hashes.SHA256()))
+    body = urllib.parse.urlencode({"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion.decode()}).encode()
+    resp = json.loads(http_call(token_uri, ccfg, "Google sign-in", data=body,
+                                headers={"Content-Type": "application/x-www-form-urlencoded"}, max_bytes=1024 * 1024))
+    token = resp.get("access_token")
+    if not token:
+        raise AgentError("Google sign-in returned no access token")
+    remember_secret(token)
+    _TOKENS["g:" + key["client_email"]] = (token, time.time() + int(resp.get("expires_in", 3600)))
+    return token
+
+
+def read_gsheet(cfg_c: dict, ccfg: dict) -> list[dict]:
+    g = ccfg["google"]
+    if not g:
+        raise AgentError("This agent has no [connectors.google] service account in config.toml")
+    sid = str(cfg_c.get("spreadsheet_id") or "")
+    tab, rng = str(cfg_c.get("sheet") or ""), str(cfg_c.get("range") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,100}", sid) or re.search(r"['!]", tab) or not re.fullmatch(r"([A-Z]{1,3}\d{0,7}:[A-Z]{1,3}\d{0,7})?", rng):
+        raise AgentError("Invalid spreadsheet, tab or range")
+    base = f"{g['sheets_url']}/v4/spreadsheets/{sid}"
+    auth = {"Authorization": f"Bearer {google_token(g, ccfg)}", "Accept": "application/json"}
+    try:
+        if not tab:
+            meta = json.loads(http_call(base + "?fields=sheets.properties.title", ccfg, "Google Sheets", headers=auth))
+            tab = meta["sheets"][0]["properties"]["title"]
+        a1 = f"'{tab}'" + (f"!{rng}" if rng else "")
+        data = json.loads(http_call(f"{base}/values/{urllib.parse.quote(a1)}?valueRenderOption=UNFORMATTED_VALUE"
+                                    f"&dateTimeRenderOption=FORMATTED_STRING&majorDimension=ROWS", ccfg, "Google Sheets", headers=auth))
+    except AgentError as e:
+        if " 403 " in str(e) or " 404 " in str(e):
+            raise AgentError(f"{e}. Share the sheet (Viewer) with {google_key(g)['client_email']}") from None
+        raise
+    rows = [r for r in data.get("values", []) if any(v not in (None, "") for v in r)]
+    if not rows:
+        return []
+    header = [str(h).strip() if h not in (None, "") else f"col_{i + 1}" for i, h in enumerate(rows[0])]
+    width = max(len(header), *(len(r) for r in rows[1:])) if len(rows) > 1 else len(header)
+    header += [f"col_{i + 1}" for i in range(len(header), width)]
+    return [{header[i]: (r[i] if i < len(r) and r[i] != "" else None) for i in range(width)} for r in rows[1:]]
 
 
 _INT_RE = re.compile(r"^-?\d{1,18}$")
@@ -1236,7 +1522,11 @@ class Agent:
             return
         allowed = {n: s.cfg["app_requests"] for n, s in self.sources.items()}
         c = self.cfg["connectors"]
-        options = {"hosts": c["allow_hosts"], "folders": sorted(c["folders"]), "secrets": c["secrets"]}
+        options = {"hosts": c["allow_hosts"], "folders": sorted(c["folders"]), "secrets": c["secrets"],
+                   "sharepoint": {n: (f"OneDrive of {loc['onedrive']}" if loc["onedrive"] else loc["site"].split(":", 1)[1]
+                                      + (f" · {loc['library']}" if loc["library"] else ""))
+                                     + (f" / {loc['folder']}" if loc["folder"] else "") for n, loc in c["sharepoint"].items()},
+                   "microsoft": c["microsoft"] is not None, "google": google_account(c["google"])}
         self.wh.main.execute(
             """
             insert into bi.agents (name, sources, app_requests, version, hostname, started_at, last_seen_at, connector_options)
@@ -1433,7 +1723,7 @@ class Agent:
             if job:
                 self._run_batch([job], "manual", None)
                 return True
-            con = conn.execute("select * from bi.connectors where name = %s and agent_name = %s and kind in ('web', 'folder')",
+            con = conn.execute("select * from bi.connectors where name = %s and agent_name = %s and kind <> 'upload'",
                                (force, self.name)).fetchone()
             if con:
                 self._run_connector(con, "manual")
@@ -1481,7 +1771,7 @@ class Agent:
         con = conn.execute(
             f"""
             select * from bi.connectors
-            where agent_name = %s and kind in ('web', 'folder') and coalesce(last_status, '') <> 'running'
+            where agent_name = %s and kind <> 'upload' and coalesce(last_status, '') <> 'running'
               and (reload_requested
                    or (enabled and interval_minutes is not null
                        and (last_run_at is null or last_run_at + make_interval(mins => interval_minutes) <= now())))
@@ -1523,8 +1813,14 @@ class Agent:
                         records = json_records(json.loads(raw.decode("utf-8-sig")), str(c.get("records_path") or ""))
                     except (UnicodeDecodeError, json.JSONDecodeError) as e:
                         raise AgentError(f"The response is not valid JSON ({e})") from None
-            else:
+            elif con["kind"] == "sharepoint":
+                records = read_sharepoint(c, ccfg)
+            elif con["kind"] == "gsheet":
+                records = read_gsheet(c, ccfg)
+            elif con["kind"] == "folder":
                 records = read_folder(c, ccfg)
+            else:
+                raise AgentError(f"This agent ({VERSION}) cannot run '{con['kind']}' connectors; update it")
             if len(records) > ccfg["max_rows"]:
                 raise AgentError(f"{len(records):,} rows is more than [connectors] max_rows ({ccfg['max_rows']:,})")
             if not records:

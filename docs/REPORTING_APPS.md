@@ -67,10 +67,19 @@ Connection tables cannot use the name of an ERP table.
   with branch targets). Folders are chosen by name from the agent's `config.toml`; a pattern like
   `targets *.xlsx` picks the files. Use the newest matching file, or combine all of them (adds a
   `source_file` column).
+- **SharePoint or OneDrive** (agent 0.4.0): an Excel or CSV file in a SharePoint document library or a
+  OneDrive, read through Microsoft Graph with the agent's own app registration. Locations (a site's library or
+  someone's OneDrive, optionally one folder in it) are chosen by name from the agent's `config.toml`; the path
+  is as shown in SharePoint, e.g. `2026/Budget 2026.xlsx`, and `*` in the file name picks the newest match or
+  combines them all.
+- **Google Sheets** (agent 0.4.0): paste a sheet's link, optionally a tab and a range such as `A1:H500`. The
+  agent reads it with a Google service account; share the sheet with the address shown (Viewer).
+- **A second database** is not added here: it is another source in the agent's `config.toml`, and its tables
+  are defined in `tables.toml` like the ERP tables (see `bi-agent/README.md`, "A second database").
 
-Web and folder connections show their status (waiting, loading, loaded, failed with the error) and can be
-reloaded straight away. The agent's `config.toml` `[connectors]` section decides which hosts, folders and
-keys are allowed (see `bi-agent/README.md`); the page shows what each agent allows. Loaded connection
+Connections run by the agent show their status (waiting, loading, loaded, failed with the error) and can be
+reloaded straight away. The agent's `config.toml` `[connectors]` section decides which hosts, folders, SharePoint/OneDrive
+locations, keys and Google account are allowed (see `bi-agent/README.md`); the page shows what each agent allows. Loaded connection
 tables appear in **Data** and **Data Model** and are added to apps like any other table.
 
 ## Bookmarks, search, exports and favourites

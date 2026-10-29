@@ -116,3 +116,21 @@ SELECT GrvNo        AS grv_no,
 FROM   GrvLines
 WHERE  ReceivedDate >= {{watermark}}
 '''
+
+# -----------------------------------------------------------------------------
+# A table from a second database: add [sources.webshop] to config.toml, then
+# name the source on the table. Everything else works the same.
+# -----------------------------------------------------------------------------
+# [tables.webshop_orders]
+# source = "webshop"
+# description = "Web shop orders"
+# mode = "upsert"
+# keys = ["order_id"]
+# incremental_column = "updated_at"
+# watermark_type = "timestamp"
+# interval_minutes = 60
+# sql = '''
+# SELECT id AS order_id, customer_email, total, status, updated_at
+# FROM   orders
+# WHERE  updated_at >= {{watermark}}
+# '''

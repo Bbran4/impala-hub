@@ -1,5 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
 import {buildRows,checkWebConnector,columnProblems,convertCell,guessColumns,inferType,safeName,uniqueNames} from '../src/biConnectorLogic.ts'
 import {layoutGraph,modelLinks,sharedFieldLinks} from '../src/biModelGraph.ts'
 
@@ -62,4 +63,45 @@ test('relationships: shared fields, app links and layout',()=>{
   assert.equal(pos.get('lines').x,20,'the most connected table is on the left')
   assert.ok(pos.get('invoices').x>pos.get('lines').x&&pos.get('items').x===pos.get('invoices').x)
   assert.ok(pos.get('budget').y>=Math.max(pos.get('invoices').y,pos.get('items').y)+100,'unconnected tables go below')
+})
+
+import {checkGsheetConnector,checkSharepointConnector,spreadsheetId,versionAtLeast,agentSupports,hasWildcard} from '../src/biConnectorLogic.ts'
+
+const cloudAgent={name:'erp-agent',version:'0.4.0',last_seen_at:null,connector_options:{hosts:[],folders:[],secrets:{},
+  sharepoint:{finance:'/sites/Finance · Documents / Budgets',jaco:'OneDrive of jaco@impala.co.za'},microsoft:true,google:'reports@impala.iam.gserviceaccount.com'}}
+
+test('SharePoint/OneDrive connector checks',()=>{
+  assert.equal(checkSharepointConnector('finance','2026/Budget 2026.xlsx',cloudAgent),null)
+  assert.equal(checkSharepointConnector('jaco','/Sales/sales *.csv/',cloudAgent),null)
+  assert.match(checkSharepointConnector('hr','a.xlsx',cloudAgent),/locations agent erp-agent allows/)
+  assert.match(checkSharepointConnector('finance','../HR/pay.xlsx',cloudAgent),/may not contain/)
+  assert.match(checkSharepointConnector('finance','a\\b.xlsx',cloudAgent),/may not contain/)
+  assert.match(checkSharepointConnector('finance','*/pay.xlsx',cloudAgent),/only allowed in the file name/)
+  assert.match(checkSharepointConnector('finance','notes.docx',cloudAgent),/Excel/)
+  assert.match(checkSharepointConnector('finance','a.xlsx',{...cloudAgent,version:'0.3.0'}),/update it to 0.4.0/)
+  assert.match(checkSharepointConnector('finance','a.xlsx',{...cloudAgent,connector_options:{...cloudAgent.connector_options,microsoft:false}}),/app registration/)
+  assert.equal(hasWildcard('Sales/sales *.csv'),true);assert.equal(hasWildcard('Sales*/a.csv'),false)
+})
+
+test('Google Sheets connector checks',()=>{
+  const id='1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789'
+  assert.equal(spreadsheetId(`https://docs.google.com/spreadsheets/d/${id}/edit#gid=0`),id)
+  assert.equal(spreadsheetId(id),id);assert.equal(spreadsheetId('https://example.com/x'),null)
+  assert.equal(checkGsheetConnector(`https://docs.google.com/spreadsheets/d/${id}/edit`,'Targets','A1:F500',cloudAgent),null)
+  assert.equal(checkGsheetConnector(id,'','A:F',cloudAgent),null)
+  assert.match(checkGsheetConnector('nope','','',cloudAgent),/Paste the link/)
+  assert.match(checkGsheetConnector(id,"A'!B",'',cloudAgent),/cannot contain/)
+  assert.match(checkGsheetConnector(id,'','A1;B',cloudAgent),/range/)
+  assert.match(checkGsheetConnector(id,'','',{...cloudAgent,connector_options:{...cloudAgent.connector_options,google:null}}),/service account/)
+})
+
+test('agent versions',()=>{
+  assert.equal(versionAtLeast('0.10.0','0.4.0'),true);assert.equal(versionAtLeast('0.3.9','0.4.0'),false);assert.equal(versionAtLeast(null,'0.4.0'),false)
+  assert.equal(agentSupports({...cloudAgent,version:'0.3.0'},'web'),true);assert.equal(agentSupports({...cloudAgent,version:'0.3.0'},'gsheet'),false)
+})
+
+test('migration 0090 accepts the new kinds and the agent runs them',()=>{
+  const sql=readFileSync(new URL('../../supabase/migrations/0090_bi_connectors_more.sql',import.meta.url),'utf8')
+  const agentPy=readFileSync(new URL('../../bi-agent/impala_bi_agent.py',import.meta.url),'utf8')
+  for(const kind of ['sharepoint','gsheet']){assert.ok(sql.includes(`'${kind}'`));assert.ok(agentPy.includes(`con["kind"] == "${kind}"`))}
 })

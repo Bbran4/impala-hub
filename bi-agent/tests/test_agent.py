@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import urllib.parse
 import uuid
 from pathlib import Path
 
@@ -573,5 +574,162 @@ check(r.returncode == 0, "an agent without [connectors] still runs")
 httpd.shutdown()
 shutil.rmtree(folder, ignore_errors=True)
 conn_cfg.unlink()
+
+# ===========================================================================
+section("Connectors: SharePoint/OneDrive (Microsoft Graph) and Google Sheets")
+import base64 as _b64
+import io as _io
+from cryptography.hazmat.primitives import hashes as _hashes, serialization as _ser
+from cryptography.hazmat.primitives.asymmetric import padding as _padding, rsa as _rsa
+
+MS_SECRET = "Ms-Gr4ph-Secret-0x9!"
+os.environ["MS_GRAPH_CLIENT_SECRET"] = MS_SECRET
+TENANT, CLIENT = "11111111-2222-3333-4444-555555555555", "66666666-7777-8888-9999-000000000000"
+_pk = _rsa.generate_private_key(public_exponent=65537, key_size=2048)
+seen = {"graph_auth": set(), "download_auth": [], "sheet_auth": set(), "jwt_ok": False}
+
+
+def _xlsx(rows, title="Budget"):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = title
+    for r in rows:
+        ws.append(r)
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+FILES = {
+    "budget": _xlsx([["Branch", "Budget"], ["Centurion", 500000], ["Pretoria", 250000.5]]),
+    "jan": b"branch,sales\nCenturion,10\n", "feb": b"branch,sales\nCenturion,20\nPretoria,5\n",
+}
+
+
+class Cloud(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def send(self, code, obj, ctype="application/json"):
+        body = obj if isinstance(obj, bytes) else _json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def item(self, name, key, modified):
+        return {"id": key, "name": name, "size": len(FILES[key]), "file": {}, "lastModifiedDateTime": modified,
+                "@microsoft.graph.downloadUrl": f"http://127.0.0.1:{CPORT}/dl/{key}"}
+
+    def do_POST(self):
+        body = urllib.parse.parse_qs(self.rfile.read(int(self.headers["Content-Length"])).decode())
+        if self.path == f"/{TENANT}/oauth2/v2.0/token":
+            ok = body.get("client_secret") == [MS_SECRET] and body.get("client_id") == [CLIENT]
+            return self.send(200, {"access_token": "ms-token-abc", "expires_in": 3600}) if ok else self.send(401, {"error": "invalid_client"})
+        if self.path == "/token":
+            head, claims, sig = body["assertion"][0].split(".")
+            pad = lambda x: x + "=" * (-len(x) % 4)  # noqa: E731
+            try:
+                _pk.public_key().verify(_b64.urlsafe_b64decode(pad(sig)), f"{head}.{claims}".encode(), _padding.PKCS1v15(), _hashes.SHA256())
+                c = _json.loads(_b64.urlsafe_b64decode(pad(claims)))
+                seen["jwt_ok"] = c["scope"].endswith("spreadsheets.readonly") and c["iss"] == "reports@impala.iam.gserviceaccount.com"
+            except Exception:
+                return self.send(400, {"error": "invalid_grant"})
+            return self.send(200, {"access_token": "g-token-xyz", "expires_in": 3600})
+        self.send(404, {})
+
+    def do_GET(self):
+        path = urllib.parse.unquote(self.path)
+        auth = self.headers.get("Authorization")
+        if path.startswith("/dl/"):
+            seen["download_auth"].append(auth)
+            return self.send(200, FILES[path[4:]], "application/octet-stream")
+        if path.startswith("/v1.0/"):
+            seen["graph_auth"].add(auth)
+            p = path[len("/v1.0"):]
+            if p == "/sites/impala.sharepoint.com:/sites/Finance":
+                return self.send(200, {"id": "site-1"})
+            if p.startswith("/sites/site-1/drives"):
+                return self.send(200, {"value": [{"id": "drv-docs", "name": "Documents"}, {"id": "drv-rep", "name": "Reports"}]})
+            if p == "/drives/drv-docs/root:/Budgets/Budget 2026.xlsx":
+                return self.send(200, self.item("Budget 2026.xlsx", "budget", "2026-10-01T00:00:00Z"))
+            if p.startswith("/users/jaco@impala.co.za/drive/root:/Sales:/children"):
+                return self.send(200, {"value": [self.item("sales jan.csv", "jan", "2026-01-31T00:00:00Z"),
+                                                 self.item("sales feb.csv", "feb", "2026-02-28T00:00:00Z"),
+                                                 {"id": "x", "name": "notes.docx", "file": {}}]})
+            return self.send(404, {"error": {"code": "itemNotFound", "message": "The resource could not be found."}})
+        if path.startswith("/v4/spreadsheets/"):
+            seen["sheet_auth"].add(auth)
+            if "SHARED_SHEET_ID_1234567890" in path and path.endswith("?fields=sheets.properties.title"):
+                return self.send(200, {"sheets": [{"properties": {"title": "Targets"}}]})
+            if "SHARED_SHEET_ID_1234567890/values/'Targets'" in path:
+                return self.send(200, {"values": [["Branch", "Target", "Month"], ["Centurion", 125000, "2026-10-01"],
+                                                  ["Pretoria", 90000.5, "2026-10-01"], [], ["Midrand"]]})
+            return self.send(403, {"error": {"code": 403, "message": "The caller does not have permission"}})
+        self.send(404, {})
+
+
+cloud = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Cloud)
+CPORT = cloud.server_address[1]
+threading.Thread(target=cloud.serve_forever, daemon=True).start()
+key_file = TESTS / "gkey.tmp.json"
+key_file.write_text(_json.dumps({"type": "service_account", "client_email": "reports@impala.iam.gserviceaccount.com",
+                                 "token_uri": f"http://127.0.0.1:{CPORT}/token",
+                                 "private_key": _pk.private_bytes(_ser.Encoding.PEM, _ser.PrivateFormat.PKCS8, _ser.NoEncryption()).decode()}))
+cloud_cfg = TESTS / "cloud.tmp.toml"
+cloud_cfg.write_text(CONFIG.read_text() + textwrap.dedent(f"""
+    [connectors.sharepoint]
+    finance = {{ site = "impala.sharepoint.com:/sites/Finance", library = "Documents", folder = "Budgets" }}
+    jaco = {{ onedrive = "jaco@impala.co.za" }}
+    [connectors.microsoft]
+    tenant_id = "{TENANT}"
+    client_id = "{CLIENT}"
+    login_url = "http://127.0.0.1:{CPORT}"
+    graph_url = "http://127.0.0.1:{CPORT}"
+    [connectors.google]
+    key_file = '{key_file}'
+    sheets_url = "http://127.0.0.1:{CPORT}"
+"""))
+add_connector("sp_budget", "sharepoint", {"location": "finance", "path": "Budget 2026.xlsx", "sheet": "Budget"})
+add_connector("sp_sales", "sharepoint", {"location": "jaco", "path": "Sales/sales *.csv", "combine": "all"})
+add_connector("sp_latest", "sharepoint", {"location": "jaco", "path": "Sales/sales *.csv"})
+add_connector("sp_other", "sharepoint", {"location": "hr", "path": "salaries.xlsx"})
+add_connector("sp_escape", "sharepoint", {"location": "finance", "path": "../Salaries/pay.xlsx"})
+add_connector("sp_missing", "sharepoint", {"location": "finance", "path": "Nope.xlsx"})
+add_connector("gs_targets", "gsheet", {"spreadsheet_id": "SHARED_SHEET_ID_1234567890"})
+add_connector("gs_private", "gsheet", {"spreadsheet_id": "PRIVATE_SHEET_ID_0987654321", "sheet": "Data"})
+
+r = agent("--once", config=cloud_cfg)
+check(con("sp_budget")["last_status"] == "success" and str(one("select sum(budget) s from bi_data.sp_budget")["s"]) == "750000.5",
+      "SharePoint: an Excel file in a library folder is loaded (site, library and folder from config.toml)")
+check(one("select count(*) n, count(distinct source_file) f from bi_data.sp_sales")["n"] == 3 and
+      one("select count(distinct source_file) f from bi_data.sp_sales")["f"] == 2, "OneDrive: a wildcard combines all matching files")
+check(one("select sum(sales) s from bi_data.sp_latest")["s"] == 25, "...or takes the newest one")
+check("not in [connectors.sharepoint]" in (con("sp_other")["last_error"] or ""), "SharePoint locations that are not in config.toml are refused")
+check("Invalid file path" in (con("sp_escape")["last_error"] or ""), "paths cannot leave the configured folder")
+check("404" in (con("sp_missing")["last_error"] or ""), "a missing file gives a readable error")
+check(seen["graph_auth"] == {"Bearer ms-token-abc"} and set(seen["download_auth"]) == {None},
+      "Graph calls use the app token; the token is never sent to the download link")
+check(con("gs_targets")["last_status"] == "success" and str(one("select sum(target) s from bi_data.gs_targets")["s"]) == "215000.5"
+      and one("select count(*) n from bi_data.gs_targets")["n"] == 3, "Google Sheets: the first tab is loaded (blank rows skipped)")
+cols = {c["name"]: c["type"] for c in one("select columns from bi.data_tables where table_name='gs_targets'")["columns"]}
+check(cols.get("month") == "date" and cols.get("target") == "numeric", "...and typed")
+check(seen["jwt_ok"] and seen["sheet_auth"] == {"Bearer g-token-xyz"}, "the service account signs in with a signed JWT (read-only scope)")
+check("Share the sheet (Viewer) with reports@impala.iam.gserviceaccount.com" in (con("gs_private")["last_error"] or ""),
+      "a sheet not shared with the service account says who to share it with")
+opts = one("select connector_options from bi.agents where name='test-agent'")["connector_options"]
+check(opts.get("sharepoint", {}).get("finance") == "/sites/Finance · Documents / Budgets" and opts.get("microsoft") is True
+      and opts.get("google") == "reports@impala.iam.gserviceaccount.com", "the agent tells the app its locations and the Google account")
+everything = LOG.read_text() + str(q("select * from bi.connectors")) + str(q("select * from bi.sync_runs")) + str(opts)
+check(MS_SECRET not in everything and "ms-token-abc" not in everything and "g-token-xyz" not in everything and "PRIVATE KEY" not in everything,
+      "the client secret, tokens and private key never appear in logs or Supabase")
+bad_cfg = TESTS / "cloud.bad.tmp.toml"
+bad_cfg.write_text(CONFIG.read_text() + f'\n[connectors.microsoft]\ntenant_id = "{TENANT}"\nclient_id = "{CLIENT}"\ngraph_url = "https://evil.example.com"\n')
+r = agent("--validate", config=bad_cfg)
+check(r.returncode != 0 and "only be changed for local tests" in r.out, "the Microsoft and Google addresses cannot be changed")
+bad_cfg.unlink()
+cloud.shutdown()
+key_file.unlink()
+cloud_cfg.unlink()
 
 print(f"\nAll {passed} checks passed")
