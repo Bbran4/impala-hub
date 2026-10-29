@@ -1,15 +1,14 @@
-import {useCallback,useEffect,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent,type ReactNode} from 'react'
+import {useCallback,useEffect,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent} from 'react'
 import {
-  ArrowLeft,BarChart3,Palette,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
-  Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,Hash,ChartColumnIncreasing,ScatterChart,Target,ListFilter,ChartNoAxesColumn,LayoutDashboard,
-  BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,
+  ArrowLeft,BarChart3,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
+  Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,
 } from 'lucide-react'
 import {supabase} from './supabase'
 import {type MasterMeasure} from './biExpression'
 import {checkExpression,ExpressionInput,type ExpressionContext} from './biExpressionEditor'
 import {
   GRID_COLS,KIND_INFO,ROW_HEIGHT,compileObject,deleteApp,deleteSheet,displayValue,freeSpot,loadApp,loadApps,loadPrincipals,
-  columnOrder,fitOptions,modelProblems,moveColumn,newId,normalizeObject,orderedModel,relinkModel,removeFromModel,rerootModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
+  modelProblems,newId,normalizeObject,orderedModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
   type AccessEntry,type AppDetail,type AppSummary,type ModelTable,type NumberFormat,type ObjectKind,
   type Principals,type Selection,type Sheet,type SheetObject,
 } from './biApps'
@@ -19,14 +18,7 @@ import './reportingApps.css'
 
 type Props={canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
 
-const KIND_ICONS:Record<ObjectKind,typeof BarChart3>={kpi:Hash,bar:BarChart3,line:LineChart,pie:PieChart,table:Table2,pivot:Grid3x3,filter:Filter,text:Type,
-  combo:ChartColumnIncreasing,scatter:ScatterChart,gauge:Gauge,bullet:Target,funnel:ListFilter,waterfall:ChartNoAxesColumn,treemap:LayoutDashboard,histogram:BarChartBig,
-  boxplot:ChartCandlestick,distribution:Grip,radar:Radar,mekko:Columns3,grid:LayoutGrid,wordcloud:Cloud}
-const PALETTE:{title:string;kinds:ObjectKind[]}[]=[
-  {title:'Charts',kinds:['bar','line','combo','pie','kpi','gauge','scatter','treemap','waterfall','funnel','bullet','radar','mekko','grid','histogram','boxplot','distribution','wordcloud']},
-  {title:'Tables',kinds:['table','pivot']},
-  {title:'Filters & text',kinds:['filter','text']},
-]
+const KIND_ICONS:Record<ObjectKind,typeof BarChart3>={kpi:Gauge,bar:BarChart3,line:LineChart,pie:PieChart,table:Table2,pivot:Grid3x3,filter:Filter,text:Type}
 const FORMATS:[NumberFormat,string][]=[['auto','Automatic'],['number','Number'],['integer','Whole number'],['money','Rand (R)'],['percent','Percent']]
 
 export default function ReportingApps({canBuild,setNotice,setError}:Props){
@@ -161,13 +153,7 @@ function SelectionsBar({selections,onClear}:{selections:Selection[];onClear:(key
 }
 
 function ObjectPalette({onAdd}:{onAdd:(kind:ObjectKind)=>void}){
-  const [search,setSearch]=useState('')
-  const needle=search.trim().toLowerCase()
-  return <aside className="bi-palette"><input className="bi-palette-search" placeholder="Find a chart" value={search} onChange={event=>setSearch(event.target.value)} aria-label="Find a chart type"/>
-    {PALETTE.map(group=>{const kinds=group.kinds.filter(kind=>!needle||`${KIND_INFO[kind].label} ${KIND_INFO[kind].hint}`.toLowerCase().includes(needle));if(!kinds.length)return null
-      return <div key={group.title} className="bi-palette-group"><span className="nav-label">{group.title.toUpperCase()}</span>
-        <div className="bi-palette-grid">{kinds.map(kind=>{const Icon=KIND_ICONS[kind];return <button key={kind} title={KIND_INFO[kind].hint} onClick={()=>onAdd(kind)}><Icon size={17}/><span>{KIND_INFO[kind].label.replace(/ chart$/,'')}</span></button>})}</div></div>})}
-  </aside>
+  return <aside className="bi-palette"><span className="nav-label">ADD</span>{(Object.keys(KIND_INFO) as ObjectKind[]).map(kind=>{const Icon=KIND_ICONS[kind];return <button key={kind} title={KIND_INFO[kind].hint} onClick={()=>onAdd(kind)}><Icon size={18}/><span>{KIND_INFO[kind].label}</span></button>})}</aside>
 }
 
 // ---------------------------------------------------------------------------
@@ -248,24 +234,14 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
   return <aside className="bi-panel">
     <div className="bi-panel-head"><h3>{info.label}</h3><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16}/></button></div>
     <label>Type<select value={object.kind} onChange={event=>{const kind=event.target.value as ObjectKind;const next=KIND_INFO[kind]
-      const dimensions=object.dimensions.slice(0,next.dims[1]),measures=object.measures.slice(0,next.measures[1])
-      set({kind,dimensions,measures,options:fitOptions(object,dimensions.length,measures.length)})}}>
+      set({kind,dimensions:object.dimensions.slice(0,next.dims[1]),measures:object.measures.slice(0,next.measures[1])})}}>
       {(Object.keys(KIND_INFO) as ObjectKind[]).map(kind=><option key={kind} value={kind}>{KIND_INFO[kind].label}</option>)}</select></label>
     <p className="hint">{info.hint}</p>
     <label>Title<input value={object.title} maxLength={120} onChange={event=>set({title:event.target.value})}/></label>
     {object.kind==='text'&&<label>Text<textarea rows={5} value={object.options.text||''} onChange={event=>setOption({text:event.target.value})}/></label>}
 
-    {info.dims[1]>0&&<ItemList title="Dimensions" kind="dimension" ctx={ctx} items={object.dimensions} max={info.dims[1]} colors={object.kind==='table'} onChange={dimensions=>set({dimensions,options:fitOptions(object,dimensions.length,object.measures.length)})}
-      onMove={(from,to)=>set(moveColumn(object,'dimension',from,to))}
-      onRemove={i=>{const dimensions=object.dimensions.filter((_,j)=>j!==i);set({dimensions,options:fitOptions(object,dimensions.length,object.measures.length,{kind:'dimension',index:i})})}}/>}
-    {info.measures[1]>0&&<ItemList title="Measures" kind="measure" ctx={ctx} items={object.measures} max={info.measures[1]} colors={object.kind==='table'||object.kind==='pivot'} onChange={measures=>set({measures,options:fitOptions(object,object.dimensions.length,measures.length)})}
-      onMove={(from,to)=>set(moveColumn(object,'measure',from,to))}
-      onRemove={i=>{const measures=object.measures.filter((_,j)=>j!==i);set({measures,options:fitOptions(object,object.dimensions.length,measures.length,{kind:'measure',index:i})})}}/>}
-    {object.kind==='table'&&object.dimensions.length+object.measures.length>1&&<div className="bi-section"><div className="bi-section-title"><Table2 size={14}/>Column order</div>
-      <p className="hint">Drag to put any column first, including measures before dimensions.</p>
-      <SortableList count={columnOrder(object).length} onMove={(from,to)=>setOption({columnOrder:moveIndex(columnOrder(object),from,to)})}
-        label={i=>columns[columnOrder(object)[i]]} render={i=>{const c=columnOrder(object)[i];return <div className="bi-column-chip">{c<object.dimensions.length?<Database size={12}/>:<Sigma size={12}/>}<span>{columns[c]}</span></div>}}/>
-    </div>}
+    {info.dims[1]>0&&<ItemList title="Dimensions" kind="dimension" ctx={ctx} items={object.dimensions} max={info.dims[1]} onChange={dimensions=>set({dimensions})}/>}
+    {info.measures[1]>0&&<ItemList title="Measures" kind="measure" ctx={ctx} items={object.measures} max={info.measures[1]} onChange={measures=>set({measures})}/>}
 
     {object.kind!=='text'&&<details className="bi-section" open={Boolean(object.options.conditions?.length)}>
       <summary>Conditions</summary>
@@ -276,22 +252,12 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
       <button className="text-button" onClick={()=>setOption({conditions:[...(object.options.conditions||[]),'']})}><Plus size={13}/>Add condition</button>
     </details>}
 
-    {['combo','gauge','histogram'].includes(object.kind)&&<details className="bi-section" open>
-      <summary>Chart options</summary>
-      {object.kind==='combo'&&<label>Measures drawn as bars<select value={object.options.comboBars??1} onChange={event=>setOption({comboBars:Number(event.target.value)})}>
-        {object.measures.map((_,i)=><option key={i} value={i+1}>{i+1===1?'The first':`The first ${i+1}`}{i+1<object.measures.length?' (the rest are lines)':' (all bars)'}</option>)}<option value={0}>None (all lines)</option></select></label>}
-      {object.kind==='combo'&&<label className="bi-check"><input type="checkbox" checked={Boolean(object.options.secondaryAxis)} onChange={event=>setOption({secondaryAxis:event.target.checked})}/>Lines on a second axis (right)</label>}
-      {object.kind==='gauge'&&<div className="bi-row"><label>Minimum<input type="number" value={object.options.gaugeMin??''} placeholder="0" onChange={event=>setOption({gaugeMin:event.target.value===''?undefined:Number(event.target.value)})}/></label>
-        <label>Maximum<input type="number" value={object.options.gaugeMax??''} placeholder="Automatic" onChange={event=>setOption({gaugeMax:event.target.value===''?undefined:Number(event.target.value)})}/></label></div>}
-      {object.kind==='histogram'&&<label>Number of bars<input type="number" min={2} max={60} value={object.options.bins??''} placeholder="Automatic" onChange={event=>setOption({bins:event.target.value?Math.max(2,Math.min(60,Number(event.target.value))):undefined})}/></label>}
-    </details>}
-
-    {['bar','line','pie','table','combo','funnel','waterfall','wordcloud','scatter'].includes(object.kind)&&<details className="bi-section">
+    {['bar','line','pie','table'].includes(object.kind)&&<details className="bi-section">
       <summary>Sorting and display</summary>
       {object.kind!=='pie'&&<label>Sort by<select value={object.options.sortBy??''} onChange={event=>setOption({sortBy:event.target.value===''?undefined:Number(event.target.value)})}>
         <option value="">Automatic</option>{columns.map((name,i)=><option key={i} value={i}>{name}</option>)}</select></label>}
       {object.options.sortBy!=null&&<label className="bi-check"><input type="checkbox" checked={Boolean(object.options.sortDesc)} onChange={event=>setOption({sortDesc:event.target.checked})}/>Largest / latest first</label>}
-      {['bar','line','combo','scatter','wordcloud'].includes(object.kind)&&<label>Maximum values<input type="number" min={1} max={1000} value={object.options.limit||''} placeholder={object.kind==='line'?'500':'100'} onChange={event=>setOption({limit:event.target.value?Math.max(1,Math.min(1000,Number(event.target.value))):undefined})}/></label>}
+      {(object.kind==='bar'||object.kind==='line')&&<label>Maximum values<input type="number" min={1} max={1000} value={object.options.limit||''} placeholder={object.kind==='line'?'500':'100'} onChange={event=>setOption({limit:event.target.value?Math.max(1,Math.min(1000,Number(event.target.value))):undefined})}/></label>}
       {object.kind==='bar'&&<label className="bi-check"><input type="checkbox" checked={Boolean(object.options.horizontal)} onChange={event=>setOption({horizontal:event.target.checked})}/>Horizontal bars</label>}
       {object.kind==='bar'&&<label className="bi-check"><input type="checkbox" checked={Boolean(object.options.stacked)} onChange={event=>setOption({stacked:event.target.checked})}/>Stack the second dimension</label>}
       {object.kind==='table'&&<label className="bi-check"><input type="checkbox" checked={object.options.totals!==false} onChange={event=>setOption({totals:event.target.checked})}/>Show totals</label>}
@@ -302,51 +268,16 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
   </aside>
 }
 
-// Drag-to-reorder list: drag an entry by its grip (mouse, pen or touch), or focus the grip and use Alt+↑/↓.
-function SortableList({count,onMove,label,render}:{count:number;onMove:(from:number,to:number)=>void;label:(i:number)=>string;render:(i:number)=>ReactNode}){
-  const listRef=useRef<HTMLDivElement>(null)
-  const [drag,setDrag]=useState<{from:number;over:number}|null>(null)
-  function overIndex(clientY:number){
-    const items=[...(listRef.current?.children||[])] as HTMLElement[]
-    const index=items.findIndex(item=>{const r=item.getBoundingClientRect();return clientY<r.top+r.height/2})
-    return index<0?items.length-1:index
-  }
-  function start(event:ReactPointerEvent<HTMLButtonElement>,i:number){
-    if(event.button!==0)return
-    event.preventDefault();event.currentTarget.setPointerCapture(event.pointerId);setDrag({from:i,over:i})
-  }
-  return <div className="bi-sortable" ref={listRef}>{Array.from({length:count},(_,i)=><div key={i}
-      className={`bi-sortable-item ${drag?.from===i?'dragging':''} ${drag&&drag.over===i&&drag.from!==i?(drag.from<i?'drop-after':'drop-before'):''}`}>
-      {count>1&&<button type="button" className="bi-grip" aria-label={`Move ${label(i)} (Alt+arrow keys)`} title="Drag to change the order"
-        onPointerDown={event=>start(event,i)}
-        onPointerMove={event=>{if(drag)setDrag({...drag,over:overIndex(event.clientY)})}}
-        onPointerUp={()=>{if(drag&&drag.over!==drag.from)onMove(drag.from,drag.over);setDrag(null)}}
-        onPointerCancel={()=>setDrag(null)}
-        onKeyDown={event=>{if(!event.altKey)return
-          if(event.key==='ArrowUp'&&i>0){event.preventDefault();onMove(i,i-1)}
-          if(event.key==='ArrowDown'&&i<count-1){event.preventDefault();onMove(i,i+1)}}}><GripVertical size={14}/></button>}
-      <div className="bi-sortable-body">{render(i)}</div>
-    </div>)}</div>
-}
-export function moveIndex<T>(items:T[],from:number,to:number){const next=[...items];const [item]=next.splice(from,1);next.splice(to,0,item);return next}
-
-function ItemList({title,kind,ctx,items,max,colors,onChange,onMove,onRemove}:{title:string;kind:'dimension'|'measure';ctx:ExpressionContext;items:SheetObject['dimensions'];max:number;colors?:boolean;onChange:(items:SheetObject['dimensions'])=>void;onMove:(from:number,to:number)=>void;onRemove:(index:number)=>void}){
+function ItemList({title,kind,ctx,items,max,onChange}:{title:string;kind:'dimension'|'measure';ctx:ExpressionContext;items:SheetObject['dimensions'];max:number;onChange:(items:SheetObject['dimensions'])=>void}){
   return <div className="bi-section"><div className="bi-section-title">{kind==='measure'?<Sigma size={14}/>:<Database size={14}/>}{title}<small>{items.length}/{max}</small></div>
-    <SortableList count={items.length} onMove={onMove} label={i=>items[i].label||items[i].expr||`${kind} ${i+1}`} render={i=>{const item=items[i]
-      return <div className="bi-item">
+    {items.map((item,i)=><div key={i} className="bi-item">
       <div className="bi-row"><ExpressionInput ctx={ctx} label={item.label||`${kind==='measure'?'Measure':'Dimension'} ${i+1}`} value={item.expr} kind={kind} onChange={expr=>onChange(items.map((x,j)=>j===i?{...x,expr}:x))}/>
-        <button className="icon-button" aria-label={`Remove ${kind}`} onClick={()=>onRemove(i)}><Trash2 size={14}/></button></div>
+        <button className="icon-button" aria-label={`Remove ${kind}`} onClick={()=>onChange(items.filter((_,j)=>j!==i))}><Trash2 size={14}/></button></div>
       <div className="bi-row bi-sub">
         <input placeholder="Label (optional)" value={item.label||''} onChange={event=>onChange(items.map((x,j)=>j===i?{...x,label:event.target.value||undefined}:x))}/>
         <select aria-label="Number format" value={item.format||'auto'} onChange={event=>onChange(items.map((x,j)=>j===i?{...x,format:event.target.value as NumberFormat}:x))}>{FORMATS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
       </div>
-      {colors&&<details className="bi-colors" open={Boolean(item.background||item.textColor)}>
-        <summary><Palette size={12}/>Colours{(item.background||item.textColor)&&<small>on</small>}</summary>
-        <label>Background colour<ExpressionInput ctx={ctx} kind="color" label={`${item.label||item.expr||kind} background colour`} value={item.background||''} onChange={background=>onChange(items.map((x,j)=>j===i?{...x,background:background||undefined}:x))}/></label>
-        <label>Text colour<ExpressionInput ctx={ctx} kind="color" label={`${item.label||item.expr||kind} text colour`} value={item.textColor||''} onChange={textColor=>onChange(items.map((x,j)=>j===i?{...x,textColor:textColor||undefined}:x))}/></label>
-        <p className="hint">Calculated per row, e.g. <code>If(Sum(qty) &lt; 10, 'red')</code>, <code>RGB(27, 175, 122)</code> or <code>ColorMix1(Sum(qty) / 100, '#ffffff', '#1baf7a')</code>. Empty or non-colour results leave the cell as it is.</p>
-      </details>}
-    </div>}}/>
+    </div>)}
     {items.length<max&&<button className="text-button" onClick={()=>onChange([...items,{expr:''}])}><Plus size={13}/>Add {kind}</button>}
   </div>
 }
@@ -394,9 +325,20 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
     setModel([...model,{alias,table_name:tableName,parent_alias:parent.table.alias,join_type:'left',join_pairs:parent.links.filter(l=>l.likelyKey).map(l=>l.pair),columns}])
   }
   const update=(alias:string,changes:Partial<ModelTable>)=>setModel(model.map(t=>t.alias===alias?{...t,...changes}:t))
-  const removeTable=(alias:string)=>setModel(removeFromModel(withColumns,alias))
-  const relink=(alias:string,target:string)=>{const table=withColumns.find(t=>t.alias===alias),other=withColumns.find(t=>t.alias===target);if(!table||!other)return
-    setModel(relinkModel(withColumns,alias,target,suggestLinks(table.columns,other.columns).filter(l=>l.likelyKey).map(l=>l.pair)))}
+  function removeTable(alias:string){
+    const removed=model.find(t=>t.alias===alias)
+    setModel(model.filter(t=>t.alias!==alias).map(t=>t.parent_alias===alias?{...t,parent_alias:removed?.parent_alias??null,join_pairs:[]}:t))
+  }
+  function makeMain(alias:string){
+    // re-root the tree: reverse links on the path from the old main table
+    const byAlias=new Map(model.map(t=>[t.alias,{...t}]))
+    const path:string[]=[];let cursor:string|null=alias
+    while(cursor){path.push(cursor);cursor=byAlias.get(cursor)!.parent_alias}
+    for(let i=path.length-1;i>0;i--){const parent=byAlias.get(path[i])!,child=byAlias.get(path[i-1])!
+      parent.parent_alias=child.alias;parent.join_pairs=child.join_pairs.map(([c,p])=>[p,c] as [string,string]);parent.join_type=child.join_type}
+    const root=byAlias.get(alias)!;root.parent_alias=null;root.join_pairs=[]
+    setModel([root,...model.filter(t=>t.alias!==alias).map(t=>byAlias.get(t.alias)!)])
+  }
 
   async function save(){
     if(!supabase)return
@@ -424,28 +366,26 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
       <label>Description<input value={description} maxLength={500} placeholder="What this app is for" onChange={event=>setDescription(event.target.value)}/></label></div></div>
 
     <div className="bi-card"><h3><Link2 size={16}/>Data model</h3>
-      <p className="hint">Choose the loaded tables this app uses and link them on matching key fields, like Qlik's associations. There is no main table: a chart uses only the tables it needs, and records without a match in a linked table are still shown (for example stock items that never sold). Fields with the same name are suggested.</p>
+      <p className="hint">Choose the loaded tables this app uses. The main table holds the rows you count and sum (for example invoice lines); every other table links to it, or to a table already linked, on matching fields. Fields with the same name are suggested, like Qlik's associations.</p>
       <div className="bi-model">{ordered.map(table=>{const parent=withColumns.find(t=>t.alias===table.parent_alias);const suggestions=parent?suggestLinks(table.columns,parent.columns):[]
-        const linkedFrom=withColumns.filter(t=>t.parent_alias===table.alias)
-        const rows=catalogue.find(c=>c.table_name===table.table_name)?.row_count
-        return <div key={table.alias} className="bi-model-table">
+        return <div key={table.alias} className={`bi-model-table ${table.parent_alias?'':'is-main'}`} style={{marginLeft:Math.min(4,depth(table,withColumns))*28}}>
           <div className="bi-model-head"><Database size={15}/><b>{table.alias}</b>{table.alias!==table.table_name&&<small>({table.table_name})</small>}
-            <small className="bi-muted">{table.columns.length} fields{rows!=null?` · ${Number(rows).toLocaleString()} rows`:''}</small>
-            <button className="icon-button" aria-label={`Remove ${table.alias}`} title="Remove from the app" onClick={()=>removeTable(table.alias)}><Trash2 size={14}/></button></div>
-          {withColumns.length>1&&<div className="bi-link">
-            <label>Linked to<select value={table.parent_alias||''} onChange={event=>event.target.value&&relink(table.alias,event.target.value)}>
-              {!table.parent_alias&&<option value="">{linkedFrom.length?`(linked from ${linkedFrom.map(t=>t.alias).join(', ')})`:'Choose a table…'}</option>}
-              {withColumns.filter(t=>t.alias!==table.alias).map(t=><option key={t.alias} value={t.alias}>{t.alias}</option>)}</select></label>
-            {parent&&<div className="bi-pairs">{table.join_pairs.map((pair,i)=><span key={i} className="bi-chip"><code>{table.alias}.{pair[0]}</code> = <code>{table.parent_alias}.{pair[1]}</code>
+            {!table.parent_alias?<span className="sd-type">Main table</span>:<button className="text-button" onClick={()=>makeMain(table.alias)}>Make main table</button>}
+            <small className="bi-muted">{table.columns.length} fields{catalogue.find(c=>c.table_name===table.table_name)?.row_count!=null?` · ${Number(catalogue.find(c=>c.table_name===table.table_name)?.row_count).toLocaleString()} rows`:''}</small>
+            <button className="icon-button" aria-label={`Remove ${table.alias}`} onClick={()=>removeTable(table.alias)}><Trash2 size={14}/></button></div>
+          {table.parent_alias&&<div className="bi-link">
+            <label>Links to<select value={table.parent_alias} onChange={event=>update(table.alias,{parent_alias:event.target.value,join_pairs:suggestLinks(table.columns,withColumns.find(t=>t.alias===event.target.value)?.columns||[]).filter(l=>l.likelyKey).map(l=>l.pair)})}>
+              {withColumns.filter(t=>t.alias!==table.alias&&!isDescendant(t.alias,table.alias,withColumns)).map(t=><option key={t.alias} value={t.alias}>{t.alias}</option>)}</select></label>
+            <label>Keep<select value={table.join_type} onChange={event=>update(table.alias,{join_type:event.target.value as 'left'|'inner'})}>
+              <option value="left">All rows of {table.parent_alias}</option><option value="inner">Only rows that match</option></select></label>
+            <div className="bi-pairs">{table.join_pairs.map((pair,i)=><span key={i} className="bi-chip"><code>{table.alias}.{pair[0]}</code> = <code>{table.parent_alias}.{pair[1]}</code>
               <button aria-label="Remove link field" onClick={()=>update(table.alias,{join_pairs:table.join_pairs.filter((_,j)=>j!==i)})}><X size={12}/></button></span>)}
               {suggestions.filter(s=>!table.join_pairs.some(p=>p[0]===s.pair[0]&&p[1]===s.pair[1])).map(s=><button key={s.pair[0]} className="secondary bi-suggest" onClick={()=>update(table.alias,{join_pairs:[...table.join_pairs,s.pair]})}><Plus size={12}/>{s.pair[0]}</button>)}
-              <PairPicker child={table} parent={parent} onAdd={pair=>update(table.alias,{join_pairs:[...table.join_pairs,pair]})}/></div>}
+              <PairPicker child={table} parent={parent} onAdd={pair=>update(table.alias,{join_pairs:[...table.join_pairs,pair]})}/></div>
           </div>}
         </div>})}
-        {!model.length&&<p className="bi-muted">No tables yet. Add a table to start.</p>}
+        {!model.length&&<p className="bi-muted">No tables yet. Add the main table first.</p>}
       </div>
-      {withColumns.length>1&&<label className="bi-add-table">Count(*) counts records of<select value={ordered[0]?.alias||''} onChange={event=>setModel(rerootModel(withColumns,event.target.value))}>
-        {ordered.map(t=><option key={t.alias} value={t.alias}>{t.alias}</option>)}</select></label>}
       <label className="bi-add-table">Add a table<select value="" onChange={event=>event.target.value&&addTable(event.target.value)}>
         <option value="">Choose a loaded table…</option>
         {catalogue.map(table=><option key={table.table_name} value={table.table_name}>{table.table_name}{table.description?` — ${table.description}`:''}{model.some(m=>m.table_name===table.table_name)?' (in model)':''}</option>)}</select></label>
@@ -473,6 +413,8 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   </section>
 }
 
+function depth(table:ModelTable,model:ModelTable[]){let d=0,cursor=table.parent_alias;while(cursor&&d<10){d++;cursor=model.find(t=>t.alias===cursor)?.parent_alias||null}return d}
+function isDescendant(alias:string,ancestor:string,model:ModelTable[]){let cursor:string|null=alias;let guard=0;while(cursor&&guard++<20){if(cursor===ancestor)return true;cursor=model.find(t=>t.alias===cursor)?.parent_alias||null}return false}
 
 function PairPicker({child,parent,onAdd}:{child:ModelTable;parent?:ModelTable;onAdd:(pair:[string,string])=>void}){
   const [a,setA]=useState('');const [b,setB]=useState('')

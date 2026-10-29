@@ -185,12 +185,6 @@ export function asMeasure(node:ExprNode):ExprNode{
   }
 }
 
-// Colour expressions are calculated like measures; a constant such as 'red' is allowed too.
-export function asColorMeasure(node:ExprNode):ExprNode{
-  const measure=asMeasure(node)
-  return hasAggregation(measure)?measure:{t:'fn',name:'only',args:[measure]}
-}
-
 // Fields an expression refers to (for validation against the data model).
 export function referencedFields(node:ExprNode,out:{table?:string;name:string}[]=[]){
   switch(node.t){

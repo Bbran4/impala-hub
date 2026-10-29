@@ -24,7 +24,6 @@ these functions as you type.
 - [Number](#number): Round, Floor, Ceil, Abs, Sign, Mod, Div, Sqrt, Pow, Exp, Log, Log10, RangeSum, RangeMax, RangeMin, Num
 - [Date](#date): Today, Now, Date, Year, Quarter, Month, Week, Day, WeekDay, MonthName, YearMonth, WeekStart, MonthStart, MonthEnd, QuarterStart, YearStart, YearEnd, AddDays, AddMonths, AddYears, DaysBetween
 - [Logic](#logic): If, Alt, IsNull, Null, Pick, Match, MixMatch, WildMatch
-- [Color](#color): RGB, ColorMix1
 - [Operators and syntax](#operators-and-syntax)
 
 ## Operators and syntax
@@ -646,25 +645,3 @@ Like Match, but ignores upper and lower case.
 Like MixMatch, with * for any characters and ? for one character.
 
 - `WildMatch(description, 'brake*', '*filter*') > 0` → Brakes and filters
-
-## Color
-
-Colours for table and pivot cells: use them in a column's Background colour or Text colour expression (Table and Pivot objects, under Colours). An expression can also return a colour name such as 'red' or a code such as '#e34948'; anything else is ignored.
-
-### RGB
-
-`RGB(red, green, blue)`
-
-A colour from red, green and blue amounts (0 to 255). Colour expressions can also return a name such as 'red' or a code such as '#e34948'.
-
-- `RGB(227, 73, 72)` → 'rgb(227,73,72)' (red)
-- `If(Sum(qty) < 10, RGB(251, 227, 221))` → Light red when fewer than 10 sold
-
-### ColorMix1
-
-`ColorMix1(value, '#colour0', '#colour1')`
-
-Blends two colours (written as #rrggbb): value 0 gives the first colour, 1 the second, in between a mix. Values outside 0 to 1 are clamped.
-
-- `ColorMix1(0.5, '#ffffff', '#2a78d6')` → 'rgb(149,188,235)' (light blue)
-- `ColorMix1(Sum(qty) / 1000, '#ffffff', '#1baf7a')` → A heat-map shade per row

@@ -1,10 +1,10 @@
 // The Reporting function catalogue: the single list of functions that expressions may use.
 // It drives the parser's checks, the suggestions in the expression editor, the in-app
 // Function reference page and docs/REPORTING_FUNCTIONS.md. The database whitelist in
-// bi.compile_expr (latest definition: migration 0066_bi_linked_tables.sql) implements the same list;
+// bi.compile_expr (latest definition: migration 0064_bi_count_records_once.sql) implements the same list;
 // supabase/tests/bi_functions.test.sql runs every function against real data.
 
-export type FunctionCategory='Aggregation'|'Text'|'Number'|'Date'|'Logic'|'Color'
+export type FunctionCategory='Aggregation'|'Text'|'Number'|'Date'|'Logic'
 export type FunctionSpec={
   name:string                 // display name, e.g. "SubField"
   category:FunctionCategory
@@ -119,11 +119,6 @@ export const FUNCTION_CATALOGUE:FunctionSpec[]=[
   {name:'MixMatch',category:'Logic',args:[2,ANY],signature:'MixMatch(value, option1, option2, …)',description:'Like Match, but ignores upper and lower case.',examples:[{expr:"MixMatch(branch, 'centurion') > 0",result:'Centurion, whatever the case'}]},
   {name:'WildMatch',category:'Logic',args:[2,ANY],signature:'WildMatch(value, pattern1, pattern2, …)',description:'Like MixMatch, with * for any characters and ? for one character.',
     examples:[{expr:"WildMatch(description, 'brake*', '*filter*') > 0",result:'Brakes and filters'}]},
-  // colours, for table cell background and text colour expressions
-  {name:'RGB',category:'Color',args:[3,3],signature:'RGB(red, green, blue)',description:'A colour from red, green and blue amounts (0 to 255). Colour expressions can also return a name such as \'red\' or a code such as \'#e34948\'.',
-    examples:[{expr:'RGB(227, 73, 72)',result:"'rgb(227,73,72)' (red)"},{expr:"If(Sum(qty) < 10, RGB(251, 227, 221))",result:'Light red when fewer than 10 sold'}]},
-  {name:'ColorMix1',category:'Color',args:[3,3],signature:"ColorMix1(value, '#colour0', '#colour1')",description:'Blends two colours (written as #rrggbb): value 0 gives the first colour, 1 the second, in between a mix. Values outside 0 to 1 are clamped.',
-    examples:[{expr:"ColorMix1(0.5, '#ffffff', '#2a78d6')",result:"'rgb(149,188,235)' (light blue)"},{expr:"ColorMix1(Sum(qty) / 1000, '#ffffff', '#1baf7a')",result:'A heat-map shade per row'}]},
 ]
 
 export const OPERATORS=[
@@ -142,7 +137,7 @@ for(const spec of FUNCTION_CATALOGUE){byName.set(spec.name.toLowerCase(),spec);f
 
 export function findFunction(name:string){return byName.get(name.toLowerCase())}
 export const AGGREGATION_NAMES=FUNCTION_CATALOGUE.filter(spec=>spec.aggregate).map(spec=>spec.name.toLowerCase())
-export const CATEGORIES:FunctionCategory[]=['Aggregation','Text','Number','Date','Logic','Color']
+export const CATEGORIES:FunctionCategory[]=['Aggregation','Text','Number','Date','Logic']
 
 // Simple relevance search over names, signatures and descriptions.
 export function searchFunctions(query:string,specs:FunctionSpec[]=FUNCTION_CATALOGUE){

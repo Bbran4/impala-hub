@@ -8,7 +8,6 @@ const intro={
   Text:'Work on text. Join text with the & operator.',
   Number:'Work on numbers. Dividing by 0, Mod/Div by 0, Sqrt of a negative and Log of 0 give an empty value instead of an error.',
   Date:'Work on dates. Subtracting a number of days also works: Today() - 1.',
-  Color:'Colours for table and pivot cells: use them in a column\'s Background colour or Text colour expression (Table and Pivot objects, under Colours). An expression can also return a colour name such as \'red\' or a code such as \'#e34948\'; anything else is ignored.',
   Logic:'Conditions and choices. Comparisons give true or false, which can be used as conditions or with If().',
 }
 const md=[`# Reporting functions

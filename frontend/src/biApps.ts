@@ -1,5 +1,5 @@
 import type {SupabaseClient} from '@supabase/supabase-js'
-import {asColorMeasure,asMeasure,checkFields,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
+import {asMeasure,checkFields,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
 
 // Reporting apps: data model, sheets and objects. All data access goes through the
 // role-checked public.bi_* functions (migrations 0046 and 0047).
@@ -12,15 +12,11 @@ export type ModelTable={
 }
 export type AccessEntry={type:'role'|'user';principal:string}
 export type NumberFormat='auto'|'number'|'integer'|'money'|'percent'
-export type ObjectItem={expr:string;label?:string;format?:NumberFormat;background?:string;textColor?:string}
+export type ObjectItem={expr:string;label?:string;format?:NumberFormat}
 export type ObjectKind='kpi'|'bar'|'line'|'pie'|'table'|'pivot'|'filter'|'text'
-  |'combo'|'scatter'|'gauge'|'bullet'|'funnel'|'waterfall'|'treemap'|'histogram'|'boxplot'|'distribution'|'radar'|'mekko'|'grid'|'wordcloud'
 export type ObjectOptions={
   conditions?:string[];sortBy?:number;sortDesc?:boolean;limit?:number
   horizontal?:boolean;stacked?:boolean;text?:string;totals?:boolean
-  columnOrder?:number[]   // tables: display order of the query columns (dimensions first, then measures)
-  comboBars?:number;secondaryAxis?:boolean   // combo: how many measures are bars; lines on a second axis
-  gaugeMin?:number;gaugeMax?:number;bins?:number
 }
 export type SheetObject={id:string;kind:ObjectKind;title:string;x:number;y:number;w:number;h:number;dimensions:ObjectItem[];measures:ObjectItem[];options:ObjectOptions}
 export type Sheet={id:string;title:string;position:number;objects:SheetObject[];updated_at?:string}
@@ -44,20 +40,6 @@ export const KIND_INFO:Record<ObjectKind,{label:string;dims:[number,number];meas
   pivot:{label:'Pivot table',dims:[2,4],measures:[1,4],w:24,h:8,hint:'The last dimension becomes the columns.'},
   filter:{label:'Filter pane',dims:[1,1],measures:[0,0],w:6,h:7,hint:'Lists the values of a field so people can select them.'},
   text:{label:'Text',dims:[0,0],measures:[0,0],w:8,h:3,hint:'A heading or note.'},
-  combo:{label:'Combo chart',dims:[1,1],measures:[2,6],w:12,h:7,hint:'Bars and lines together, e.g. sales as bars and margin % as a line on a second axis.'},
-  scatter:{label:'Scatter plot',dims:[1,1],measures:[2,3],w:12,h:8,hint:'One point per value: the first measure across, the second up, an optional third as bubble size.'},
-  gauge:{label:'Gauge',dims:[0,0],measures:[1,2],w:6,h:5,hint:'One value on a scale. A second measure is drawn as the target.'},
-  bullet:{label:'Bullet chart',dims:[0,1],measures:[1,3],w:12,h:6,hint:'Value against a target (second measure) and a range (third), per dimension value.'},
-  funnel:{label:'Funnel chart',dims:[1,1],measures:[1,1],w:8,h:7,hint:'Stages from largest to smallest, e.g. quotes, orders, invoices.'},
-  waterfall:{label:'Waterfall chart',dims:[1,1],measures:[1,1],w:12,h:7,hint:'How each value adds to or takes from a running total.'},
-  treemap:{label:'Treemap',dims:[1,2],measures:[1,1],w:12,h:8,hint:'Rectangles sized by value. A second dimension nests inside the first.'},
-  histogram:{label:'Histogram',dims:[1,1],measures:[0,0],w:12,h:7,hint:'How many records fall in each range of a number field (no measure needed).'},
-  boxplot:{label:'Box plot',dims:[1,2],measures:[1,1],w:12,h:7,hint:'Spread of a measure: with two dimensions, one box per value of the first, over the values of the second.'},
-  distribution:{label:'Distribution plot',dims:[1,2],measures:[1,1],w:12,h:7,hint:'Every value as a dot: with two dimensions, one column per value of the first.'},
-  radar:{label:'Radar chart',dims:[1,2],measures:[1,4],w:8,h:8,hint:'One axis per value of the first dimension; one shape per measure or per value of the second dimension.'},
-  mekko:{label:'Mekko chart',dims:[2,2],measures:[1,1],w:12,h:8,hint:'Column width is the total per first dimension; segments show the share of the second.'},
-  grid:{label:'Grid chart',dims:[2,2],measures:[1,1],w:12,h:8,hint:'A heat map: first dimension down, second across, colour by value.'},
-  wordcloud:{label:'Word cloud',dims:[1,1],measures:[1,1],w:8,h:6,hint:'Values sized by the measure.'},
 }
 
 // ---------------------------------------------------------------------------
@@ -93,50 +75,11 @@ function clampInt(value:unknown,min:number,max:number,fallback:number){const n=N
 export function humanize(name:string){const text=name.replace(/_/g,' ').trim();return text.charAt(0).toUpperCase()+text.slice(1)}
 export function newId(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)}
 
-// Table column order as query column indexes (dimensions first, then measures); invalid or
-// missing entries fall back to the natural order.
-export function columnOrder(object:Pick<SheetObject,'dimensions'|'measures'|'options'>){
-  const total=object.dimensions.length+object.measures.length
-  const saved=(object.options.columnOrder||[]).filter((i,k,all)=>Number.isInteger(i)&&i>=0&&i<total&&all.indexOf(i)===k)
-  return [...saved,...Array.from({length:total},(_,i)=>i).filter(i=>!saved.includes(i))]
-}
-
-// Keep sorting and column order pointing at the same columns when dimensions or measures move.
-export function moveColumn(object:SheetObject,kind:'dimension'|'measure',from:number,to:number):Partial<SheetObject>{
-  const dims=object.dimensions.length
-  const offset=kind==='dimension'?0:dims
-  const list=kind==='dimension'?object.dimensions:object.measures
-  const order=list.map((_,i)=>i);const [moved]=order.splice(from,1);order.splice(to,0,moved)
-  const remap=(column:number)=>column>=offset&&column<offset+list.length?offset+order.indexOf(column-offset):column
-  const next=[...list];const [item]=next.splice(from,1);next.splice(to,0,item)
-  const options={...object.options}
-  if(options.sortBy!=null)options.sortBy=remap(options.sortBy)
-  if(options.columnOrder)options.columnOrder=columnOrder(object).map(remap)
-  return kind==='dimension'?{dimensions:next,options}:{measures:next,options}
-}
-
-// After adding (at the end) or removing a dimension/measure, keep sort and column order on the same columns.
-export function fitOptions(object:SheetObject,dims:number,measures:number,removed?:{kind:'dimension'|'measure';index:number}){
-  const options={...object.options}
-  const oldDims=object.dimensions.length
-  const map=(column:number)=>{
-    let kind:'dimension'|'measure'=column<oldDims?'dimension':'measure'
-    let i=kind==='dimension'?column:column-oldDims
-    if(removed&&removed.kind===kind){if(i===removed.index)return -1;if(i>removed.index)i--}
-    if(kind==='dimension')return i<dims?i:-1
-    kind='measure';return i<measures?dims+i:-1
-  }
-  if(options.sortBy!=null){const s=map(options.sortBy);options.sortBy=s<0?undefined:s}
-  if(options.columnOrder)options.columnOrder=options.columnOrder.map(map).filter(i=>i>=0)
-  return options
-}
-
 // ---------------------------------------------------------------------------
 // Data model helpers
 // ---------------------------------------------------------------------------
 
-// Tables in link order: the first table, then the tables linked to it breadth-first.
-// (Links are two-way; the first table only decides what Count(*) counts.)
+// Tables in join order: the main table first, then children breadth-first.
 export function orderedModel(model:ModelTable[]){
   const root=model.find(table=>!table.parent_alias);if(!root)return model
   const out=[root];const queue=[root.alias]
@@ -162,55 +105,13 @@ export function modelProblems(model:ModelTable[]){
   const problems:string[]=[]
   const roots=model.filter(table=>!table.parent_alias)
   if(!model.length)problems.push('Add at least one table.')
-  else if(roots.length!==1)problems.push('Link every table to another table.')
+  else if(roots.length!==1)problems.push('Choose exactly one main table.')
   for(const table of model){
-    const parent=model.find(other=>other.alias===table.parent_alias)
-    if(table.parent_alias&&!parent)problems.push(`${table.alias} links to a table that is not in the app.`)
-    else if(parent&&!table.join_pairs.length)problems.push(`Choose the fields that link ${table.alias} and ${table.parent_alias}.`)
-    else if(parent)for(const [mine,theirs] of table.join_pairs){
-      if(!table.columns.some(column=>column.name===mine))problems.push(`${table.alias} has no field ${mine} to link on.`)
-      if(!parent.columns.some(column=>column.name===theirs))problems.push(`${parent.alias} has no field ${theirs} to link on.`)
-    }
+    if(table.parent_alias&&!table.join_pairs.length)problems.push(`Choose how ${table.alias} links to ${table.parent_alias}.`)
+    if(table.parent_alias&&!model.some(other=>other.alias===table.parent_alias))problems.push(`${table.alias} links to a table that is not in the model.`)
   }
-  if(roots.length===1&&orderedModel(model).length!==model.length)problems.push('Every table must be linked to the others.')
+  if(roots.length===1&&orderedModel(model).length!==model.length)problems.push('Every table must link back to the main table.')
   return problems
-}
-
-// The links between tables form a tree stored as parent links. These keep the same two-way
-// links while changing which table is first (reroot) or what a table is linked to (relink).
-export function rerootModel(model:ModelTable[],alias:string):ModelTable[]{
-  const byAlias=new Map(model.map(table=>[table.alias,{...table,join_pairs:[...table.join_pairs]}]))
-  if(!byAlias.has(alias))return model
-  const path:string[]=[];let cursor:string|null=alias;let guard=0
-  while(cursor&&guard++<50){path.push(cursor);cursor=byAlias.get(cursor)?.parent_alias??null}
-  for(let i=path.length-1;i>0;i--){const parent=byAlias.get(path[i])!,child=byAlias.get(path[i-1])!
-    parent.parent_alias=child.alias;parent.join_pairs=child.join_pairs.map(([mine,theirs])=>[theirs,mine] as [string,string]);parent.join_type=child.join_type}
-  const root=byAlias.get(alias)!;root.parent_alias=null;root.join_pairs=[]
-  return [root,...model.filter(table=>table.alias!==alias).map(table=>byAlias.get(table.alias)!)]
-}
-
-// Link `alias` to `target` instead of the table it is linked to on the way to `target`;
-// the first table stays first.
-export function relinkModel(model:ModelTable[],alias:string,target:string,pairs:[string,string][]){
-  const first=orderedModel(model)[0]?.alias
-  if(alias===target||!first)return model
-  const linked=rerootModel(model,target).map(table=>table.alias===alias?{...table,parent_alias:target,join_pairs:pairs}:table)
-  return rerootModel(linked,first)
-}
-
-// Remove a table; the tables linked through it are linked to its neighbour (fields to choose again).
-export function removeFromModel(model:ModelTable[],alias:string){
-  const table=model.find(item=>item.alias===alias);if(!table)return model
-  let working=model
-  if(!table.parent_alias){
-    const child=model.find(item=>item.parent_alias===alias)
-    if(!child)return model.filter(item=>item.alias!==alias)
-    working=rerootModel(model,child.alias)
-  }
-  const removed=working.find(item=>item.alias===alias)!
-  const neighbour=working.find(item=>item.alias===removed.parent_alias)
-  return working.filter(item=>item.alias!==alias).map(item=>item.parent_alias===alias
-    ?{...item,parent_alias:removed.parent_alias,join_pairs:neighbour?suggestLinks(item.columns,neighbour.columns).filter(link=>link.likelyKey).map(link=>link.pair):[]}:item)
 }
 
 // ---------------------------------------------------------------------------
@@ -244,8 +145,6 @@ export type CompiledObject={
   dimensions:{node:ExprNode;label:string;selectKey:string;format?:NumberFormat}[]
   measures:{node:ExprNode;label:string;format?:NumberFormat}[]
   conditions:ExprNode[]
-  // table and pivot cell colours: one extra query column each, after the measures
-  styles:{column:number;kind:'background'|'color';node:ExprNode}[]
   errors:string[]
 }
 
@@ -280,33 +179,23 @@ export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'mea
     if(hasAggregation(node))errors.push(`Condition ${i+1}: conditions filter rows and cannot aggregate`)
     else conditions.push(node)
   })
-  const styles:CompiledObject['styles']=[]
-  if(object.kind==='table'||object.kind==='pivot'){
-    const items=[...object.dimensions.map((item,i)=>({item,column:i,where:`Dimension ${i+1}`})),...object.measures.map((item,i)=>({item,column:object.dimensions.length+i,where:`Measure ${i+1}`}))]
-    for(const {item,column,where} of items)for(const [kind,text] of [['background',item.background],['color',item.textColor]] as const){
-      if(!text?.trim())continue
-      if(object.kind==='pivot'&&column<object.dimensions.length)continue
-      const parsed=parse(text,`${where} ${kind==='background'?'background':'text'} colour`);if(!parsed)continue
-      styles.push({column,kind,node:asColorMeasure(parsed)})
-    }
-  }
   if(object.kind!=='text'){
     if(object.dimensions.length<info.dims[0]||object.dimensions.length>info.dims[1])errors.push(info.dims[0]===info.dims[1]?`${info.label} needs ${info.dims[0]} dimension${info.dims[0]===1?'':'s'}.`:`${info.label} needs ${info.dims[0]} to ${info.dims[1]} dimensions.`)
     if(object.measures.length<info.measures[0]||object.measures.length>info.measures[1])errors.push(info.measures[0]===info.measures[1]?`${info.label} needs ${info.measures[0]} measure${info.measures[0]===1?'':'s'}.`:`${info.label} needs ${info.measures[0]} to ${info.measures[1]} measures.`)
     if(object.kind==='table'&&!object.dimensions.length&&!object.measures.length)errors.push('Add a dimension or a measure.')
-    if((object.kind==='bar'||object.kind==='line'||object.kind==='radar')&&object.dimensions.length===2&&object.measures.length>1)errors.push('With two dimensions, use one measure.')
+    if((object.kind==='bar'||object.kind==='line')&&object.dimensions.length===2&&object.measures.length>1)errors.push('With two dimensions, use one measure.')
   }
-  return {dimensions,measures,conditions,styles,errors}
+  return {dimensions,measures,conditions,errors}
 }
 
 export function buildSpec(compiled:CompiledObject,selections:Selection[],options:{
-  ignoreKey?:string|null;dimensions?:number[];measures?:number[];sort?:{index:number;desc:boolean}[];limit?:number;offset?:number;styles?:boolean
+  ignoreKey?:string|null;dimensions?:number[];measures?:number[];sort?:{index:number;desc:boolean}[];limit?:number;offset?:number
 }={}){
   const dims=(options.dimensions??compiled.dimensions.map((_,i)=>i)).map(i=>compiled.dimensions[i])
   const meas=(options.measures??compiled.measures.map((_,i)=>i)).map(i=>compiled.measures[i])
   return {
     dimensions:dims.map(item=>({expr:item.node})),
-    measures:[...meas.map(item=>({expr:item.node})),...(options.styles?compiled.styles.map(style=>({expr:style.node})):[])],
+    measures:meas.map(item=>({expr:item.node})),
     selections:selections.filter(item=>item.key!==options.ignoreKey&&item.values.length).map(item=>({expr:item.node,values:item.values})),
     conditions:compiled.conditions,
     sort:options.sort||[],
@@ -319,39 +208,8 @@ export function buildSpec(compiled:CompiledObject,selections:Selection[],options
 // charts, which follow the dimension (usually time).
 export function defaultSort(object:SheetObject,compiled:CompiledObject){
   if(object.options.sortBy!=null&&object.options.sortBy<compiled.dimensions.length+compiled.measures.length)return [{index:object.options.sortBy,desc:Boolean(object.options.sortDesc)}]
-  if(['line','pivot','filter','waterfall','histogram','grid'].includes(object.kind)||!compiled.measures.length)return compiled.dimensions.map((_,index)=>({index,desc:false}))
+  if(object.kind==='line'||object.kind==='pivot'||object.kind==='filter'||!compiled.measures.length)return compiled.dimensions.map((_,index)=>({index,desc:false}))
   return [{index:compiled.dimensions.length,desc:true}]
-}
-
-// Colours from expressions are applied only when they look like a colour: #rgb / #rrggbb(aa),
-// rgb()/rgba() with numbers, or a plain colour name.
-export function safeColor(value:FieldValue):string|null{
-  if(typeof value!=='string')return null
-  const text=value.trim().toLowerCase()
-  if(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(text))return text
-  if(/^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\)$/.test(text))return text
-  if(/^[a-z]{3,20}$/.test(text))return text
-  return null
-}
-// Readable text on a coloured background (dark on light colours, white on dark ones).
-export function contrastText(color:string){
-  let r=128,g=128,b=128
-  const hex=/^#([0-9a-f]{3}|[0-9a-f]{6})/.exec(color)
-  const rgb=/^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color.replace(/\s+/g,''))
-  if(hex){const h=hex[1].length===3?hex[1].split('').map(c=>c+c).join(''):hex[1];r=parseInt(h.slice(0,2),16);g=parseInt(h.slice(2,4),16);b=parseInt(h.slice(4,6),16)}
-  else if(rgb){r=+rgb[1];g=+rgb[2];b=+rgb[3]}
-  else if(['black','navy','darkblue','darkgreen','darkred','maroon','purple','indigo','teal','green','blue','red','brown','darkslategray','dimgray','gray','grey','crimson','firebrick','darkviolet','midnightblue'].includes(color))return '#ffffff'
-  else return '#16324a'
-  return (0.299*r+0.587*g+0.114*b)>150?'#16324a':'#ffffff'
-}
-// Style for one table cell, from the colour columns at the end of a result row.
-export function cellStyle(compiled:CompiledObject,row:FieldValue[],column:number,styleStart:number){
-  const style:{background?:string;color?:string}={}
-  compiled.styles.forEach((item,k)=>{if(item.column!==column)return
-    const color=safeColor(row[styleStart+k]);if(!color)return
-    if(item.kind==='background')style.background=color;else style.color=color})
-  if(style.background&&!style.color)style.color=contrastText(style.background)
-  return style
 }
 
 // ---------------------------------------------------------------------------

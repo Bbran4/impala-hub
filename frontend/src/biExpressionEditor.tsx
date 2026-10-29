@@ -2,11 +2,11 @@ import {useEffect,useMemo,useRef,useState,type KeyboardEvent as ReactKeyboardEve
 import {BookOpen,Database,Maximize2,Play,Search,Sigma,X,FunctionSquare} from 'lucide-react'
 import {createPortal} from 'react-dom'
 import {supabase} from './supabase'
-import {asColorMeasure,asMeasure,checkFields,ExpressionError,hasAggregation,parseExpression,type MasterMeasure} from './biExpression'
+import {asMeasure,checkFields,ExpressionError,hasAggregation,parseExpression,type MasterMeasure} from './biExpression'
 import {CATEGORIES,FUNCTION_CATALOGUE,OPERATORS,searchFunctions,type FunctionCategory,type FunctionSpec} from './biFunctions'
-import {displayValue,orderedModel,runQuery,safeColor,type ModelTable,type Selection} from './biApps'
+import {displayValue,orderedModel,runQuery,type ModelTable,type Selection} from './biApps'
 
-export type ExpressionKind='dimension'|'measure'|'condition'|'color'
+export type ExpressionKind='dimension'|'measure'|'condition'
 export type ExpressionContext={appId?:string;model:ModelTable[];measures:MasterMeasure[];selections?:Selection[]}
 
 // ---------------------------------------------------------------------------
@@ -20,7 +20,6 @@ export function checkExpression(text:string,kind:ExpressionKind,ctx:ExpressionCo
     const node=parseExpression(text,{measures:ctx.measures})
     const fieldProblem=checkFields(node,ctx.model)
     if(fieldProblem)return {message:fieldProblem,...locate(text,text.length)}
-    if(kind==='color')return null
     const agg=hasAggregation(kind==='measure'?asMeasure(node):node)
     if(kind==='measure'&&!agg)return {message:'A measure needs a field or an aggregation such as Sum(…), Count(…) or Avg(…)',...locate(text,0)}
     if(kind!=='measure'&&agg)return {message:kind==='dimension'?'Dimensions cannot use aggregations such as Sum(); put those in a measure':'Conditions filter rows and cannot use aggregations',...locate(text,0)}
@@ -50,7 +49,7 @@ function buildItems(kind:ExpressionKind,ctx:ExpressionContext,query:string,inlin
   const needle=query.trim().toLowerCase()
   const fields=orderedModel(ctx.model).flatMap(table=>table.columns.map(column=>({table:table.alias,name:column.name,type:column.type})))
   const items:PickItem[]=[]
-  if(kind==='measure'||kind==='color')for(const m of ctx.measures){
+  if(kind==='measure')for(const m of ctx.measures){
     if(needle&&!m.name.toLowerCase().includes(needle))continue
     items.push({key:'m:'+m.name,group:'Master measures',label:`[${m.name}]`,detail:m.expression,insert:`[${m.name}]`})
   }
@@ -59,7 +58,7 @@ function buildItems(kind:ExpressionKind,ctx:ExpressionContext,query:string,inlin
     if(needle&&!(inline?ref:`${ref} ${f.table} ${f.type}`).toLowerCase().includes(needle))continue
     items.push({key:`f:${f.table}.${f.name}`,group:'Fields',label:ref,detail:`${f.table} · ${f.type}`,insert:ref})
   }
-  const specs=searchFunctions(needle).filter(spec=>kind==='measure'||kind==='color'||!spec.aggregate)
+  const specs=searchFunctions(needle).filter(spec=>kind==='measure'||!spec.aggregate)
   for(const spec of specs)items.push({key:'fn:'+spec.name,group:'Functions',label:spec.signature,detail:spec.description,insert:spec.args[1]===0?`${spec.name}()`:`${spec.name}(`,spec})
   return items
 }
@@ -129,7 +128,7 @@ export function ExpressionInput({value,kind,ctx,onChange,label}:{value:string;ki
   const problem=useMemo(()=>checkExpression(value,kind,ctx),[value,kind,ctx])
   const word=wordAtCaret(value,caret).word
   const items=useMemo(()=>buildItems(kind,ctx,word,true),[kind,ctx,word])
-  const placeholder=kind==='measure'?'e.g. Sum(qty * unit_price)':kind==='color'?"e.g. If(Sum(qty) < 10, 'red')":kind==='condition'?'e.g. invoice_date = Today()-1':'Field, e.g. branch'
+  const placeholder=kind==='measure'?'e.g. Sum(qty * unit_price)':kind==='condition'?'e.g. invoice_date = Today()-1':'Field, e.g. branch'
   const multiLine=value.includes('\n')
   return <div className="bi-expr">
     <div className="bi-expr-box">
@@ -176,13 +175,9 @@ export function ExpressionEditorModal({value,kind,ctx,title,onApply,onCancel}:{v
     setTesting(true);setResult(null)
     try{
       const parsed=parseExpression(text,{measures:ctx.measures})
-      const node=kind==='measure'?asMeasure(parsed):kind==='color'?asColorMeasure(parsed):parsed
+      const node=kind==='measure'?asMeasure(parsed):parsed
       const selections=(ctx.selections||[]).map(item=>({expr:item.node,values:item.values}))
-      if(kind==='color'){
-        const out=await runQuery(supabase,ctx.appId,{measures:[{expr:node}],selections,limit:1})
-        const value=out.rows[0]?.[0]??null,color=safeColor(value)
-        setResult({ok:true,content:<>Over {selections.length?'the current selections':'all data'}: {color?<span className="bi-swatch" style={{background:color}}/>:null}<b>{value===null?'(no colour)':String(value)}</b>{value!==null&&!color&&' (not a colour, so it is ignored)'}</>})
-      }else if(kind==='measure'){
+      if(kind==='measure'){
         const out=await runQuery(supabase,ctx.appId,{measures:[{expr:node}],selections,limit:1})
         setResult({ok:true,content:<>Result over {selections.length?'the current selections':'all data'}: <b>{displayValue(out.rows[0]?.[0]??null)}</b></>})
       }else if(kind==='dimension'){
@@ -203,7 +198,7 @@ export function ExpressionEditorModal({value,kind,ctx,title,onApply,onCancel}:{v
     setText(next);setResult(null)
     requestAnimationFrame(()=>{if(el){el.focus();const pos=start+item.insert.length;el.setSelectionRange(pos,pos)}})
   }
-  const kindLabel=kind==='measure'?'Measure':kind==='color'?'Colour':kind==='dimension'?'Dimension':'Condition'
+  const kindLabel=kind==='measure'?'Measure':kind==='dimension'?'Dimension':'Condition'
   return createPortal(<div className="overlay bi-modal-overlay" onMouseDown={event=>{if(event.target===event.currentTarget)onCancel()}}>
     <div className="bi-modal" role="dialog" aria-modal="true" aria-label={`Edit ${kindLabel.toLowerCase()} expression`}>
       <div className="bi-modal-head"><div><span className="eyebrow">{kindLabel.toUpperCase()} EXPRESSION</span><h2>{title||'Edit expression'}</h2></div>

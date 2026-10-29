@@ -23,13 +23,11 @@ select id, 'report_builder' from public.profiles where email = 'someone@impalasp
 ## Concepts (same as Qlik)
 
 - **App**: a data model, a set of master measures, a list of sheets and an access list.
-- **Data model**: the loaded tables the app uses and how they link, like Qlik's associations. There is no
-  main table: every table is linked to another on one or more matching key fields, and links work both
-  ways. Same-named fields are suggested, and key-like ones (`*_no`, `*_code`, `*_id`) are linked
-  automatically when you add a table. Each table's **Linked to** can be changed after it is added; the links
-  cannot form a loop. Charts only join the tables they use (plus the ones that connect them), and records
-  without a match are kept: stock items that never sold still appear in a stock chart, and selections
-  narrow them like any other record.
+- **Data model**: the loaded tables the app uses and how they link. One table is the **main table**, the one
+  whose rows you count and add up (for sales: invoice lines). Every other table links to the main table, or to
+  a table already linked, on one or more matching fields. Same-named fields are suggested, and key-like
+  ones (`*_no`, `*_code`, `*_id`) are linked automatically when you add a table. Charts only join the tables
+  they actually use.
 - **Sheet**: one dashboard page. Objects sit on a 24-column grid; drag the header to move, the bottom-right
   corner to resize.
 - **Selections**: clicking a bar, slice, table cell, legend entry or filter-pane value filters every object in
@@ -45,40 +43,10 @@ select id, 'report_builder' from public.profiles where email = 'someone@impalasp
 | Bar chart | 1–2 | 1–4 | A second dimension splits each bar (grouped, or stacked); more than 14 categories turn horizontal |
 | Line chart | 1–2 | 1–4 | A second dimension draws one line per value |
 | Pie chart | 1 | 1 | Top 7 slices, the rest are "Other" |
-| Combo chart | 1 | 2–6 | First measure(s) as bars, the rest as lines; lines can use a second (right) axis |
-| Scatter plot | 1 | 2–3 | One point per value: x, y and an optional bubble size |
-| Gauge | – | 1–2 | One value on a half-circle; second measure is the target; minimum/maximum in Chart options |
-| Bullet chart | 0–1 | 1–3 | Value bar, target marker (second measure) and range (third) |
-| Funnel chart | 1 | 1 | Stages from largest to smallest with % of the first stage |
-| Waterfall chart | 1 | 1 | How each value moves a running total; total bar at the end |
-| Treemap | 1–2 | 1 | Rectangles sized by value; a second dimension nests inside the first |
-| Histogram | 1 | – | Counts of a number field in ranges; number of bars in Chart options |
-| Box plot | 1–2 | 1 | Median, quartiles, whiskers and outliers; with two dimensions one box per value of the first |
-| Distribution plot | 1–2 | 1 | Every value as a dot, with the median |
-| Radar chart | 1–2 | 1–4 | One axis per value of the first dimension (3 or more values) |
-| Mekko chart | 2 | 1 | Column width = total per first dimension; segments = share of the second |
-| Grid chart | 2 | 1 | Heat map: first dimension down, second across |
-| Word cloud | 1 | 1 | Values sized by the measure |
-| Table | 0–10 | 0–20 | Click headers to sort, totals row, loads 200 rows at a time, CSV export (up to 10,000 rows); column order and cell colours |
-| Pivot table | 2–4 | 1–4 | The last dimension becomes the columns; cell colours per measure |
+| Table | 0–10 | 0–20 | Click headers to sort, totals row, loads 200 rows at a time, CSV export (up to 10,000 rows) |
+| Pivot table | 2–4 | 1–4 | The last dimension becomes the columns |
 | Filter pane | 1 | – | Searchable list of values |
 | Text | – | – | Headings and notes |
-
-Straight table = Table, pivot table = Pivot table. Every chart supports click-to-select. The object list in
-edit mode has a search box.
-
-**Order.** Drag dimensions and measures by their grip (⋮⋮) in the side panel, or focus the grip and press
-Alt+↑/↓. The first dimension is the chart's axis and the order of measures is the order of bars, lines and
-columns. In a table, **Column order** can put any column first, including a measure before the dimensions.
-
-**Cell colours.** In tables (every column) and pivot tables (measures), open **Colours** under a column and
-write a background and/or text colour expression. It is calculated per row like a measure, e.g.
-`If(Sum(qty_on_hand) < 30, '#fbe3dd')`, `If(qty_on_hand < 30, 'red', 'green')`, `RGB(27, 175, 122)` or
-`ColorMix1(Sum(qty) / 1000, '#ffffff', '#2a78d6')`. Results that are not a colour (a name, `#rrggbb` or
-`rgb(…)`) are ignored; text on a coloured background is made dark or white automatically.
-
-Rows where every measure is empty are left out (like Qlik), e.g. a branch value that only exists because a
-stock item never sold.
 
 Every object can have **conditions**: row filters that only apply to that object, e.g.
 `invoice_date = Today() - 1` for "yesterday" reports.
@@ -104,11 +72,11 @@ the app under **Reporting → Function Reference**. A few common ones:
 | Logic | `If(condition, then, else)` `Alt(value, fallback)` `Match(x, 'a', 'b')` `WildMatch(x, 'BOSCH*')` `Pick(n, a, b)` |
 
 **How records are counted.** Like Qlik, every aggregation counts each record of the tables it uses
-once. In an app with invoice lines and stock items linked on `item_code`, `Sum(qty_on_hand)` adds each
-item's stock once (not once per invoice line it appears on), `Sum(qty)` adds every invoice line, and
+once. In an app whose main table is invoice lines with stock items linked to it, `Sum(qty_on_hand)` adds
+each item's stock once (not once per invoice line it appears on), `Sum(qty)` adds every invoice line, and
 `Sum(qty * cost_price)` works per invoice line because it uses both tables. `Count(*)` counts records of
-the table chosen under **Count(*) counts records of** in the data model; `Count(DISTINCT item_code)` counts
-anything else.
+the main table. Items only appear when the main table links to them: to list stock that has not sold
+(for example a reorder report), make an app whose main table is the stock items table.
 
 **Writing expressions.** Every expression box suggests master measures, fields and functions as you
 type (↑ ↓ and Enter insert at the cursor). The expand button opens a large editor with line numbers,

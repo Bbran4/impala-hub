@@ -1,19 +1,59 @@
-import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react'
-import {ChevronDown,ChevronUp,Download,Search,X} from 'lucide-react'
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode} from 'react'
+import {AlertTriangle,ChevronDown,ChevronUp,Download,Loader2,Search,X} from 'lucide-react'
 import {supabase} from './supabase'
-import {BulletChart,ComboChart,FunnelChart,GaugeChart,GridChart,HistogramChart,MekkoChart,RadarChart,ScatterChart,SpreadChart,TreemapChart,WaterfallChart,WordCloud} from './biChartsMore'
-import {Legend,Message,Tooltip,selectedValues,truncate,useQuery,useSize,type Compiled,type ObjectProps,type SelectFn,type Tip} from './biChartKit'
 import {
-  SERIES_COLORS,buildSpec,cellStyle,columnOrder,compactNumber,compareValues,compileObject,defaultSort,displayValue,formatNumber,niceTicks,
+  SERIES_COLORS,buildSpec,compactNumber,compareValues,compileObject,defaultSort,displayValue,formatNumber,niceTicks,
   runQuery,sameValue,toCsv,toNumber,toPivot,toSeries,
   type AppDetail,type CompiledObject,type FieldValue,type NumberFormat,type Selection,type SheetObject,
 } from './biApps'
 
+export type SelectFn=(dimension:{key:string;label:string;node:CompiledObject['dimensions'][number]['node']},value:FieldValue,additive:boolean)=>void
+
+type ObjectProps={object:SheetObject;app:AppDetail;selections:Selection[];onSelect:SelectFn;dataVersion:string}
+
+// ---------------------------------------------------------------------------
+// Data fetching
+// ---------------------------------------------------------------------------
+const cache=new Map<string,{rows:FieldValue[][];has_more:boolean}>()
+
+function useQuery(appId:string,spec:unknown|null,version:string){
+  const key=spec?appId+'|'+version+'|'+JSON.stringify(spec):''
+  const [state,setState]=useState<{key:string;rows:FieldValue[][];has_more:boolean;error:string;loading:boolean}>({key:'',rows:[],has_more:false,error:'',loading:false})
+  useEffect(()=>{
+    if(!spec||!supabase){setState({key,rows:[],has_more:false,error:'',loading:false});return}
+    const hit=cache.get(key)
+    if(hit){setState({key,...hit,error:'',loading:false});return}
+    let alive=true
+    setState(current=>({...current,key,error:'',loading:true}))
+    runQuery(supabase,appId,spec).then(result=>{
+      if(cache.size>300)cache.delete(cache.keys().next().value!)
+      cache.set(key,result)
+      if(alive)setState({key,rows:result.rows,has_more:result.has_more,error:'',loading:false})
+    }).catch(error=>{if(alive)setState({key,rows:[],has_more:false,error:(error as Error).message,loading:false})})
+    return()=>{alive=false}
+  },[key])// eslint-disable-line react-hooks/exhaustive-deps
+  // until the new result arrives, report loading (and keep showing the previous rows)
+  return state.key===key?state:{...state,loading:Boolean(spec)}
+}
+
+// Measures an element; a callback ref so it works when the element mounts after the first render.
+function useSize<T extends HTMLElement>(){
+  const [node,setNode]=useState<T|null>(null);const [size,setSize]=useState({width:0,height:0})
+  useLayoutEffect(()=>{
+    if(!node)return
+    const observer=new ResizeObserver(([entry])=>setSize({width:Math.floor(entry.contentRect.width),height:Math.floor(entry.contentRect.height)}))
+    observer.observe(node);return()=>observer.disconnect()
+  },[node])
+  return [setNode,size] as const
+}
+
+function Message({kind,children}:{kind:'error'|'empty'|'loading';children:ReactNode}){
+  return <div className={`bi-message ${kind}`}>{kind==='error'?<AlertTriangle size={16}/>:kind==='loading'?<Loader2 size={16} className="bi-spin"/>:null}<span>{children}</span></div>
+}
+
 // ---------------------------------------------------------------------------
 // The object frame and dispatcher
 // ---------------------------------------------------------------------------
-export type {SelectFn}
-
 export function ObjectBody(props:ObjectProps){
   const {object,app}=props
   const compiled=useMemo(()=>compileObject(object,app),[object,app])
@@ -26,23 +66,10 @@ export function ObjectBody(props:ObjectProps){
     case 'table':return <TableObject {...props} compiled={compiled}/>
     case 'pivot':return <PivotObject {...props} compiled={compiled}/>
     case 'filter':return <FilterPane {...props} compiled={compiled}/>
-    case 'combo':return <ComboChart {...props} compiled={compiled}/>
-    case 'scatter':return <ScatterChart {...props} compiled={compiled}/>
-    case 'gauge':return <GaugeChart {...props} compiled={compiled}/>
-    case 'bullet':return <BulletChart {...props} compiled={compiled}/>
-    case 'funnel':return <FunnelChart {...props} compiled={compiled}/>
-    case 'waterfall':return <WaterfallChart {...props} compiled={compiled}/>
-    case 'treemap':return <TreemapChart {...props} compiled={compiled}/>
-    case 'histogram':return <HistogramChart {...props} compiled={compiled}/>
-    case 'boxplot':return <SpreadChart {...props} compiled={compiled} mode="box"/>
-    case 'distribution':return <SpreadChart {...props} compiled={compiled} mode="distribution"/>
-    case 'radar':return <RadarChart {...props} compiled={compiled}/>
-    case 'mekko':return <MekkoChart {...props} compiled={compiled}/>
-    case 'grid':return <GridChart {...props} compiled={compiled}/>
-    case 'wordcloud':return <WordCloud {...props} compiled={compiled}/>
   }
 }
 
+type Compiled={compiled:CompiledObject}
 
 function TextObject({object}:{object:SheetObject}){
   const text=object.options.text||''
@@ -65,6 +92,28 @@ function KpiObject({object,app,selections,dataVersion,compiled}:ObjectProps&Comp
     {second&&<small>{second.label}: <b>{formatNumber(other,second.format)}</b></small>}
   </div>
 }
+
+// ---------------------------------------------------------------------------
+// Tooltip
+// ---------------------------------------------------------------------------
+type Tip={x:number;y:number;title:string;lines:{color?:string;label:string;value:string}[]}
+function Tooltip({tip,width}:{tip:Tip|null;width:number}){
+  if(!tip)return null
+  const left=Math.min(Math.max(tip.x+12,4),Math.max(4,width-220))
+  return <div className="bi-tooltip" style={{left,top:Math.max(4,tip.y-10)}}>
+    <b>{tip.title}</b>
+    {tip.lines.map((line,i)=><div key={i}>{line.color&&<i style={{background:line.color}}/>}<span>{line.label}</span><em>{line.value}</em></div>)}
+  </div>
+}
+
+function Legend({items,onClick,selected}:{items:{name:string;color:string;value?:FieldValue}[];onClick?:(value:FieldValue,additive:boolean)=>void;selected?:FieldValue[]}){
+  if(items.length<2)return null
+  return <div className="bi-legend">{items.map(item=><button key={item.name} type="button" disabled={!onClick||item.name==='Other'}
+    className={selected?.some(value=>sameValue(value,item.value??item.name))?'selected':''}
+    onClick={event=>onClick?.(item.value??item.name,event.ctrlKey||event.metaKey)}><i style={{background:item.color}}/>{item.name}</button>)}</div>
+}
+
+function selectedValues(selections:Selection[],key:string){return selections.find(item=>item.key===key)?.values||[]}
 
 // ---------------------------------------------------------------------------
 // Bar and line charts
@@ -180,6 +229,7 @@ function roundedBar(x:number,y:number,w:number,h:number,direction:'up'|'right',n
   if(negative)return `M${x+w},${y}v${h}h${-(w-r)}a${r},${r} 0 0 1 ${-r},${-r}v${-(h-2*r)}a${r},${r} 0 0 1 ${r},${-r}z`
   return `M${x},${y}h${w-r}a${r},${r} 0 0 1 ${r},${r}v${h-2*r}a${r},${r} 0 0 1 ${-r},${r}h${-(w-r)}z`
 }
+function truncate(text:string,max:number){return text.length>max?text.slice(0,Math.max(1,max-1))+'…':text}
 
 // ---------------------------------------------------------------------------
 // Pie (donut)
@@ -229,38 +279,35 @@ function TableObject({object,app,selections,onSelect,dataVersion,compiled}:Objec
   const [pages,setPages]=useState(1)
   const pageSize=200
   const order=sort?[sort]:defaultSort(object,compiled)
-  const spec=useMemo(()=>buildSpec(compiled,selections,{sort:order,limit:pageSize*pages,styles:true}),[compiled,selections,JSON.stringify(order),pages])// eslint-disable-line react-hooks/exhaustive-deps
+  const spec=useMemo(()=>buildSpec(compiled,selections,{sort:order,limit:pageSize*pages}),[compiled,selections,JSON.stringify(order),pages])// eslint-disable-line react-hooks/exhaustive-deps
   const result=useQuery(app.id,spec,dataVersion)
   const totalsSpec=useMemo(()=>compiled.measures.length&&compiled.dimensions.length&&object.options.totals!==false?buildSpec(compiled,selections,{dimensions:[],limit:1}):null,[compiled,selections,object.options.totals])
   const totals=useQuery(app.id,totalsSpec,dataVersion)
   const [exporting,setExporting]=useState(false)
   useEffect(()=>{setPages(1)},[selections,sort])
-  const dims=compiled.dimensions.length,ncols=dims+compiled.measures.length
   const headers=[...compiled.dimensions.map(d=>d.label),...compiled.measures.map(m=>m.label)]
   const formats=[...compiled.dimensions.map(d=>d.format),...compiled.measures.map(m=>m.format)]
-  const display=columnOrder(object).filter(i=>i<ncols)
-  const numeric=(i:number)=>i>=dims
+  const numeric=(i:number)=>i>=compiled.dimensions.length
   async function exportCsv(){
     if(!supabase)return
     setExporting(true)
     try{
       const all=await runQuery(supabase,app.id,buildSpec(compiled,selections,{sort:order,limit:10000}))
-      const blob=new Blob(['\ufeff'+toCsv(display.map(i=>headers[i]),all.rows.map(row=>display.map(i=>row[i])))],{type:'text/csv;charset=utf-8'})
+      const blob=new Blob(['﻿'+toCsv(headers,all.rows)],{type:'text/csv;charset=utf-8'})
       const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`${(object.title||app.name).replace(/[^\w\- ]+/g,'').trim()||'export'}.csv`;link.click();URL.revokeObjectURL(link.href)
     }finally{setExporting(false)}
   }
   if(result.error)return <Message kind="error">{result.error}</Message>
-  const current=sort??order[0]
   return <div className={`bi-table-wrap ${result.loading?'is-loading':''}`}>
     <div className="bi-table-scroll"><table className="bi-table">
-      <thead><tr>{display.map((i,k)=><th key={i} className={numeric(i)?'num':''} onClick={()=>setSort(c=>c?.index===i?{index:i,desc:!c.desc}:{index:i,desc:numeric(i)})}>
-        {headers[i]}{current?.index===i?(current.desc?<ChevronDown size={12}/>:<ChevronUp size={12}/>):null}</th>)}</tr>
-        {totalsSpec&&totals.rows[0]&&<tr className="bi-totals">{display.map(i=><th key={i} className={numeric(i)?'num':''}>{numeric(i)?formatNumber(toNumber(totals.rows[0][i-dims]),formats[i]):i===display.find(c=>!numeric(c))?'Totals':''}</th>)}</tr>}
+      <thead><tr>{headers.map((header,i)=><th key={i} className={numeric(i)?'num':''} onClick={()=>setSort(current=>current?.index===i?{index:i,desc:!current.desc}:{index:i,desc:numeric(i)})}>
+        {header}{(sort?.index??order[0]?.index)===i&&(sort??order[0])?((sort??order[0]).desc?<ChevronDown size={12}/>:<ChevronUp size={12}/>):null}</th>)}</tr>
+        {totalsSpec&&totals.rows[0]&&<tr className="bi-totals">{headers.map((_,i)=><th key={i} className={numeric(i)?'num':''}>{i===0?'Totals':numeric(i)?formatNumber(toNumber(totals.rows[0][i-compiled.dimensions.length]),formats[i]):''}</th>)}</tr>}
       </thead>
-      <tbody>{result.rows.map((row,r)=><tr key={r}>{display.map(i=>{const value=row[i],dim=compiled.dimensions[i],style=cellStyle(compiled,row,i,ncols)
-        if(!dim)return <td key={i} className="num" style={style}>{formatNumber(toNumber(value),formats[i])}</td>
+      <tbody>{result.rows.map((row,r)=><tr key={r}>{row.map((value,i)=>{const dim=compiled.dimensions[i]
+        if(!dim)return <td key={i} className="num">{formatNumber(toNumber(value),formats[i])}</td>
         const isSel=selectedValues(selections,dim.selectKey).some(v=>sameValue(v,value))
-        return <td key={i} style={style} className={`bi-selectable ${isSel?'selected':''}`} onClick={event=>onSelect({key:dim.selectKey,label:dim.label,node:dim.node},value,event.ctrlKey||event.metaKey)}>{displayValue(value,formats[i])}</td>})}</tr>)}
+        return <td key={i} className={`bi-selectable ${isSel?'selected':''}`} onClick={event=>onSelect({key:dim.selectKey,label:dim.label,node:dim.node},value,event.ctrlKey||event.metaKey)}>{displayValue(value,formats[i])}</td>})}</tr>)}
       </tbody></table>
       {!result.loading&&!result.rows.length&&<Message kind="empty">No data for the current selections</Message>}
     </div>
@@ -275,7 +322,7 @@ function TableObject({object,app,selections,onSelect,dataVersion,compiled}:Objec
 // ---------------------------------------------------------------------------
 function PivotObject({app,selections,onSelect,dataVersion,compiled}:ObjectProps&Compiled){
   const rowDims=compiled.dimensions.length-1
-  const spec=useMemo(()=>buildSpec(compiled,selections,{sort:compiled.dimensions.map((_,index)=>({index,desc:false})),limit:5000,styles:true}),[compiled,selections])
+  const spec=useMemo(()=>buildSpec(compiled,selections,{sort:compiled.dimensions.map((_,index)=>({index,desc:false})),limit:5000}),[compiled,selections])
   const result=useQuery(app.id,spec,dataVersion)
   const pivot=useMemo(()=>toPivot(result.rows,rowDims),[result.rows,rowDims])
   const colDim=compiled.dimensions[rowDims]
@@ -287,7 +334,7 @@ function PivotObject({app,selections,onSelect,dataVersion,compiled}:ObjectProps&
       {cols.map((c,i)=><th key={i} colSpan={compiled.measures.length} className="num bi-selectable" onClick={event=>onSelect({key:colDim.selectKey,label:colDim.label,node:colDim.node},c,event.ctrlKey||event.metaKey)}>{displayValue(c,colDim.format)}</th>)}</tr>
       {compiled.measures.length>1&&<tr>{cols.flatMap((_,i)=>compiled.measures.map((m,j)=><th key={`${i}-${j}`} className="num">{m.label}</th>))}</tr>}</thead>
     <tbody>{pivot.rowKeys.map((rk,r)=><tr key={r}>{rk.map((value,i)=>{const dim=compiled.dimensions[i];return <td key={i} className="bi-selectable" onClick={event=>onSelect({key:dim.selectKey,label:dim.label,node:dim.node},value,event.ctrlKey||event.metaKey)}>{displayValue(value,dim.format)}</td>})}
-      {cols.flatMap((c,i)=>{const cell=pivot.cells.get(JSON.stringify(rk)+'|'+JSON.stringify(c));return compiled.measures.map((m,j)=><td key={`${i}-${j}`} className="num" style={cell?cellStyle(compiled,[...Array(compiled.dimensions.length).fill(null),...cell],compiled.dimensions.length+j,compiled.dimensions.length+compiled.measures.length):undefined}>{cell?formatNumber(toNumber(cell[j]),m.format):''}</td>)})}</tr>)}</tbody>
+      {cols.flatMap((c,i)=>{const cell=pivot.cells.get(JSON.stringify(rk)+'|'+JSON.stringify(c));return compiled.measures.map((m,j)=><td key={`${i}-${j}`} className="num">{cell?formatNumber(toNumber(cell[j]),m.format):''}</td>)})}</tr>)}</tbody>
   </table></div>{pivot.colKeys.length>60&&<small className="bi-note">Showing the first 60 columns</small>}</div>
 }
 
@@ -300,7 +347,7 @@ function FilterPane({app,selections,onSelect,dataVersion,compiled}:ObjectProps&C
   const spec=useMemo(()=>buildSpec(compiled,selections,{ignoreKey:dim.selectKey,sort:[{index:0,desc:false}],limit:2000}),[compiled,selections,dim.selectKey])
   const result=useQuery(app.id,spec,dataVersion)
   const selected=selectedValues(selections,dim.selectKey)
-  const values=useMemo(()=>{const needle=search.trim().toLowerCase();return result.rows.map(row=>row[0]).filter(value=>value!==null&&(!needle||displayValue(value,dim.format).toLowerCase().includes(needle)))},[result.rows,search,dim.format])
+  const values=useMemo(()=>{const needle=search.trim().toLowerCase();return result.rows.map(row=>row[0]).filter(value=>!needle||displayValue(value,dim.format).toLowerCase().includes(needle))},[result.rows,search,dim.format])
   if(result.error)return <Message kind="error">{result.error}</Message>
   return <div className={`bi-filter ${result.loading?'is-loading':''}`}>
     <label className="bi-filter-search"><Search size={13}/><input placeholder="Search" value={search} onChange={event=>setSearch(event.target.value)}/>{search&&<button type="button" aria-label="Clear search" onClick={()=>setSearch('')}><X size={12}/></button>}</label>

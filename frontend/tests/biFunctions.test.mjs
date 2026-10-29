@@ -24,7 +24,7 @@ test('search finds functions by name, then by description',()=>{
 })
 
 test('every function is implemented and tested in the database, and documented',()=>{
-  const migration=readFileSync(new URL('../../supabase/migrations/0066_bi_linked_tables.sql',import.meta.url),'utf8').toLowerCase()
+  const migration=readFileSync(new URL('../../supabase/migrations/0064_bi_count_records_once.sql',import.meta.url),'utf8').toLowerCase()
   const dbTest=readFileSync(new URL('../../supabase/tests/bi_functions.test.sql',import.meta.url),'utf8').toLowerCase()
   const docs=readFileSync(new URL('../../docs/REPORTING_FUNCTIONS.md',import.meta.url),'utf8')
   for(const spec of FUNCTION_CATALOGUE){
