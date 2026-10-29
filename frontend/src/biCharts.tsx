@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react'
-import {ChevronDown,ChevronUp,Download,Search,X} from 'lucide-react'
+import {ChevronDown,ChevronRight,ChevronUp,Download,Search,X} from 'lucide-react'
 import {supabase} from './supabase'
 import {BulletChart,ComboChart,FunnelChart,GaugeChart,GridChart,HistogramChart,MekkoChart,RadarChart,ScatterChart,SpreadChart,TreemapChart,WaterfallChart,WordCloud} from './biChartsMore'
 import {ButtonObject,DatePicker,DividerObject,ImageObject,LayoutContainer,NavigationMenu,SliderObject,TabContainer,TextImageObject,TrellisContainer,VariableInput,VideoObject} from './biControls'
@@ -22,8 +22,22 @@ export function ObjectBody(props:ObjectProps&{extraConditions?:ExprNode[]}){
   const {object,app}=props
   const extraKey=JSON.stringify(props.extraConditions||[])
   const extraConditions=useMemo(()=>props.extraConditions||[],[extraKey])// eslint-disable-line react-hooks/exhaustive-deps
-  const compiled=useMemo(()=>compileObject(object,app,extraConditions),[object,app,extraConditions])
+  const drillKey=JSON.stringify(object.dimensions.some(item=>item.drill?.length)?props.selections.map(sel=>[sel.key,sel.values.length]):[])
+  const compiled=useMemo(()=>compileObject(object,app,extraConditions,props.selections),[object,app,extraConditions,drillKey])// eslint-disable-line react-hooks/exhaustive-deps
   const renderChild=(child:SheetObject,extra?:ExprNode[])=><ObjectBody {...props} object={child} extraConditions={[...extraConditions,...(extra||[])]}/>
+  const drill=compiled.dimensions.find(d=>d.drill&&d.drill.level>0)?.drill
+  const body=objectBody(props,compiled,renderChild)
+  if(!drill)return body
+  // drill-down path: click a level to go back up (clears the selections below it)
+  return <div className="bi-drill-wrap">
+    <div className="bi-drill">{drill.levels.slice(0,drill.level+1).map((level,i)=>{const sel=props.selections.find(s=>s.key===level.key)
+      return <span key={level.key}>{i>0&&<b>›</b>}<button type="button" disabled={i===drill.level} onClick={()=>drill.levels.slice(i).forEach(l=>props.runtime?.setSelection({key:l.key,label:l.label,node:l.node},[]))}>
+        {level.label}{i<drill.level&&sel?.values.length===1?`: ${displayValue(sel.values[0])}`:''}</button></span>})}</div>
+    <div className="bi-drill-body">{body}</div></div>
+}
+
+function objectBody(props:ObjectProps&{extraConditions?:ExprNode[]},compiled:ReturnType<typeof compileObject>,renderChild:(child:SheetObject,extra?:ExprNode[])=>ReactNode){
+  const {object}=props
   switch(object.kind){
     case 'text':return <TextObject object={object}/>
     case 'variable':return <VariableInput {...props}/>
@@ -303,12 +317,29 @@ function TableObject({object,app,selections,onSelect,dataVersion,compiled}:Objec
 // ---------------------------------------------------------------------------
 // Pivot table: all dimensions but the last are rows; the last becomes columns
 // ---------------------------------------------------------------------------
-function PivotObject({app,selections,onSelect,dataVersion,compiled}:ObjectProps&Compiled){
+function PivotObject({object,app,selections,onSelect,dataVersion,compiled}:ObjectProps&Compiled){
   const rowDims=compiled.dimensions.length-1
+  const nm=compiled.measures.length
   const spec=useMemo(()=>buildSpec(compiled,selections,{sort:compiled.dimensions.map((_,index)=>({index,desc:false})),limit:5000,styles:true}),[compiled,selections])
   const result=useQuery(app.id,spec,dataVersion)
   const pivot=useMemo(()=>toPivot(result.rows,rowDims),[result.rows,rowDims])
   const colDim=compiled.dimensions[rowDims]
+  // totals (like Qlik: the measure over all rows of the group, not a sum of the cells), each its own query
+  const totals=Boolean(object.options.totals),subtotals=Boolean(object.options.subtotals)&&rowDims>1
+  const sub=(dims:number[])=>buildSpec(compiled,selections,{dimensions:dims,limit:5000})
+  const specs=useMemo(()=>({
+    rowTotal:totals?sub(compiled.dimensions.slice(0,rowDims).map((_,i)=>i)):null,
+    colTotal:totals?sub([rowDims]):null,
+    grand:totals?sub([]):null,
+    groupCells:subtotals?sub([0,rowDims]):null,
+    groupTotal:subtotals&&totals?sub([0]):null,
+  }),[compiled,selections,totals,subtotals,rowDims])// eslint-disable-line react-hooks/exhaustive-deps
+  const rowTotal=useQuery(app.id,specs.rowTotal,dataVersion),colTotal=useQuery(app.id,specs.colTotal,dataVersion),grand=useQuery(app.id,specs.grand,dataVersion)
+  const groupCells=useQuery(app.id,specs.groupCells,dataVersion),groupTotal=useQuery(app.id,specs.groupTotal,dataVersion)
+  const lookup=(rows:FieldValue[][],keys:number)=>new Map(rows.map(row=>[JSON.stringify(row.slice(0,keys)),row.slice(keys)]))
+  const maps=useMemo(()=>({rowTotal:lookup(rowTotal.rows,rowDims),colTotal:lookup(colTotal.rows,1),groupCells:lookup(groupCells.rows,2),groupTotal:lookup(groupTotal.rows,1)}),
+    [rowTotal.rows,colTotal.rows,groupCells.rows,groupTotal.rows,rowDims])
+  const [collapsed,setCollapsed]=useState<Set<string>>(new Set())
   // dimension colours: row headers per row, column headers per column (their own small queries)
   const rowStyles=compiled.styles.filter(style=>style.column<rowDims),colStyles=compiled.styles.filter(style=>style.column===rowDims)
   const rowStyleSpec=useMemo(()=>rowStyles.length?{...buildSpec(compiled,selections,{dimensions:compiled.dimensions.slice(0,rowDims).map((_,i)=>i),measures:[],limit:5000}),measures:rowStyles.map(style=>({expr:style.node}))}:null,[compiled,selections])// eslint-disable-line react-hooks/exhaustive-deps
@@ -324,12 +355,35 @@ function PivotObject({app,selections,onSelect,dataVersion,compiled}:ObjectProps&
   if(result.error)return <Message kind="error">{result.error}</Message>
   if(!result.loading&&!result.rows.length)return <Message kind="empty">No data for the current selections</Message>
   const cols=pivot.colKeys.slice(0,60)
+  const numberCells=(values:FieldValue[]|undefined,key:string)=>compiled.measures.map((m,j)=><td key={`${key}-${j}`} className="num">{values?formatNumber(toNumber(values[j]),m.format):''}</td>)
+  const select=(i:number,value:FieldValue,additive:boolean)=>{const dim=compiled.dimensions[i];onSelect({key:dim.selectKey,label:dim.label,node:dim.node},value,additive)}
+  // rows with subtotal rows after each group of the first dimension
+  const body:ReactNode[]=[]
+  pivot.rowKeys.forEach((rk,r)=>{
+    const group=JSON.stringify([rk[0]])
+    const first=r===0||JSON.stringify([pivot.rowKeys[r-1][0]])!==group
+    const last=r===pivot.rowKeys.length-1||JSON.stringify([pivot.rowKeys[r+1][0]])!==group
+    const isCollapsed=subtotals&&collapsed.has(group)
+    if(!isCollapsed)body.push(<tr key={r}>{rk.map((value,i)=><td key={i} className="bi-selectable" style={rowStyles.length?headerStyle(rowStyles,rowStyleRows.rows,rowDims,rk,i):undefined}>
+        {i===0&&subtotals&&first&&<button type="button" className="bi-collapse" aria-label="Collapse" onClick={()=>setCollapsed(c=>new Set(c).add(group))}><ChevronDown size={12}/></button>}
+        <span onClick={event=>select(i,value,event.ctrlKey||event.metaKey)}>{i===0&&subtotals&&!first?'':displayValue(value,compiled.dimensions[i].format)}</span></td>)}
+      {cols.flatMap((c,i)=>{const cell=pivot.cells.get(JSON.stringify(rk)+'|'+JSON.stringify(c));return compiled.measures.map((m,j)=><td key={`${i}-${j}`} className="num" style={cell?cellStyle(compiled,[...Array(compiled.dimensions.length).fill(null),...cell],compiled.dimensions.length+j,compiled.dimensions.length+nm):undefined}>{cell?formatNumber(toNumber(cell[j]),m.format):''}</td>)})}
+      {totals&&numberCells(maps.rowTotal.get(JSON.stringify(rk)),'rt')}</tr>)
+    if(subtotals&&last)body.push(<tr key={`s${r}`} className="bi-subtotal">
+      <td colSpan={rowDims}>{isCollapsed&&<button type="button" className="bi-collapse" aria-label="Expand" onClick={()=>setCollapsed(c=>{const n=new Set(c);n.delete(group);return n})}><ChevronRight size={12}/></button>}
+        <span className="bi-selectable" onClick={event=>select(0,rk[0],event.ctrlKey||event.metaKey)}>{displayValue(rk[0],compiled.dimensions[0].format)}</span> total</td>
+      {cols.flatMap((c,i)=>numberCells(maps.groupCells.get(JSON.stringify([rk[0],c])),`g${i}`))}
+      {totals&&numberCells(maps.groupTotal.get(group),'gt')}</tr>)
+  })
   return <div className={`bi-table-wrap ${result.loading?'is-loading':''}`}><div className="bi-table-scroll"><table className="bi-table bi-pivot">
-    <thead><tr>{compiled.dimensions.slice(0,rowDims).map((d,i)=><th key={i} rowSpan={compiled.measures.length>1?2:1}>{d.label}</th>)}
-      {cols.map((c,i)=><th key={i} colSpan={compiled.measures.length} className="num bi-selectable" style={colStyles.length?headerStyle(colStyles,colStyleRows.rows,1,[c],rowDims):undefined} onClick={event=>onSelect({key:colDim.selectKey,label:colDim.label,node:colDim.node},c,event.ctrlKey||event.metaKey)}>{displayValue(c,colDim.format)}</th>)}</tr>
-      {compiled.measures.length>1&&<tr>{cols.flatMap((_,i)=>compiled.measures.map((m,j)=><th key={`${i}-${j}`} className="num">{m.label}</th>))}</tr>}</thead>
-    <tbody>{pivot.rowKeys.map((rk,r)=><tr key={r}>{rk.map((value,i)=>{const dim=compiled.dimensions[i];return <td key={i} className="bi-selectable" style={rowStyles.length?headerStyle(rowStyles,rowStyleRows.rows,rowDims,rk,i):undefined} onClick={event=>onSelect({key:dim.selectKey,label:dim.label,node:dim.node},value,event.ctrlKey||event.metaKey)}>{displayValue(value,dim.format)}</td>})}
-      {cols.flatMap((c,i)=>{const cell=pivot.cells.get(JSON.stringify(rk)+'|'+JSON.stringify(c));return compiled.measures.map((m,j)=><td key={`${i}-${j}`} className="num" style={cell?cellStyle(compiled,[...Array(compiled.dimensions.length).fill(null),...cell],compiled.dimensions.length+j,compiled.dimensions.length+compiled.measures.length):undefined}>{cell?formatNumber(toNumber(cell[j]),m.format):''}</td>)})}</tr>)}</tbody>
+    <thead><tr>{compiled.dimensions.slice(0,rowDims).map((d,i)=><th key={i} rowSpan={nm>1?2:1}>{d.label}</th>)}
+      {cols.map((c,i)=><th key={i} colSpan={nm} className="num bi-selectable" style={colStyles.length?headerStyle(colStyles,colStyleRows.rows,1,[c],rowDims):undefined} onClick={event=>onSelect({key:colDim.selectKey,label:colDim.label,node:colDim.node},c,event.ctrlKey||event.metaKey)}>{displayValue(c,colDim.format)}</th>)}
+      {totals&&<th colSpan={nm} className="num bi-total-head">Total</th>}</tr>
+      {nm>1&&<tr>{[...cols,...(totals?['#total']:[])].flatMap((_,i)=>compiled.measures.map((m,j)=><th key={`${i}-${j}`} className="num">{m.label}</th>))}</tr>}</thead>
+    <tbody>{body}</tbody>
+    {totals&&<tfoot><tr className="bi-totals"><th colSpan={rowDims}>Total</th>
+      {cols.flatMap((c,i)=>compiled.measures.map((m,j)=>{const v=maps.colTotal.get(JSON.stringify([c]));return <th key={`${i}-${j}`} className="num">{v?formatNumber(toNumber(v[j]),m.format):''}</th>}))}
+      {compiled.measures.map((m,j)=><th key={`g${j}`} className="num">{grand.rows[0]?formatNumber(toNumber(grand.rows[0][j]),m.format):''}</th>)}</tr></tfoot>}
   </table></div>{pivot.colKeys.length>60&&<small className="bi-note">Showing the first 60 columns</small>}</div>
 }
 
