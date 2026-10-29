@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { ClipboardList, Download, Eye, GripVertical, Paperclip, Plus, Settings, Trash2, X } from 'lucide-react'
+import { BarChart3, ClipboardList, Download, Eye, GripVertical, Megaphone, Paperclip, Percent, Plus, Settings, Tags, Trash2, Users, X } from 'lucide-react'
 import { API, api, supabase, supabaseConfigured } from './lib'
 import CrossReference from './CrossReference'
 import './salesdesk.css'
@@ -615,8 +615,8 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
           ) : (
             <div className="sd-config-layout">
               {isAdmin && (
-                <div className="rfq-empty-card sd-form-card">
-                  <h3>Media platforms</h3><p>Drag to set the order. A platform linked to an RFQ can be deactivated but not deleted.</p>
+                <div className="admin-settings-panel sd-settings-card">
+                  <div className="section-head"><div><h2>Media platforms</h2><p>Manage enquiry sources. Drag rows to set their display order.</p></div><Megaphone size={19} /></div>
                   <div className="sd-config-add">
                     <input placeholder="New platform name" value={newMedia} onChange={(e) => setNewMedia(e.target.value)} />
                     <button className="primary" disabled={busy || !newMedia.trim()} onClick={() => void act(async () => { await request('/api/sales-desk/config/media-platforms', { method: 'POST', body: JSON.stringify({ name: newMedia }) }); setNewMedia('') }, 'Media platform added.')}>Add</button>
@@ -634,9 +634,9 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                 </div>
               )}
               {isAdmin && (
-                <div className="rfq-empty-card sd-form-card">
-                  <h3>RFQ statuses</h3><p>Drag to set the order. Closed statuses leave the open total and allow conversion to an invoice.</p>
-                  <div className="sd-config-add">
+                <div className="admin-settings-panel sd-settings-card">
+                  <div className="section-head"><div><h2>RFQ statuses</h2><p>Manage workflow stages and analytics categories. Closed statuses allow invoice conversion.</p></div><Tags size={19} /></div>
+                  <div className="sd-config-add sd-status-add">
                     <input placeholder="New status name" value={newStatus.name} onChange={(e) => setNewStatus({ ...newStatus, name: e.target.value })} />
                     <label>Analytics category<select value={newStatus.category} onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                     <label className="sd-inline-check"><input type="checkbox" checked={newStatus.closed} onChange={(e) => setNewStatus({ ...newStatus, closed: e.target.checked })} /> Closed status</label>
@@ -657,21 +657,21 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                 </div>
               )}
               {isAdmin && (
-                <div className="rfq-empty-card sd-form-card">
-                  <h3>Monthly GP% milestones</h3><p>The largest marker defines the progress bar total. Values are whole rand amounts and can be edited.</p>
+                <div className="admin-settings-panel sd-settings-card">
+                  <div className="section-head"><div><h2>Monthly sales milestones</h2><p>Set sales targets and choose their dashboard colours.</p></div><BarChart3 size={19} /></div>
                   <div className="sd-config-add"><input type="number" min="1" step="1" placeholder="Add milestone amount" value={newMilestone} onChange={(e) => setNewMilestone(e.target.value)} /><button className="primary" disabled={!newMilestone || Number(newMilestone) < 0} onClick={() => { const value = Number(newMilestone); if (Number.isInteger(value) && value > 0) { setGpMilestones((items) => [...items, value]); setNewMilestone('') } }}>Add</button></div>
-                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>R{value.toLocaleString()}</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><div className="sd-actions"><div className="sd-color-grid" role="group" aria-label={'Color for R' + value.toLocaleString()}>{GP_COLORS.map(([color, label]) => <button type="button" key={color} className={`sd-color-swatch ${color} ${(milestoneColors[String(value)] || (value === Math.max(...gpMilestones) ? 'dark-blue' : value === Math.min(...gpMilestones) ? 'grey' : 'light-blue')) === color ? 'selected' : ''}`} title={label} aria-label={label} onClick={() => setMilestoneColors((colors) => ({ ...colors, [String(value)]: color }))} />)}</div><button className="secondary" onClick={() => { const next = window.prompt('Edit milestone amount', String(value)); const parsed = Number(next); if (next !== null && Number.isInteger(parsed) && parsed > 0) setGpMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove R' + value.toLocaleString() + ' milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
+                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>R{value.toLocaleString()}</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><div className="sd-actions"><details className="sd-colour-picker"><summary><span className={`sd-colour-dot ${milestoneColors[String(value)] || (value === Math.max(...gpMilestones) ? 'dark-blue' : value === Math.min(...gpMilestones) ? 'grey' : 'light-blue')}`} />Colour</summary><div className="sd-color-grid" role="group" aria-label={'Color for R' + value.toLocaleString()}>{GP_COLORS.map(([color, label]) => <button type="button" key={color} className={`sd-color-swatch ${color} ${(milestoneColors[String(value)] || (value === Math.max(...gpMilestones) ? 'dark-blue' : value === Math.min(...gpMilestones) ? 'grey' : 'light-blue')) === color ? 'selected' : ''}`} title={label} aria-label={label} onClick={(event) => { setMilestoneColors((colors) => ({ ...colors, [String(value)]: color })); event.currentTarget.closest('details')?.removeAttribute('open') }} />)}</div></details><button className="secondary" onClick={() => { const next = window.prompt('Edit milestone amount', String(value)); const parsed = Number(next); if (next !== null && Number.isInteger(parsed) && parsed > 0) setGpMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove R' + value.toLocaleString() + ' milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
                 </div>
               )}
               {isAdmin && (
-                <div className="rfq-empty-card sd-form-card">
-                  <h3>GP% milestones</h3><p>Set the GP% thresholds that control the color of the monthly GP% text.</p>
+                <div className="admin-settings-panel sd-settings-card">
+                  <div className="section-head"><div><h2>GP% milestones</h2><p>Set percentage thresholds and their dashboard colours.</p></div><Percent size={19} /></div>
                   <div className="sd-config-add"><input type="number" min="0" step="0.01" placeholder="Add GP% milestone" value={newGpPercent} onChange={(e) => setNewGpPercent(e.target.value)} /><button className="primary" disabled={!newGpPercent || Number(newGpPercent) < 0} onClick={() => { const value = Number(newGpPercent); if (value >= 0) { setGpPercentMilestones((items) => [...items, value]); setNewGpPercent('') } }}>Add</button></div>
-                  <div className="sd-milestone-list">{sortedGpPercentMilestones.map((value) => <div className="sd-config-row" key={value}><div><b>{value}%</b><small>GP% threshold</small></div><div className="sd-actions"><div className="sd-color-grid" role="group" aria-label={'Color for GP ' + value + '%'}>{GP_COLORS.map(([color, label]) => <button type="button" key={color} className={`sd-color-swatch ${color} ${(gpPercentColors[String(value)] || 'dark-blue') === color ? 'selected' : ''}`} title={label} aria-label={label} onClick={() => setGpPercentColors((colors) => ({ ...colors, [String(value)]: color }))} />)}</div><button className="secondary" onClick={() => { const next = window.prompt('Edit GP% milestone', String(value)); const parsed = Number(next); if (next !== null && parsed >= 0) setGpPercentMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove GP ' + value + '% milestone'} onClick={() => setGpPercentMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
+                  <div className="sd-milestone-list">{sortedGpPercentMilestones.map((value) => <div className="sd-config-row" key={value}><div><b>{value}%</b><small>GP% threshold</small></div><div className="sd-actions"><details className="sd-colour-picker"><summary><span className={`sd-colour-dot ${gpPercentColors[String(value)] || 'dark-blue'}`} />Colour</summary><div className="sd-color-grid" role="group" aria-label={'Color for GP ' + value + '%'}>{GP_COLORS.map(([color, label]) => <button type="button" key={color} className={`sd-color-swatch ${color} ${(gpPercentColors[String(value)] || 'dark-blue') === color ? 'selected' : ''}`} title={label} aria-label={label} onClick={(event) => { setGpPercentColors((colors) => ({ ...colors, [String(value)]: color })); event.currentTarget.closest('details')?.removeAttribute('open') }} />)}</div></details><button className="secondary" onClick={() => { const next = window.prompt('Edit GP% milestone', String(value)); const parsed = Number(next); if (next !== null && parsed >= 0) setGpPercentMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove GP ' + value + '% milestone'} onClick={() => setGpPercentMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
                 </div>
               )}
-              <div className="rfq-empty-card sd-form-card">
-                <h3>Sales codes</h3><p>Codes are created automatically when a consultant account is created (first letter of name, first letter of surname, then 01, 02…). You can only switch them active or inactive.</p>
+              <div className="admin-settings-panel sd-settings-card">
+                <div className="section-head"><div><h2>Sales codes</h2><p>Manage the employee codes available for RFQ assignment.</p></div><Users size={19} /></div>
                 {config.sales_codes.length === 0 && <p className="hint">No sales codes yet. Create a salesperson account to generate one.</p>}
                 {config.sales_codes.map((c: any) => (
                   <div className="sd-config-row" key={c.id}>

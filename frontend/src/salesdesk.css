@@ -84,18 +84,18 @@
 .sd-color-swatch{width:22px;height:22px;padding:0;border:2px solid transparent;border-radius:5px;box-shadow:inset 0 0 0 1px #0002;cursor:pointer}
 .sd-color-swatch:hover{transform:scale(1.12)}
 .sd-color-swatch.selected{border-color:#142b40;box-shadow:0 0 0 2px #fff,inset 0 0 0 1px #0003}
-.sd-color-swatch.red,.sd-gp-progress .red{background:#d64545}
-.sd-color-swatch.grey,.sd-gp-progress .grey{background:#7b8790}
-.sd-color-swatch.light-blue,.sd-gp-progress .light-blue{background:#6ba8d2}
-.sd-color-swatch.dark-blue,.sd-gp-progress .dark-blue{background:#234e70}
-.sd-color-swatch.green,.sd-gp-progress .green{background:#2f9e6b}
-.sd-color-swatch.orange,.sd-gp-progress .orange{background:#e68a2e}
-.sd-color-swatch.purple,.sd-gp-progress .purple{background:#8b5fbf}
-.sd-color-swatch.teal,.sd-gp-progress .teal{background:#229c9c}
-.sd-color-swatch.yellow,.sd-gp-progress .yellow{background:#d6ad28}
-.sd-color-swatch.pink,.sd-gp-progress .pink{background:#d45a91}
-.sd-color-swatch.navy,.sd-gp-progress .navy{background:#142b40}
-.sd-color-swatch.brown,.sd-gp-progress .brown{background:#8a5a3b}
+.sd-colour-dot.red,.sd-color-swatch.red,.sd-gp-progress .red{background:#d64545}
+.sd-colour-dot.grey,.sd-color-swatch.grey,.sd-gp-progress .grey{background:#7b8790}
+.sd-colour-dot.light-blue,.sd-color-swatch.light-blue,.sd-gp-progress .light-blue{background:#6ba8d2}
+.sd-colour-dot.dark-blue,.sd-color-swatch.dark-blue,.sd-gp-progress .dark-blue{background:#234e70}
+.sd-colour-dot.green,.sd-color-swatch.green,.sd-gp-progress .green{background:#2f9e6b}
+.sd-colour-dot.orange,.sd-color-swatch.orange,.sd-gp-progress .orange{background:#e68a2e}
+.sd-colour-dot.purple,.sd-color-swatch.purple,.sd-gp-progress .purple{background:#8b5fbf}
+.sd-colour-dot.teal,.sd-color-swatch.teal,.sd-gp-progress .teal{background:#229c9c}
+.sd-colour-dot.yellow,.sd-color-swatch.yellow,.sd-gp-progress .yellow{background:#d6ad28}
+.sd-colour-dot.pink,.sd-color-swatch.pink,.sd-gp-progress .pink{background:#d45a91}
+.sd-colour-dot.navy,.sd-color-swatch.navy,.sd-gp-progress .navy{background:#142b40}
+.sd-colour-dot.brown,.sd-color-swatch.brown,.sd-gp-progress .brown{background:#8a5a3b}
 
 .sd-gp-percent-text{font-style:normal;font-size:16px;color:#d64545}
 .sd-gp-percent-text.grey{color:#7b8790}
@@ -113,3 +113,45 @@
 
 /* Configuration shares the application settings content column. */
 .sales-desk-settings .sd-config-layout{grid-template-columns:minmax(0,1fr)}
+
+/* Match the application settings cards and compact Marketing controls. */
+.sales-desk-settings{gap:17px}
+.sales-desk-settings .sd-config-layout{gap:17px}
+.sales-desk-settings .sd-settings-card{min-width:0;text-align:left;display:block}
+.sales-desk-settings .section-head{align-items:flex-start;margin-bottom:17px;gap:14px}
+.sales-desk-settings .section-head>svg{color:#315d7d;flex:none;margin-top:3px}
+.sales-desk-settings .section-head h2{font:800 15px Manrope,sans-serif;color:#304456;margin:0 0 5px}
+.sales-desk-settings .section-head p{font-size:11px;line-height:1.6;color:#778692;margin:0;max-width:none}
+.sales-desk-settings .sd-config-add{padding:12px;background:#f7f9fb;border:1px solid #e8edf1;border-radius:9px;margin:0 0 15px;align-items:center;gap:9px}
+.sales-desk-settings .sd-config-add input,.sales-desk-settings .sd-config-layout select{background:#fff;padding:8px 10px;border-color:#d8e1e7;font-size:11px;min-height:34px}
+.sales-desk-settings .sd-status-add{display:grid;grid-template-columns:minmax(140px,1fr) 155px auto auto;align-items:end}
+.sales-desk-settings .sd-status-add>input{align-self:end}
+.sales-desk-settings .sd-status-add .sd-inline-check{min-height:34px;font-size:10px}
+.sales-desk-settings .sd-config-layout label{font-size:9px;gap:5px;color:#71808d}
+.sales-desk-settings .sd-settings-card .primary,.sales-desk-settings .sd-settings-card .secondary{font-size:10px;padding:8px 11px;min-height:33px;white-space:nowrap}
+.sales-desk-settings .sd-sortable{padding:13px 0;margin:0;border-color:#edf0f3}
+.sales-desk-settings .sd-sortable:first-of-type{border-top:0}
+.sales-desk-settings .sd-sortable-body{gap:14px}
+.sales-desk-settings .sd-option-text{flex:1 1 140px;gap:4px}
+.sales-desk-settings .sd-option-text b,.sales-desk-settings .sd-config-row b{font-size:11px;color:#304456}
+.sales-desk-settings .sd-option-text small,.sales-desk-settings .sd-config-row small{font-size:9px;color:#84919a;line-height:1.5}
+.sales-desk-settings .sd-actions{gap:6px}
+.sales-desk-settings .sd-actions>label{min-width:138px}
+.sales-desk-settings .icon-button{width:32px;height:32px;color:#8996a0;border-radius:7px;flex:none}
+.sales-desk-settings .icon-button:hover{background:#f9eded;color:#ac5050}
+.sales-desk-settings .sd-config-row{padding:13px 0}
+.sales-desk-settings .sd-config-row:last-child,.sales-desk-settings .sd-sortable:last-child{padding-bottom:0}
+.sd-colour-picker{position:relative;font-size:10px;color:#526775}
+.sd-colour-picker summary{display:flex;align-items:center;gap:7px;min-height:33px;padding:7px 10px;border:1px solid #dbe3e9;border-radius:7px;cursor:pointer;list-style:none;background:#fff}
+.sd-colour-picker summary::-webkit-details-marker{display:none}
+.sd-colour-picker summary:after{content:'v';margin-left:3px;color:#8b99a3;font-size:8px}
+.sd-colour-picker summary:focus-visible{outline:2px solid #315d7d;outline-offset:2px}
+.sd-colour-dot{width:11px;height:11px;border-radius:50%;box-shadow:inset 0 0 0 1px #0001;flex:none}
+.sd-colour-picker[open] summary{border-color:#8ca7bc;background:#f5f8fa}
+.sd-colour-picker .sd-color-grid{position:absolute;top:calc(100% + 6px);right:0;z-index:20;padding:11px;background:#fff;border:1px solid #dce4eb;border-radius:10px;box-shadow:0 8px 24px #20364a1a}
+@media(max-width:1250px){.sales-desk-settings .sd-status-add{grid-template-columns:minmax(140px,1fr) 155px}.sales-desk-settings .sd-status-add .primary{justify-self:end}.sales-desk-settings .sd-sortable-body>.sd-actions{flex:1 1 100%;justify-content:flex-start}}
+@media(max-width:600px){.sales-desk-settings .sd-settings-card{padding:15px}.sales-desk-settings .sd-status-add{grid-template-columns:minmax(0,1fr)}.sales-desk-settings .sd-status-add .primary{justify-self:stretch}.sales-desk-settings .sd-config-add:not(.sd-status-add){flex-wrap:wrap}.sales-desk-settings .sd-config-add:not(.sd-status-add)>input{flex-basis:180px}.sales-desk-settings .sd-config-row{flex-wrap:wrap;gap:10px}.sales-desk-settings .sd-config-row>.sd-actions{width:100%}.sales-desk-settings .sd-sortable-body>.sd-actions{width:100%;gap:7px}.sales-desk-settings .sd-sortable-body>.sd-actions>label{flex:1 1 100%}}
+
+.sales-desk-settings .sd-inline-check input{flex:none;min-height:0}
+
+@media(max-width:600px){.sales-desk-settings .sd-colour-picker .sd-color-grid{left:0;right:auto}}
