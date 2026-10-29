@@ -444,4 +444,134 @@ other.unlink()
 r = agent("--check")
 check("[OK]   Supabase matches tables.toml" in r.out, "--check confirms Supabase matches tables.toml")
 
+# ===========================================================================
+section("Connectors: web APIs and folders")
+import http.server
+import json as _json
+import os
+import shutil
+import socketserver
+import threading
+
+SECRET_KEY = "Crr-5ecret-Key-81!"
+os.environ["COURIER_KEY"] = SECRET_KEY
+
+
+class Api(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def send(self, code, body, ctype="application/json", extra=None):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body.encode())
+
+    def do_GET(self):
+        if self.path == "/items.json":
+            self.send(200, _json.dumps({"data": {"items": [
+                {"code": "A1", "qty": 3, "price": 1.5, "when": "2026-10-01", "meta": {"zone": 4}, "tags": ["x"]},
+                {"code": "B2", "qty": "7", "price": "2.25", "when": "2026-10-02", "meta": {"zone": 5}, "tags": []}]}}))
+        elif self.path == "/secure.csv":
+            if self.headers.get("Authorization") != f"Bearer {SECRET_KEY}":
+                return self.send(401, "no")
+            self.send(200, "branch;target\nCenturion;100,5\nPretoria;90\n", "text/csv")
+        elif self.path == "/moved":
+            self.send(302, "", extra={"Location": f"http://localhost:{PORT}/items.json"})
+        else:
+            self.send(404, "missing")
+
+
+httpd = socketserver.TCPServer(("127.0.0.1", 0), Api)
+PORT = httpd.server_address[1]
+threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+folder = TESTS / "conn.tmp"
+shutil.rmtree(folder, ignore_errors=True)
+folder.mkdir()
+(folder / "targets 2025.csv").write_text("branch,target\nCenturion,1\n")
+import openpyxl
+wb = openpyxl.Workbook()
+ws = wb.active
+ws.title = "Targets"
+ws.append(["Branch", "Target", "Month"])
+ws.append(["Centurion", 125000, __import__("datetime").date(2026, 10, 1)])
+ws.append(["Pretoria", 90000.5, __import__("datetime").date(2026, 10, 1)])
+wb.save(folder / "targets 2026.xlsx")
+os.utime(folder / "targets 2025.csv", (1, 1))
+(folder / "a.csv").write_text("x\n1\n")
+(folder / "b.csv").write_text("x\n2\n3\n")
+
+conn_cfg = TESTS / "connectors.tmp.toml"
+conn_cfg.write_text(CONFIG.read_text() + textwrap.dedent(f"""
+    [connectors]
+    allow_hosts = ["127.0.0.1:{PORT}", "localhost:{PORT}"]
+    [connectors.folders]
+    budgets = '{folder}'
+    [connectors.secrets]
+    COURIER_KEY = "127.0.0.1:{PORT}"
+"""))
+
+
+def add_connector(name, kind, config, agent_name="test-agent"):
+    sb.execute("insert into bi.connectors (name, kind, agent_name, config, reload_requested) values (%s, %s, %s, %s, true)",
+               (name, kind, agent_name, _json.dumps(config)))
+
+
+def con(name):
+    return one("select * from bi.connectors where name = %s", name)
+
+
+add_connector("web_items", "web", {"url": f"http://127.0.0.1:{PORT}/items.json", "records_path": "data.items"})
+add_connector("web_secure", "web", {"url": f"http://127.0.0.1:{PORT}/secure.csv", "format": "csv",
+                                    "headers": [{"name": "Authorization", "value": "Bearer ${COURIER_KEY}"}]})
+add_connector("web_blocked", "web", {"url": f"http://127.0.0.2:{PORT}/items.json"})
+add_connector("web_leak", "web", {"url": f"http://localhost:{PORT}/items.json",
+                                  "headers": [{"name": "X-Key", "value": "${COURIER_KEY}"}]})
+add_connector("web_erp_pw", "web", {"url": f"http://127.0.0.1:{PORT}/items.json",
+                                    "headers": [{"name": "X-Key", "value": "${ERP_PASSWORD}"}]})
+add_connector("web_moved", "web", {"url": f"http://127.0.0.1:{PORT}/moved"})
+add_connector("folder_targets", "folder", {"folder": "budgets", "pattern": "targets *.*", "sheet": "Targets", "combine": "latest"})
+add_connector("folder_all", "folder", {"folder": "budgets", "pattern": "?.csv", "combine": "all"})
+add_connector("folder_other", "folder", {"folder": "elsewhere", "pattern": "*.csv"})
+
+r = agent("--once", config=conn_cfg)
+check(con("web_items")["last_status"] == "success", "a web connector loads JSON from an allowed host")
+cols = {c["name"]: c["type"] for c in one("select columns from bi.data_tables where table_name='web_items'")["columns"]}
+check(cols.get("qty") == "bigint" and cols.get("price") == "numeric" and cols.get("when") == "date" and cols.get("meta_zone") == "bigint",
+      "JSON records are flattened and typed")
+check(one("select sum(qty) s from bi_data.web_items")["s"] == 10, "...with the right values")
+check(con("web_secure")["last_status"] == "success" and str(one("select sum(target) s from bi_data.web_secure")["s"]) == "190.5",
+      "a secret from .env is sent to its own host (CSV with ; and decimal commas)")
+check("allow_hosts" in (con("web_blocked")["last_error"] or ""), "hosts that are not allowed are refused")
+check("may only be sent to" in (con("web_leak")["last_error"] or ""), "a secret is never sent to another host")
+check("not in [connectors.secrets]" in (con("web_erp_pw")["last_error"] or ""), "other .env values (e.g. the ERP password) cannot be sent")
+check("redirects" in (con("web_moved")["last_error"] or ""), "redirects are not followed")
+check(con("folder_targets")["last_status"] == "success" and one("select count(*) n from bi_data.folder_targets")["n"] == 2,
+      "a folder connector loads the newest matching Excel file")
+check(str(one("select sum(target) s from bi_data.folder_targets")["s"]) == "215000.5" and
+      {c["name"]: c["type"] for c in one("select columns from bi.data_tables where table_name='folder_targets'")["columns"]}.get("month") == "date",
+      "...with Excel numbers and dates typed")
+check(one("select count(*) n, count(distinct source_file) f from bi_data.folder_all")["f"] == 2 and
+      one("select count(*) n from bi_data.folder_all")["n"] == 3, "'all' combines every matching file with a source_file column")
+check("not in [connectors.folders]" in (con("folder_other")["last_error"] or ""), "folders that are not allowed are refused")
+opts = one("select connector_options from bi.agents where name='test-agent'")["connector_options"]
+check(opts["folders"] == ["budgets"] and opts["secrets"] == {"COURIER_KEY": f"127.0.0.1:{PORT}"} and str(folder) not in str(opts),
+      "the agent tells the app which hosts and folder names it allows (not the paths)")
+check(SECRET_KEY not in LOG.read_text() + str(q("select * from bi.connectors")) + str(q("select * from bi.sync_runs")),
+      "the secret never appears in logs or Supabase")
+sb.execute("update bi.connectors set reload_requested = false")
+n = runs()
+agent("--once", config=conn_cfg)
+check(runs() == n, "failed connectors are not retried in a tight loop")
+r = agent("--run", "web_items", config=conn_cfg)
+check(r.returncode == 0 and con("web_items")["last_status"] == "success", "--run loads a connector on demand")
+r = agent("--once")
+check(r.returncode == 0, "an agent without [connectors] still runs")
+httpd.shutdown()
+shutil.rmtree(folder, ignore_errors=True)
+conn_cfg.unlink()
+
 print(f"\nAll {passed} checks passed")

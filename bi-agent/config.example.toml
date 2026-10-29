@@ -46,3 +46,24 @@ query_timeout_seconds = 0       # 0 = no limit
 # Off by default except test_connection: an admin account on the app could otherwise
 # read any ERP table the ERP login can see. Turn on only when you need them.
 app_requests = ["test_connection"]
+
+# -----------------------------------------------------------------------------
+# Connectors for data that does NOT come from the ERP (web APIs and files in folders).
+# They are created in the app (Reporting -> Data Connections) by administrators, but this
+# agent only fetches what is allowed here. Nothing is allowed unless it is listed.
+# -----------------------------------------------------------------------------
+[connectors]
+# Web hosts that web connectors may fetch from (exact host names; redirects are not followed).
+allow_hosts = []                 # e.g. ["api.courier.co.za"]
+# max_mb = 50                    # largest response or file
+# max_rows = 1000000
+# timeout_seconds = 60
+
+[connectors.folders]
+# Folders that folder connectors may read, by name. The app only ever sees the names.
+# budgets = '\\fileserver\finance\budgets'
+
+[connectors.secrets]
+# Values in .env that a web connector may put in a header as ${NAME}, and the ONE host each may
+# be sent to. The app never sees the value. Anything not listed here cannot be sent.
+# COURIER_API_KEY = "api.courier.co.za"

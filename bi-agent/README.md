@@ -245,3 +245,19 @@ Logs: `logs\agent.log`. Run history: `select * from bi.sync_runs order by id des
 3. Datasets + report builder (tables, pivots, calculations, charts)
 4. Dashboards + per-dashboard access (groups)
 5. Scheduled emails
+
+## Connectors (web APIs and folders)
+
+Data that does not come from the ERP can be loaded with connectors, which administrators create in the
+app under **Reporting → Data Connections**. Excel/CSV uploads are handled entirely in the app. **Web** and
+**folder** connectors are run by this agent, but only within what `[connectors]` in `config.toml` allows:
+
+- `allow_hosts`: the only web hosts it will fetch from. Redirects are not followed.
+- `[connectors.folders]`: folders by name, e.g. `budgets = '\\fileserver\finance\budgets'`. The app only
+  sees the names; file patterns cannot leave the folder. `.csv`, `.txt`, `.xlsx` and `.xlsm` files are read
+  (Excel needs `pip install openpyxl`).
+- `[connectors.secrets]`: `.env` values that a web connector may put in a header as `${NAME}`, each mapped to
+  the one host it may be sent to. Nothing else from `.env` (such as the ERP password) can be sent.
+
+Each connector loads one table in `bi_data` (full replace each run) on its schedule, or straight away
+after it is saved or **Reload** is clicked. `--run NAME` loads one on demand.
