@@ -1,5 +1,7 @@
 # Smart Stock Control Roadmap
 
+Updated: 2026-10-29
+
 ## Supabase migration status
 
 | Stage | Scope | Status |

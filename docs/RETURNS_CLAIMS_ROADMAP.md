@@ -1,5 +1,7 @@
 # Returns & Claims Roadmap
 
+Updated: 2026-10-29
+
 ## Current workspace
 
 - Returns & Claims records with editable dates, warehouse, RFC details, customer and invoice information.

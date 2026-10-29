@@ -1,12 +1,12 @@
 # Sales Desk Roadmap
 
-Updated: 2026-10-28
+Updated: 2026-10-29
 
 ## Current review
 
 Implemented today:
 
-- Impala Hub authentication with persistent sessions and logout.
+- Impala Hub authentication with Google Authenticator MFA, tab-scoped sessions and logout.
 - Administrator, manager, and salesperson roles.
 - Sales-code assignment for sales consultants.
 - Visibility rules for personal RFQs, team RFQs, and unclaimed RFQs.
@@ -51,7 +51,7 @@ The Daily Sales and RFQ Performance tables currently contain temporary test data
 | Unclaimed RFQs | Implemented | Add reminders and age indicators |
 | RFQ statuses | Implemented and configurable | Add Kanban drag-and-drop |
 | RFQ audit history | Implemented | Add export and audit filters |
-| Attachments | Implemented with no-delete protection | Add previews and virus scanning |
+| Attachments | Implemented with previews, downloads and deletion protection | Optional virus scanning |
 | Sales Desk dashboard | Implemented | Add drill-downs and saved periods |
 | RFQ analytics | Implemented | Add conversion funnel and cohort comparisons |
 | Daily sales and RFQ performance membership | Temporary Supabase seed data | Restrict rows to active users with profile sales codes and replace test values with live sales data |

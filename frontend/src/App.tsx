@@ -37,6 +37,7 @@ const emptyPost = (): Partial<Post> => ({
 })
 const NEEDS_ATTENTION = ['awaiting_approval', 'failed']
 const qrImageSource = (value: string) => value.startsWith('data:') ? value : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}`
+const roadmapBucket = (status: string) => status.startsWith('Implemented') ? 'Implemented' : status.startsWith('Partial') ? 'Partial' : status.startsWith('Deferred') ? 'Deferred' : status.startsWith('Retired') ? 'Retired' : status.startsWith('Missing') ? 'Missing' : 'Planned'
 
 // Plain-English explanations for the reason codes the backend adds to the redirect after Facebook login.
 const OAUTH_REASONS: Record<string, string> = {
@@ -121,6 +122,7 @@ export default function App() {
   const [mfaSetupFactorId, setMfaSetupFactorId] = useState('')
   const [mfaSetupChallengeId, setMfaSetupChallengeId] = useState('')
   const [mfaEnabled, setMfaEnabled] = useState(false)
+  const [roadmapFilter, setRoadmapFilter] = useState('all')
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -934,16 +936,18 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <div><h2>RFQ capability workspace</h2><p>Current Sales Desk coverage, known gaps, and improvement priorities.</p></div>
             </div>
             <div className="roadmap-priorities"><strong>Next priorities</strong><span>RFQ approval review queue</span><span>Expand notifications to assignment, overdue work and SLA reminders</span><span>Bulk actions and exports</span><span>Granular server-side permissions</span></div>
+            <div className="roadmap-filter-bar"><label>Show status<select value={roadmapFilter} onChange={(event) => setRoadmapFilter(event.target.value)}><option value="all">All statuses</option><option>Implemented</option><option>Partial</option><option>Planned</option><option>Deferred</option><option>Missing</option><option>Retired</option></select></label></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
-              {SALES_ROADMAP_ROWS.map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
+              {SALES_ROADMAP_ROWS.filter(([, , , status]) => roadmapFilter === 'all' || roadmapBucket(status) === roadmapFilter).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (roadmapBucket(status) === 'Implemented' ? 'complete' : roadmapBucket(status) === 'Missing' ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
         ) : page === 'Returns & Claims Roadmap' || page === 'Stock Control Roadmap' ? (
           <section className="roadmap-page">
             <div className="section-head"><div><h2>{page === 'Returns & Claims Roadmap' ? 'Returns & Claims roadmap' : 'Smart Stock Control roadmap'}</h2><p>Current workspace coverage, known gaps, and implementation priorities.</p></div></div>
             <div className="roadmap-priorities">{page === 'Returns & Claims Roadmap' ? <><strong>Next priorities</strong><span>Hosted attachment and role smoke tests</span><span>True wildcard-pattern search</span><span>Production workflow verification</span></> : <><strong>Next priorities</strong><span>Verify manual imports and transfers in production</span><span>Supplier response workflow</span><span>Approval workflow</span><span>Supplier history and recommendations</span></>}</div>
+            <div className="roadmap-filter-bar"><label>Show status<select value={roadmapFilter} onChange={(event) => setRoadmapFilter(event.target.value)}><option value="all">All statuses</option><option>Implemented</option><option>Partial</option><option>Planned</option><option>Deferred</option><option>Missing</option><option>Retired</option></select></label></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Reference</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
-              {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status === 'Implemented' ? 'complete' : 'partial')}>{status}</span></td></tr>)}
+              {(page === 'Returns & Claims Roadmap' ? RETURNS_ROADMAP_ROWS : STOCK_ROADMAP_ROWS).filter(([, , , status]) => roadmapFilter === 'all' || roadmapBucket(status) === roadmapFilter).map(([capability, reference, impala, status]) => <tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status ' + (roadmapBucket(status) === 'Implemented' ? 'complete' : roadmapBucket(status) === 'Missing' ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
         ) : isReturnsClaimsPage && page === 'Returns & Claims' ? <ReturnsClaims token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Booking' ? <StockBooking token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Reordering' ? <StockReordering token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Data Import' ? <StockImport token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Stock Control Configuration' ? <StockControlConfig token={key} setNotice={setNotice} setError={setError} /> : isStockControlPage && page === 'Parts Query' ? <PartsQueries token={key} setNotice={setNotice} setError={setError} /> : isSalesDeskPage ? <SalesDesk page={page} token={key} setNotice={setNotice} setError={setError} openRfqId={notificationRfqId} onOpenRfqHandled={() => setNotificationRfqId(null)} /> : null}
@@ -957,8 +961,9 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <strong>Next priorities</strong>
               <span>Advanced and campaign-aware search</span><span>Notifications and social conversations</span><span>Sentiment analysis and reporting</span><span>Instagram integration remains deferred</span>
             </div>
+            <div className="roadmap-filter-bar"><label>Show status<select value={roadmapFilter} onChange={(event) => setRoadmapFilter(event.target.value)}><option value="all">All statuses</option><option>Implemented</option><option>Partial</option><option>Planned</option><option>Deferred</option><option>Missing</option><option>Retired</option></select></label></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Odoo</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
-              {ROADMAP_ROWS.map(([capability, odoo, impala, status]) => <tr key={capability}><td>{capability}</td><td>{odoo}</td><td>{impala}</td><td><span className={'roadmap-status ' + (status.startsWith('Implemented') ? 'complete' : status.startsWith('Missing') || status.startsWith('Incomplete') ? 'missing' : 'partial')}>{status}</span></td></tr>)}
+              {ROADMAP_ROWS.filter(([, , , status]) => roadmapFilter === 'all' || roadmapBucket(status) === roadmapFilter).map(([capability, odoo, impala, status]) => <tr key={capability}><td>{capability}</td><td>{odoo}</td><td>{impala}</td><td><span className={'roadmap-status ' + (roadmapBucket(status) === 'Implemented' ? 'complete' : roadmapBucket(status) === 'Missing' ? 'missing' : 'partial')}>{status}</span></td></tr>)}
             </tbody></table></div>
           </section>
         )}

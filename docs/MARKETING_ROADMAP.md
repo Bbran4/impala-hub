@@ -1,13 +1,13 @@
 # Impala Hub Marketing Roadmap
 
-Updated: 2026-10-28
+Updated: 2026-10-29
 
 This workspace tracks parity between the Odoo Social Marketing workflow and the current Supabase/Vercel Impala Hub deployment. Older FastAPI provider routes are legacy implementation evidence and are not treated as active hosted capabilities.
 
 ## Current priorities
 
 1. Expand search to campaigns and advanced filters.
-2. Connect Marketing-specific events to the shared notification centre, then add social conversations.
+2. Connect Marketing-specific events to the shared notification centre.
 3. Add sentiment analysis and advanced reporting.
 4. Keep Instagram connectivity, publishing and insights deferred until that migration resumes.
 
@@ -16,7 +16,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and the 
 | Capability | Odoo | Impala Hub | Status |
 |---|---|---|---|
 | Sign-in | Odoo authentication | Impala Hub session login | Implemented |
-| Persistent session | Yes | Persistent session with retry protection | Implemented |
+| Session and MFA | Yes | Supabase login, Google Authenticator TOTP, tab-scoped session and logout | Implemented |
 | Logout | Yes | Yes | Implemented |
 | Facebook connection | Social account configuration | Meta OAuth, Page selection, diagnostics, disconnect | Implemented |
 | Instagram connection | Social account configuration | Schema and UI foundation; Supabase OAuth is disabled | Deferred |
@@ -48,7 +48,7 @@ This workspace tracks parity between the Odoo Social Marketing workflow and the 
 | Post list | Yes | List view | Implemented |
 | Post pivot reporting | Yes | Grouped Pivot-style insights table | Implemented |
 | Search/filtering | Extensive search panels | Basic search, status, campaign, month filters | Partial |
-| Social conversations | Channels and chats | Not implemented | Missing |
+| Social conversations | Channels and chats | Shared Impala Hub Chat and Channels workspace; provider-specific conversations remain deferred | Partial |
 | Sentiment analysis | Visible in Channels | Not implemented | Missing |
 | Notifications | Odoo activities/messages | Shared bell, unread state and Marketing channel implemented; Marketing event producers are not connected | Partial |
 | RFQ dashboard | Not applicable | Sales Desk dashboard | Implemented separately |
