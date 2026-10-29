@@ -3,15 +3,15 @@ import {
   ArrowLeft,BarChart3,Palette,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
   Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,Hash,ChartColumnIncreasing,ScatterChart,Target,ListFilter,ChartNoAxesColumn,LayoutDashboard,
   BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,Variable,SlidersHorizontal,CalendarDays,MousePointerClick,Menu,PanelTop,Columns2,Grid2x2,
-  Image as ImageIcon,Calculator,ListTree,Mail,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
+  Image as ImageIcon,Calculator,History,ListTree,Mail,Star,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
 } from 'lucide-react'
 import {supabase} from './supabase'
 import {expandVariables,type AppVariable,type MasterMeasure} from './biExpression'
 import {checkExpression,ExpressionInput,type ExpressionContext} from './biExpressionEditor'
 import {
-  GRID_COLS,KIND_INFO,ROW_HEIGHT,calcFieldProblem,compileObject,deleteApp,deleteSheet,withCalcFields,describeRowAccess,displayValue,freeSpot,loadApp,loadApps,loadMyRowAccess,loadPrincipals,withWriteKeys,
+  GRID_COLS,KIND_INFO,ROW_HEIGHT,calcFieldProblem,compileObject,deleteApp,deleteSheet,loadHome,logView,sameValue,toggleFavourite,withCalcFields,describeRowAccess,displayValue,freeSpot,loadApp,loadApps,loadMyRowAccess,loadPrincipals,withWriteKeys,
   ALTERNATE_STATES,CONTAINER_KINDS,NO_DATA_KINDS,columnOrder,fitOptions,isContained,modelProblems,moveColumn,newId,removeObject,setContainer,normalizeObject,orderedModel,relinkModel,removeFromModel,rerootModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
-  type AccessEntry,type AppDetail,type CalcField,type AppSummary,type ModelTable,type NumberFormat,type ObjectKind,
+  type AccessEntry,type AppDetail,type Bookmark,type CalcField,type FieldValue,type HomeEntry,type SearchHit,type AppSummary,type ModelTable,type NumberFormat,type ObjectKind,
   type Principals,type Selection,type Sheet,type SheetObject,
 } from './biApps'
 import {loadDataTables,ago,type DataTable} from './reportingData'
@@ -21,6 +21,7 @@ import {modelLinks} from './biModelGraph'
 import {type AppRuntime} from './biChartKit'
 import RowAccessCard from './biRowAccess'
 import ReportEmails from './biReportEmails'
+import {BookmarkMenu,ExportMenu,SmartSearch} from './biEveryday'
 import './reportingApps.css'
 
 type Props={canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
@@ -43,22 +44,34 @@ const FORMATS:[NumberFormat,string][]=[['auto','Automatic'],['number','Number'],
 
 export default function ReportingApps({canBuild,setNotice,setError}:Props){
   const [openId,setOpenId]=useState<string|null>(()=>{try{return sessionStorage.getItem('bi-open-app')}catch{return null}})
+  const [openSheet,setOpenSheet]=useState<string|null>(null)
   const [creating,setCreating]=useState(false)
   useEffect(()=>{try{openId?sessionStorage.setItem('bi-open-app',openId):sessionStorage.removeItem('bi-open-app')}catch{/* storage unavailable */}},[openId])
+  const back=useCallback(()=>{setOpenId(null);setOpenSheet(null)},[])
   if(creating)return <AppSettings app={null} onClose={()=>setCreating(false)} onSaved={id=>{setCreating(false);setOpenId(id)}} setNotice={setNotice} setError={setError}/>
-  if(openId)return <AppView appId={openId} canBuild={canBuild} onBack={()=>setOpenId(null)} setNotice={setNotice} setError={setError}/>
-  return <AppHub canBuild={canBuild} onOpen={setOpenId} onCreate={()=>setCreating(true)} setError={setError}/>
+  if(openId)return <AppView key={openId} appId={openId} initialSheet={openSheet} canBuild={canBuild} onBack={back} setNotice={setNotice} setError={setError}/>
+  return <AppHub canBuild={canBuild} onOpen={(id,sheet)=>{setOpenSheet(sheet||null);setOpenId(id)}} onCreate={()=>setCreating(true)} setError={setError}/>
 }
 
 // ---------------------------------------------------------------------------
 // Hub
 // ---------------------------------------------------------------------------
-function AppHub({canBuild,onOpen,onCreate,setError}:{canBuild:boolean;onOpen:(id:string)=>void;onCreate:()=>void;setError:(m:string)=>void}){
+function AppHub({canBuild,onOpen,onCreate,setError}:{canBuild:boolean;onOpen:(id:string,sheet?:string)=>void;onCreate:()=>void;setError:(m:string)=>void}){
   const [apps,setApps]=useState<AppSummary[]|null>(null)
-  useEffect(()=>{if(supabase)loadApps(supabase).then(setApps).catch(error=>{setError((error as Error).message);setApps([])})},[setError])
+  const [home,setHome]=useState<{favourites:HomeEntry[];recent:HomeEntry[]}|null>(null)
+  useEffect(()=>{if(!supabase)return
+    loadApps(supabase).then(setApps).catch(error=>{setError((error as Error).message);setApps([])})
+    loadHome(supabase).then(setHome).catch(()=>setHome(null))},[setError])
   const now=new Date()
+  const shortcut=(entry:HomeEntry,kind:'fav'|'recent')=><button key={kind+entry.sheet_id} className="bi-shortcut" onClick={()=>onOpen(entry.app_id,entry.sheet_id)}>
+    {kind==='fav'?<Star size={15} className="bi-star on"/>:<History size={15}/>}<span><b>{entry.sheet_title}</b><small>{entry.app_name}{entry.at?` · ${ago(entry.at,now).toLowerCase()}`:''}</small></span></button>
   return <section className="rfq-workspace">
     <div className="sd-session-bar"><LayoutGrid size={18}/><span>Apps</span>{canBuild&&<button className="primary" onClick={onCreate}><Plus size={15}/>Create app</button>}</div>
+    {home&&(()=>{const recent=home.recent.filter(r=>!home.favourites.some(f=>f.sheet_id===r.sheet_id)).slice(0,6)
+      return (home.favourites.length>0||recent.length>0)&&<div className="bi-home">
+        {home.favourites.length>0&&<div><div className="bi-section-title"><Star size={13}/>Favourites</div><div className="bi-shortcuts">{home.favourites.map(f=>shortcut(f,'fav'))}</div></div>}
+        {recent.length>0&&<div><div className="bi-section-title"><History size={13}/>Recently opened</div><div className="bi-shortcuts">{recent.map(r=>shortcut(r,'recent'))}</div></div>}
+      </div>})()}
     {apps&&!apps.length&&<div className="rfq-empty-card"><LayoutGrid size={26}/><h3>No apps yet</h3><p>{canBuild?'Create an app: choose the loaded ERP tables it uses, link them, then build dashboard sheets.':'No apps have been shared with you yet. Ask an administrator or report builder.'}</p></div>}
     <div className="bi-app-grid">{(apps||[]).map(app=><button key={app.id} className="bi-app-card" onClick={()=>onOpen(app.id)}>
       <div className="bi-app-card-icon"><BarChart3 size={22}/></div>
@@ -71,9 +84,10 @@ function AppHub({canBuild,onOpen,onCreate,setError}:{canBuild:boolean;onOpen:(id
 // ---------------------------------------------------------------------------
 // App view: sheets, selections, editing
 // ---------------------------------------------------------------------------
-function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBuild:boolean;onBack:()=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
+function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:string;initialSheet?:string|null;canBuild:boolean;onBack:()=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
   const [app,setApp]=useState<AppDetail|null>(null)
-  const [sheetId,setSheetId]=useState<string|null>(null)
+  const [sheetId,setSheetId]=useState<string|null>(initialSheet||null)
+  const [favourites,setFavourites]=useState<Set<string>>(new Set())
   const [selections,setSelections]=useState<Selection[]>([])
   // alternate states (Qlik): objects set to state A or B have their own selections
   const [stateSelections,setStateSelections]=useState<Record<string,Selection[]>>({})
@@ -92,6 +106,7 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
     }catch(error){setError((error as Error).message);onBack()}
   },[appId,onBack,setError])
   useEffect(()=>{void load()},[load])
+  useEffect(()=>{if(supabase)loadHome(supabase).then(home=>setFavourites(new Set(home.favourites.filter(f=>f.app_id===appId).map(f=>f.sheet_id)))).catch(()=>{})},[appId])
   // viewers: what row access limits them to
   useEffect(()=>{if(canBuild||!supabase)return;loadMyRowAccess(supabase,appId).then(access=>setMyRows(describeRowAccess(access))).catch(()=>setMyRows(null))},[appId,canBuild])
   // pick up fresh data from the sync agent every minute
@@ -104,6 +119,23 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
   const defaults=useMemo(()=>Object.fromEntries((app?.variables||[]).map(v=>[v.name,v.value])),[app?.variables])
   const values=useMemo(()=>({...defaults,...Object.fromEntries(Object.entries(variableValues).filter(([name])=>name in defaults))}),[defaults,variableValues])
   const viewApp=useMemo(()=>app?{...app,variableValues:values,stateSelections:{Main:selections,...stateSelections}}:null,[app,values,selections,stateSelections])
+  useEffect(()=>{if(supabase&&app&&sheetId&&!editing)void logView(supabase,app.id,sheetId).catch(()=>{})},[app?.id,sheetId,editing])// eslint-disable-line react-hooks/exhaustive-deps
+  function applyBookmark(bookmark:Bookmark){
+    setSelections(bookmark.selections||[]);setStateSelections(bookmark.states||{});setVariableValues(bookmark.variables||{})
+    if(bookmark.sheet_id&&app?.sheets.some(item=>item.id===bookmark.sheet_id))setSheetId(bookmark.sheet_id)
+    setNotice(`Bookmark "${bookmark.name}" applied.`)
+  }
+  function pickSearch(hit:SearchHit,value:FieldValue){
+    const key=`${hit.table}.${hit.field}`
+    const label=hit.field.replace(/_/g,' ').replace(/^./,c=>c.toUpperCase())
+    setSelections(current=>current.some(item=>item.key===key&&item.values.some(v=>sameValue(v,value)))?current:toggleSelection(current,{key,label,node:{t:'field',table:hit.table,name:hit.field}},value,true))
+  }
+  async function favourite(){
+    if(!supabase||!app||!sheetId)return
+    try{const on=await toggleFavourite(supabase,app.id,sheetId);setFavourites(current=>{const next=new Set(current);if(on)next.add(sheetId);else next.delete(sheetId);return next})
+      setNotice(on?'Added to your favourites on the Reporting home page.':'Removed from your favourites.')}
+    catch(error){setError((error as Error).message)}
+  }
   const onStateSelect=(state:string,dimension:Parameters<SelectFn>[0],value:Parameters<SelectFn>[1],additive:boolean)=>{
     if(!editing)setStateSelections(current=>({...current,[state]:toggleSelection(current[state]||[],dimension,value,additive)}))}
   const runtime=useMemo<AppRuntime|undefined>(()=>app&&sheet?{
@@ -149,6 +181,13 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
     <div className="bi-app-bar">
       <button className="secondary" onClick={()=>editing?cancelEditing():onBack()}><ArrowLeft size={15}/>{editing?'Stop editing':'Apps'}</button>
       <div className="bi-app-title"><b>{app.name}</b>{app.description&&<small>{app.description}</small>}</div>
+      {!editing&&<div className="bi-app-tools">
+        <SmartSearch app={app} selections={selections} onPick={pickSearch}/>
+        <BookmarkMenu app={app} canBuild={canBuild} sheetId={sheet?.id||null} selections={selections} states={stateSelections} variables={variableValues}
+          onApply={applyBookmark} setNotice={setNotice} setError={setError}/>
+        {sheet&&<button className={`icon-button bi-fav ${favourites.has(sheet.id)?'on':''}`} title={favourites.has(sheet.id)?'Remove from favourites':'Add this sheet to your favourites'} aria-pressed={favourites.has(sheet.id)} onClick={()=>void favourite()}><Star size={16}/></button>}
+        {sheet&&<ExportMenu app={viewApp||app} sheet={sheet} selectionsFor={object=>object.options.state?stateSelections[object.options.state]||[]:selections} setError={setError}/>}
+      </div>}
       {canBuild&&!editing&&<div className="bi-app-actions">
         <button className="secondary" onClick={()=>setSettings(true)}><Settings2 size={15}/>Data model &amp; sharing</button>
         <button className="secondary" onClick={()=>setReports(true)}><Mail size={15}/>Report emails</button>

@@ -73,6 +73,22 @@ reloaded straight away. The agent's `config.toml` `[connectors]` section decides
 keys are allowed (see `bi-agent/README.md`); the page shows what each agent allows. Loaded connection
 tables appear in **Data** and **Data Model** and are added to apps like any other table.
 
+## Bookmarks, search, exports and favourites
+
+Everyone who can open an app gets these tools above the sheets:
+
+- **Search all fields**: type two or more letters to find values in every text field of the app (within the
+  current selections and your row access); click a value to select it.
+- **Bookmarks**: save the current selections, compare selections, variable values and sheet under a name and
+  apply them again later. Bookmarks are personal; report builders can also share them with everyone who can
+  open the app.
+- **☆ Favourite**: adds the sheet to *Favourites* on the Reporting home page, which also lists the sheets you
+  opened recently.
+- **Export**: *PDF or print* prints the sheet as you see it (choose "Save as PDF"); *Excel* downloads the data of
+  every chart and table on the sheet, one tab each, with number formats (up to 10,000 rows per chart). Tables
+  also have *CSV* and *Excel* buttons.
+- On phones the charts stack in one column, and the tabs, selections and tools scroll sideways.
+
 ## Row access (like Qlik section access)
 
 Under an app's **Data model & sharing → Row access**, a report builder can limit which records each viewer

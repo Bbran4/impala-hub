@@ -39,6 +39,8 @@ const REPORTING_ROADMAP_ROWS=[
   ['Set analysis and Aggr','Qlik set analysis, Aggr(), Above()/RangeSum()','Sets ({1}, {<field={…}>}, +=/-=/*=, searches, $(=…)), Aggr() and chart functions for running totals and comparisons','Implemented'],
   ['Calculated fields','Qlik load-script fields','Per-row expressions on a table in the app model, used like loaded fields','Implemented'],
   ['Drill-down, compare, pivot totals','Qlik drill-down groups, alternate states, pivot totals','Drill-down dimensions with a path; Compare A/B objects with their own selections; pivot totals and collapsible subtotals','Implemented'],
+  ['Bookmarks and smart search','Qlik bookmarks, smart search','Personal or shared bookmarks (selections, compare states, variables, sheet); search every text field and click to select','Implemented'],
+  ['Exports, favourites, phones','Qlik export to Excel/PDF, favourites, mobile','Sheet to PDF (print) or Excel (one tab per chart), table to Excel; favourite sheets and recently opened on the Reporting home; phone layout','Implemented'],
   ['Stock history','Qlik QVD snapshots','Keep daily stock levels over time (only changes stored, about 150–200 MB a year)','Planned'],
   ['Row-level access','Qlik section access','Per app: users or roles see only rows where a field has their values (e.g. own branch); enforced in the database for every query','Implemented'],
   ['Scheduled emails','Qlik NPrinting','Chosen sheets as picture + PDF to roles or people, daily/weekdays/weekly/monthly, each drawn with the recipient’s row access','Implemented'],

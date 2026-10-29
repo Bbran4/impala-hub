@@ -293,6 +293,15 @@ function TableObject({object,app,selections,onSelect,dataVersion,compiled}:Objec
       const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=`${(object.title||app.name).replace(/[^\w\- ]+/g,'').trim()||'export'}.csv`;link.click();URL.revokeObjectURL(link.href)
     }finally{setExporting(false)}
   }
+  async function exportExcel(){
+    if(!supabase)return
+    setExporting(true)
+    try{
+      const all=await runQuery(supabase,app.id,buildSpec(compiled,selections,{sort:order,limit:10000}))
+      const {downloadWorkbook}=await import('./biExport')
+      await downloadWorkbook([{title:object.title||app.name,headers:display.map(i=>headers[i]),formats:display.map(i=>formats[i]),rows:all.rows.map(row=>display.map(i=>row[i]))}],object.title||app.name)
+    }finally{setExporting(false)}
+  }
   if(result.error)return <Message kind="error">{result.error}</Message>
   const current=sort??order[0]
   return <div className={`bi-table-wrap ${result.loading?'is-loading':''}`}>
@@ -310,7 +319,8 @@ function TableObject({object,app,selections,onSelect,dataVersion,compiled}:Objec
     </div>
     <div className="bi-table-foot"><span>{result.rows.length.toLocaleString()}{result.has_more?'+':''} rows</span>
       {result.has_more&&<button type="button" className="text-button" onClick={()=>setPages(p=>p+1)}>Load more</button>}
-      <button type="button" className="text-button" disabled={exporting} onClick={()=>void exportCsv()}><Download size={13}/>{exporting?'Exporting…':'CSV'}</button></div>
+      <button type="button" className="text-button" disabled={exporting} onClick={()=>void exportCsv()}><Download size={13}/>{exporting?'Exporting…':'CSV'}</button>
+      <button type="button" className="text-button" disabled={exporting} onClick={()=>void exportExcel()}><Download size={13}/>Excel</button></div>
   </div>
 }
 

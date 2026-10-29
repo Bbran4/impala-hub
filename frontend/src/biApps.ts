@@ -159,6 +159,27 @@ export function withWriteKeys(objects:SheetObject[],app:Pick<AppDetail,'model'|'
   })
 }
 
+// Bookmarks, favourites, recently opened sheets, smart search
+export type Bookmark={id:string;name:string;description:string;shared:boolean;mine:boolean;owner_name:string|null;sheet_id:string|null
+  selections:Selection[];states:Record<string,Selection[]>;variables:Record<string,string>;updated_at:string}
+export type HomeEntry={app_id:string;app_name:string;sheet_id:string;sheet_title:string;at?:string}
+export type SearchHit={table:string;field:string;values:FieldValue[];more:boolean}
+export async function loadBookmarks(client:SupabaseClient,appId:string){const {data,error}=await client.rpc('bi_list_bookmarks',{p_app:appId});fail(error);return (data||[]) as Bookmark[]}
+export async function saveBookmark(client:SupabaseClient,appId:string,bookmark:Partial<Bookmark>&{name:string}){
+  const {data,error}=await client.rpc('bi_save_bookmark',{p:{id:bookmark.id,app_id:appId,name:bookmark.name,description:bookmark.description||'',shared:Boolean(bookmark.shared),
+    sheet_id:bookmark.sheet_id||null,selections:bookmark.selections||[],states:bookmark.states||{},variables:bookmark.variables||{}}});fail(error);return data as string}
+export async function deleteBookmark(client:SupabaseClient,id:string){const {error}=await client.rpc('bi_delete_bookmark',{p_id:id});fail(error)}
+export async function loadHome(client:SupabaseClient){const {data,error}=await client.rpc('bi_my_home');fail(error);return data as {favourites:HomeEntry[];recent:HomeEntry[]}}
+export async function toggleFavourite(client:SupabaseClient,appId:string,sheetId:string){const {data,error}=await client.rpc('bi_toggle_favourite',{p_app:appId,p_sheet:sheetId});fail(error);return data as boolean}
+export async function logView(client:SupabaseClient,appId:string,sheetId:string|null){await client.rpc('bi_log_view',{p_app:appId,p_sheet:sheetId})}
+export async function searchValues(client:SupabaseClient,appId:string,text:string,selections:Selection[]){
+  const {data,error}=await client.rpc('bi_search_values',{p_app:appId,p_text:text,p_selections:selections.filter(s=>s.values.length).map(s=>({expr:s.node,values:s.values}))})
+  fail(error);return (data||[]) as SearchHit[]}
+// A bookmark keeps only selections with values, and drops states without any
+export function bookmarkState(selections:Selection[],states:Record<string,Selection[]>){
+  return {selections:selections.filter(s=>s.values.length),states:Object.fromEntries(Object.entries(states).filter(([,list])=>list.some(s=>s.values.length)))}
+}
+
 // Row access (like Qlik section access)
 export type RowRule={type:'role'|'user';principal:string;field:string;all:boolean;values:string[]}
 export type RowAccess={enabled:boolean;rules:RowRule[]}
