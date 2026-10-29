@@ -142,17 +142,20 @@ export async function uploadTable(client:SupabaseClient,name:string,description:
 // ---------------------------------------------------------------------------
 // Web and folder connectors
 // ---------------------------------------------------------------------------
-export type ConnectorKind='upload'|'web'|'folder'
+export type ConnectorKind='upload'|'web'|'folder'|'sharepoint'|'gsheet'
+export type AgentKind=Exclude<ConnectorKind,'upload'>
 export type Connector={id:string;name:string;kind:ConnectorKind;description:string;agent_name:string|null;config:Record<string,any>// eslint-disable-line @typescript-eslint/no-explicit-any
   interval_minutes:number|null;enabled:boolean;reload_requested:boolean;last_run_at:string|null;last_status:'running'|'success'|'error'|null
   last_error:string|null;last_row_count:number|null;row_count:number|null;last_loaded_at:string|null;columns:{name:string;type:string}[]|null;updated_at:string}
-export type ConnectorAgent={name:string;last_seen_at:string|null;version:string|null;connector_options:{hosts?:string[];folders?:string[];secrets?:Record<string,string>}}
+export type ConnectorAgent={name:string;last_seen_at:string|null;version:string|null;connector_options:{hosts?:string[];folders?:string[];secrets?:Record<string,string>
+  // batch 5 (agent 0.4.0): SharePoint/OneDrive locations by name, a Microsoft app registration, the Google service account
+  sharepoint?:Record<string,string>;microsoft?:boolean;google?:string|null}}
 
 export async function loadConnectors(client:SupabaseClient){
   const {data,error}=await client.rpc('bi_list_connectors');if(error)throw new Error(error.message)
   return data as {connectors:Connector[];agents:ConnectorAgent[]}
 }
-export async function saveConnector(client:SupabaseClient,connector:{name:string;kind:'web'|'folder';description:string;agent_name:string;config:Record<string,unknown>;interval_minutes:number|null;enabled:boolean}){
+export async function saveConnector(client:SupabaseClient,connector:{name:string;kind:AgentKind;description:string;agent_name:string;config:Record<string,unknown>;interval_minutes:number|null;enabled:boolean}){
   const {error}=await client.rpc('bi_save_connector',{p:connector});if(error)throw new Error(error.message)
 }
 export async function reloadConnector(client:SupabaseClient,name:string){const {error}=await client.rpc('bi_reload_connector',{p_name:name});if(error)throw new Error(error.message)}
@@ -170,5 +173,52 @@ export function checkWebConnector(url:string,headers:{name:string;value:string}[
     if(!allowed)return `\${${m[1]}} is not in [connectors.secrets] of agent ${agent.name}`
     if(allowed!==full&&allowed!==host)return `\${${m[1]}} may only be sent to ${allowed}`
   }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// SharePoint / OneDrive and Google Sheets (run by agent 0.4.0 or later)
+// ---------------------------------------------------------------------------
+export const agentSupports=(agent:ConnectorAgent|undefined,kind:AgentKind)=>{
+  if(!agent)return false
+  if(kind==='web'||kind==='folder')return true
+  return versionAtLeast(agent.version,'0.4.0')
+}
+export function versionAtLeast(version:string|null|undefined,wanted:string){
+  const a=String(version||'0').split('.').map(n=>parseInt(n,10)||0),b=wanted.split('.').map(Number)
+  for(let i=0;i<3;i++){if((a[i]||0)!==b[i])return (a[i]||0)>b[i]}
+  return true
+}
+
+// Is this a path of an Excel or CSV file inside the location (wildcards only in the file name)?
+export function checkSharepointConnector(location:string,path:string,agent?:ConnectorAgent){
+  if(!agent)return 'Choose the agent that runs this connector'
+  if(!agentSupports(agent,'sharepoint'))return `Agent ${agent.name} is version ${agent.version||'?'}; update it to 0.4.0 for SharePoint and OneDrive`
+  if(!agent.connector_options.microsoft)return `Agent ${agent.name} has no Microsoft app registration yet: add [connectors.microsoft] to its config.toml (see the agent README)`
+  const locations=Object.keys(agent.connector_options.sharepoint||{})
+  if(!locations.includes(location))return `Choose one of the SharePoint/OneDrive locations agent ${agent.name} allows${locations.length?'':' (none yet: add [connectors.sharepoint] to its config.toml)'}`
+  const p=path.trim().replace(/^\/+|\/+$/g,'')
+  if(!p)return 'Enter the path of the file, e.g. Budgets/Budget 2026.xlsx'
+  if(p.length>400||/[\\:<>|"]/.test(p)||p.split('/').includes('..'))return 'The path may not contain .. or any of \\ : < > | "'
+  const parts=p.split('/');if(/[*?]/.test(parts.slice(0,-1).join('/')))return 'Wildcards (* ?) are only allowed in the file name'
+  if(!/\.(xlsx|xlsm|csv|txt)$/i.test(parts.at(-1)!))return 'Choose an Excel (.xlsx) or CSV file'
+  return null
+}
+export const hasWildcard=(path:string)=>/[*?]/.test(path.split('/').at(-1)||'')
+
+// Accepts a Google Sheets link or its ID; returns the ID (or null)
+export function spreadsheetId(text:string){
+  const t=text.trim()
+  const m=/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,100})/.exec(t)
+  if(m)return m[1]
+  return /^[A-Za-z0-9_-]{20,100}$/.test(t)?t:null
+}
+export function checkGsheetConnector(link:string,sheet:string,range:string,agent?:ConnectorAgent){
+  if(!agent)return 'Choose the agent that runs this connector'
+  if(!agentSupports(agent,'gsheet'))return `Agent ${agent.name} is version ${agent.version||'?'}; update it to 0.4.0 for Google Sheets`
+  if(!agent.connector_options.google)return `Agent ${agent.name} has no Google service account yet: add [connectors.google] to its config.toml (see the agent README)`
+  if(!spreadsheetId(link))return 'Paste the link of the Google Sheet (or its ID, the long code between /d/ and /edit)'
+  if(/['!]/.test(sheet)||sheet.length>100)return "The tab name cannot contain ' or !"
+  if(range&&!/^[A-Z]{1,3}[0-9]{0,7}:[A-Z]{1,3}[0-9]{0,7}$/.test(range))return 'The range must look like A1:H500 or A:H (or leave it empty for the whole tab)'
   return null
 }

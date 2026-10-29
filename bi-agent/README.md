@@ -246,7 +246,7 @@ Logs: `logs\agent.log`. Run history: `select * from bi.sync_runs order by id des
 4. Dashboards + per-dashboard access (groups)
 5. Scheduled emails
 
-## Connectors (web APIs and folders)
+## Connectors (web APIs, folders, SharePoint/OneDrive, Google Sheets)
 
 Data that does not come from the ERP can be loaded with connectors, which administrators create in the
 app under **Reporting → Data Connections**. Excel/CSV uploads are handled entirely in the app. **Web** and
@@ -261,3 +261,47 @@ app under **Reporting → Data Connections**. Excel/CSV uploads are handled enti
 
 Each connector loads one table in `bi_data` (full replace each run) on its schedule, or straight away
 after it is saved or **Reload** is clicked. `--run NAME` loads one on demand.
+
+### SharePoint and OneDrive
+
+Needs agent 0.4.0. The agent reads files through Microsoft Graph with its own app registration, so no
+person's password is used and nothing is synced to the agent machine.
+
+1. In the Microsoft Entra admin centre: **App registrations → New registration** ("Impala BI agent", single
+   tenant). Note the **Application (client) ID** and **Directory (tenant) ID**.
+2. **Certificates & secrets → New client secret**. Put the value in `.env` as `MS_GRAPH_CLIENT_SECRET=...`
+   (it expires: set a reminder to renew it).
+3. **API permissions → Add → Microsoft Graph → Application permissions**:
+   - safest: `Sites.Selected`, then grant the app read access to only the sites it needs (an admin runs, in
+     Graph Explorer, `POST /sites/{site-id}/permissions` with `{"roles":["read"],"grantedToIdentities":[{"application":{"id":"<client id>","displayName":"Impala BI agent"}}]}`);
+   - or `Sites.Read.All` (every site) and, for OneDrive, `Files.Read.All`.
+   Click **Grant admin consent**.
+4. Add `[connectors.microsoft]` with the two IDs, and the locations under `[connectors.sharepoint]`
+   (see `config.example.toml`). A location can be limited to one folder; paths in the app cannot leave it.
+5. Restart the agent. In the app, **Data Connections → SharePoint or OneDrive**: choose the location, enter
+   the file path as shown in SharePoint (e.g. `2026/Budget 2026.xlsx`), or use `*` in the file name
+   (`Sales/sales *.csv`) to take the newest matching file or combine them all.
+
+The agent downloads through the short-lived link Graph gives for each file; the access token is only sent to
+Microsoft Graph. The client secret and tokens are kept out of the logs.
+
+### Google Sheets
+
+Needs agent 0.4.0 and `pip install cryptography`.
+
+1. In Google Cloud Console: create a project (or use one), enable the **Google Sheets API**, then
+   **IAM → Service accounts → Create** ("impala-bi"). Under **Keys → Add key → JSON**, download the key file to
+   the agent machine (inside the locked-down agent folder).
+2. Add `[connectors.google]` with `key_file` and restart the agent. The app then shows the service account's
+   e-mail address.
+3. Share each Google Sheet with that address as **Viewer**. The agent cannot read anything that is not shared
+   with it, and only asks Google for read-only access to spreadsheets.
+4. In the app, **Data Connections → Google Sheets**: paste the sheet's link, optionally a tab and a range.
+
+### A second database
+
+Another SQL database is not a connector: add it as another `[sources.name]` in `config.toml` (ODBC, with its
+own read-only login) and define its tables in `tables.toml` with `source = "name"`, exactly like the ERP
+tables (`--validate`, `--test-table`, `--plan`, `--apply`). Its tables can be in their own groups and
+schedules, and `--check` tests every source. Install the database's ODBC driver on the agent machine first
+(e.g. *ODBC Driver 18 for SQL Server*, *MySQL Connector/ODBC*, *psqlODBC* for PostgreSQL).

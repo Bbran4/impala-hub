@@ -24,7 +24,7 @@ const REPORTING_ROADMAP_ROWS=[
   ['Load definitions','Qlik data load editor','tables.toml on the agent machine with validate, dry-run test, plan and apply; fingerprint-checked','Implemented'],
   ['Load monitoring','Qlik reload tasks','Agent heartbeat, load status, Reload now, Reload everything, pause/resume, run history and audit log','Implemented'],
   ['Data model viewer','Qlik data model viewer','Diagram of all loaded tables (fields with the same name) or of an app\'s links; drag tables, follow a field','Implemented'],
-  ['Data connections','Qlik data connections (non-ERP)','Excel/CSV upload in the browser; web APIs and folder files fetched by the agent within its config.toml allowlists','Implemented'],
+  ['Data connections','Qlik data connections (non-ERP)','Excel/CSV upload in the browser; web APIs, folder files, SharePoint/OneDrive files and Google Sheets fetched by the agent within its config.toml allowlists; more databases as extra ODBC sources','Implemented'],
   ['Data catalogue','Qlik data catalogue','Loaded tables, columns, row counts and freshness for Reporting users','Implemented'],
   ['Apps and data models','Qlik apps and associative model','Apps choose loaded tables and link them on matching fields; queries join only what each chart needs','Implemented'],
   ['Sheets and charts','Qlik sheets','Drag-and-resize sheets with 22 object types: bar, line, combo, pie, KPI, gauge, scatter, treemap, waterfall, funnel, bullet, radar, mekko, grid, histogram, box plot, distribution, word cloud, table, pivot, filter pane, text; drag to reorder dimensions, measures and table columns','Implemented'],
@@ -54,7 +54,7 @@ const REPORTING_ROADMAP_ROWS=[
   ['Smart Stock feed','ERP stock snapshots','Feed Smart Stock imports from the ERP through the sync agent','Planned'],
 ]
 
-const SOURCE_LABEL={erp:'ERP',upload:'Upload',web:'Web API',folder:'Folder',other:'—'}
+const SOURCE_LABEL={erp:'ERP',upload:'Upload',web:'Web API',folder:'Folder',sharepoint:'SharePoint',gsheet:'Google Sheets',other:'—'}
 const STATUS_LABEL={success:'Loaded',error:'Failed',running:'Loading…'}
 const FRESHNESS_LABEL={fresh:'Up to date',stale:'Out of date',failed:'Last load failed',never:'Not loaded yet'}
 const count=(value:number|null|undefined)=>value==null?'—':Number(value).toLocaleString()

@@ -1,20 +1,22 @@
 // Reporting → Data Connections (administrators): data that does not come from the ERP.
-// Excel/CSV uploads are loaded from the browser; web and folder connectors are run by the agent
-// within what its config.toml allows.
+// Excel/CSV uploads are loaded from the browser; web, folder, SharePoint/OneDrive and Google Sheets
+// connectors are run by the agent within what its config.toml allows.
 import {useCallback,useEffect,useMemo,useState} from 'react'
-import {CloudDownload,FileSpreadsheet,FolderOpen,Globe,Pencil,Plus,RefreshCw,Trash2,Upload,X} from 'lucide-react'
+import {Cloud,CloudDownload,FileSpreadsheet,FolderOpen,Globe,Pencil,Plus,RefreshCw,Sheet as SheetIcon,Trash2,Upload,X} from 'lucide-react'
 import {supabase} from './supabase'
 import {
-  UPLOAD_TYPES,buildRows,checkWebConnector,columnProblems,deleteConnector,guessColumns,loadConnectors,readUploadFile,reloadConnector,safeName,
-  saveConnector,uploadTable,type Connector,type ConnectorAgent,type UploadColumn,type UploadSheet,type UploadType,
+  UPLOAD_TYPES,agentSupports,buildRows,checkGsheetConnector,checkSharepointConnector,checkWebConnector,columnProblems,deleteConnector,guessColumns,hasWildcard,
+  loadConnectors,readUploadFile,reloadConnector,safeName,saveConnector,spreadsheetId,uploadTable,
+  type AgentKind,type Connector,type ConnectorAgent,type UploadColumn,type UploadSheet,type UploadType,
 } from './biConnectorLogic'
 import {ago} from './reportingData'
 
 type Props={setNotice:(m:string)=>void;setError:(m:string)=>void}
-type Editing={kind:'upload';replace?:Connector}|{kind:'web'|'folder';connector?:Connector}
+type Editing={kind:'upload';replace?:Connector}|{kind:AgentKind;connector?:Connector}
 
-const KIND_LABEL={upload:'Excel / CSV upload',web:'Web API',folder:'Folder files'}
-const KIND_ICON={upload:FileSpreadsheet,web:Globe,folder:FolderOpen}
+const KIND_LABEL={upload:'Excel / CSV upload',web:'Web API',folder:'Folder files',sharepoint:'SharePoint / OneDrive',gsheet:'Google Sheets'}
+const KIND_ICON={upload:FileSpreadsheet,web:Globe,folder:FolderOpen,sharepoint:Cloud,gsheet:SheetIcon}
+const FORM_TITLE={web:'New web API connector',folder:'New folder connector',sharepoint:'New SharePoint / OneDrive connector',gsheet:'New Google Sheets connector'}
 
 export default function DataConnections({setNotice,setError}:Props){
   const [data,setData]=useState<{connectors:Connector[];agents:ConnectorAgent[]}|null>(null)
@@ -41,13 +43,18 @@ export default function DataConnections({setNotice,setError}:Props){
       <button className="bi-conn-card" onClick={()=>setEditing({kind:'upload'})}><FileSpreadsheet size={22}/><b>Upload Excel or CSV</b><span>Budgets, targets, price lists… loaded straight from your computer.</span></button>
       <button className="bi-conn-card" onClick={()=>setEditing({kind:'web'})}><Globe size={22}/><b>Web API</b><span>JSON or CSV from a web address, fetched by the agent on a schedule.</span></button>
       <button className="bi-conn-card" onClick={()=>setEditing({kind:'folder'})}><FolderOpen size={22}/><b>Files from a folder</b><span>Excel or CSV files in a network folder the agent can read.</span></button>
+      <button className="bi-conn-card" onClick={()=>setEditing({kind:'sharepoint'})}><Cloud size={22}/><b>SharePoint or OneDrive</b><span>An Excel or CSV file in a SharePoint library or OneDrive, kept up to date.</span></button>
+      <button className="bi-conn-card" onClick={()=>setEditing({kind:'gsheet'})}><SheetIcon size={22}/><b>Google Sheets</b><span>A tab of a Google Sheet shared with the agent's Google account.</span></button>
     </div>
     <div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Table</th><th>Kind</th><th>From</th><th>Status</th><th>Rows</th><th>Last loaded</th><th>Schedule</th><th/></tr></thead><tbody>
       {(data?.connectors||[]).map(c=>{const Icon=KIND_ICON[c.kind]
         return <tr key={c.id} className="rfq-data-row">
           <td><b>{c.name}</b>{c.description&&<small className="rp-sub">{c.description}</small>}</td>
           <td><span className="bi-conn-kind"><Icon size={13}/>{KIND_LABEL[c.kind]}</span></td>
-          <td className="bi-conn-from">{c.kind==='upload'?c.config.file||'—':c.kind==='web'?<code>{c.config.url}</code>:<><code>{c.config.folder}</code> / <code>{c.config.pattern}</code></>}{c.agent_name&&<small className="rp-sub">agent {c.agent_name}</small>}</td>
+          <td className="bi-conn-from">{c.kind==='upload'?c.config.file||'—':c.kind==='web'?<code>{c.config.url}</code>
+            :c.kind==='sharepoint'?<><code>{c.config.location}</code> / <code>{c.config.path}</code></>
+            :c.kind==='gsheet'?<><a href={`https://docs.google.com/spreadsheets/d/${c.config.spreadsheet_id}`} target="_blank" rel="noreferrer">Google Sheet</a>{c.config.sheet?<> · <code>{c.config.sheet}</code></>:null}{c.config.range?<> · <code>{c.config.range}</code></>:null}</>
+            :<><code>{c.config.folder}</code> / <code>{c.config.pattern}</code></>}{c.agent_name&&<small className="rp-sub">agent {c.agent_name}</small>}</td>
           <td>{c.reload_requested?<span className="rp-badge stale">Waiting for agent</span>:c.last_status==='error'?<span className="rp-badge failed" title={c.last_error||''}>Failed</span>:c.last_status==='running'?<span className="rp-badge stale">Loading…</span>:c.last_status==='success'?<span className="rp-badge fresh">Loaded</span>:<span className="rp-badge never">Not loaded yet</span>}
             {c.last_status==='error'&&c.last_error&&<small className="rp-sub bi-conn-error">{c.last_error}</small>}</td>
           <td>{c.row_count!=null?Number(c.row_count).toLocaleString():'—'}</td>
@@ -56,15 +63,16 @@ export default function DataConnections({setNotice,setError}:Props){
           <td className="bi-conn-actions">
             {c.kind==='upload'?<button className="secondary" onClick={()=>setEditing({kind:'upload',replace:c})}><Upload size={14}/>Replace file</button>
               :<><button className="secondary" disabled={busy===c.name} onClick={()=>void act(c,'reload')}><RefreshCw size={14}/>Reload</button>
-                <button className="icon-button" aria-label={`Edit ${c.name}`} onClick={()=>setEditing({kind:c.kind as 'web'|'folder',connector:c})}><Pencil size={14}/></button></>}
+                <button className="icon-button" aria-label={`Edit ${c.name}`} onClick={()=>setEditing({kind:c.kind as AgentKind,connector:c})}><Pencil size={14}/></button></>}
             <button className="icon-button" aria-label={`Remove ${c.name}`} disabled={busy===c.name} onClick={()=>void act(c,'delete')}><Trash2 size={14}/></button>
           </td></tr>})}
       {data&&!data.connectors.length&&<tr><td colSpan={8}><p className="bi-muted">No connectors yet. Start with an upload, a web API or a folder above.</p></td></tr>}
     </tbody></table></div>
     {data&&<div className="bi-card bi-conn-agents"><h3>What the agents allow</h3>
       {data.agents.length?data.agents.map(a=><p key={a.name}><b>{a.name}</b>{' · '}hosts: {(a.connector_options.hosts||[]).join(', ')||'none'}{' · '}folders: {(a.connector_options.folders||[]).join(', ')||'none'}{' · '}secrets: {Object.keys(a.connector_options.secrets||{}).join(', ')||'none'}
-        {(!a.version||a.version<'0.3.0')&&<small className="bi-muted"> (agent {a.version||'?'}: update to 0.3.0 for web and folder connectors)</small>}</p>):<p className="bi-muted">No agent has connected yet.</p>}
-      <p className="hint">Each agent's config.toml decides which web hosts and folders connectors may use, and which API keys from its .env may be sent to which host. Change it there and restart the agent.</p></div>}
+        {agentSupports(a,'sharepoint')&&<>{' · '}SharePoint/OneDrive: {Object.keys(a.connector_options.sharepoint||{}).join(', ')||'none'}{a.connector_options.microsoft?'':' (no app registration)'}{' · '}Google: {a.connector_options.google||'not set up'}</>}
+        {!agentSupports(a,'sharepoint')&&<small className="bi-muted"> (agent {a.version||'?'}: update to 0.4.0 for SharePoint, OneDrive and Google Sheets)</small>}</p>):<p className="bi-muted">No agent has connected yet.</p>}
+      <p className="hint">Each agent's config.toml decides which web hosts, folders and SharePoint/OneDrive locations connectors may use, which API keys from its .env may be sent to which host, and which Google account reads Google Sheets. Change it there and restart the agent.</p></div>}
   </section>
 }
 
@@ -124,11 +132,11 @@ function UploadWizard({replace,existing,onClose,onDone,setError}:{replace?:Conne
 // ---------------------------------------------------------------------------
 // Web and folder connector form
 // ---------------------------------------------------------------------------
-function ConnectorForm({kind,connector,agents,existing,onClose,onDone,setError}:{kind:'web'|'folder';connector?:Connector;agents:ConnectorAgent[];existing:Connector[];onClose:()=>void;onDone:(m:string)=>void;setError:(m:string)=>void}){
+function ConnectorForm({kind,connector,agents,existing,onClose,onDone,setError}:{kind:AgentKind;connector?:Connector;agents:ConnectorAgent[];existing:Connector[];onClose:()=>void;onDone:(m:string)=>void;setError:(m:string)=>void}){
   const c=connector?.config||{}
   const [name,setName]=useState(connector?.name||'')
   const [description,setDescription]=useState(connector?.description||'')
-  const [agentName,setAgentName]=useState(connector?.agent_name||agents[0]?.name||'')
+  const [agentName,setAgentName]=useState(connector?.agent_name||agents.find(a=>agentSupports(a,kind))?.name||agents[0]?.name||'')
   const [url,setUrl]=useState<string>(c.url||'')
   const [format,setFormat]=useState<'json'|'csv'>(c.format||'json')
   const [recordsPath,setRecordsPath]=useState<string>(c.records_path||'')
@@ -137,6 +145,10 @@ function ConnectorForm({kind,connector,agents,existing,onClose,onDone,setError}:
   const [pattern,setPattern]=useState<string>(c.pattern||'*.xlsx')
   const [sheet,setSheet]=useState<string>(c.sheet||'')
   const [combine,setCombine]=useState<'latest'|'all'>(c.combine||'latest')
+  const [location,setLocation]=useState<string>(c.location||'')
+  const [path,setPath]=useState<string>(c.path||'')
+  const [link,setLink]=useState<string>(c.spreadsheet_id?`https://docs.google.com/spreadsheets/d/${c.spreadsheet_id}/edit`:'')
+  const [range,setRange]=useState<string>(c.range||'')
   const [interval,setEvery]=useState<string>(connector?.interval_minutes?String(connector.interval_minutes):'60')
   const [enabled,setEnabled]=useState(connector?.enabled??true)
   const [saving,setSaving]=useState(false)
@@ -146,6 +158,8 @@ function ConnectorForm({kind,connector,agents,existing,onClose,onDone,setError}:
     :!connector&&existing.some(x=>x.name===name)?`A connector named ${name} already exists`
     :interval&&Number(interval)<5?'The schedule must be at least every 5 minutes'
     :kind==='web'?checkWebConnector(url,headers,agent)
+    :kind==='sharepoint'?checkSharepointConnector(location,path,agent)
+    :kind==='gsheet'?checkGsheetConnector(link,sheet,range.toUpperCase(),agent)
     :!agent?'Choose the agent that runs this connector':!folders.includes(folder)?`Choose one of the folders agent ${agentName} allows${folders.length?'':' (none yet: add [connectors.folders] to its config.toml)'}`
     :!/^[A-Za-z0-9 _.*?()-]{1,100}$/.test(pattern)?'The file pattern may use letters, digits, spaces, . _ - ( ) and the wildcards * and ?':null
   async function save(){
@@ -153,15 +167,18 @@ function ConnectorForm({kind,connector,agents,existing,onClose,onDone,setError}:
     setSaving(true)
     try{
       await saveConnector(supabase!,{name,kind,description,agent_name:agentName,interval_minutes:interval?Number(interval):null,enabled,
-        config:kind==='web'?{url,format,records_path:recordsPath,headers:headers.filter(h=>h.name.trim())}:{folder,pattern,sheet,combine}})
+        config:kind==='web'?{url,format,records_path:recordsPath,headers:headers.filter(h=>h.name.trim())}
+          :kind==='sharepoint'?{location,path:path.trim().replace(/^\/+|\/+$/g,''),sheet,combine}
+          :kind==='gsheet'?{spreadsheet_id:spreadsheetId(link),sheet:sheet.trim(),range:range.toUpperCase()}
+          :{folder,pattern,sheet,combine}})
       onDone(`Saved ${name}. Agent ${agentName} loads it within a few seconds; the status shows here.`)
     }catch(error){setError((error as Error).message)}finally{setSaving(false)}
   }
   return <section className="rfq-workspace bi-settings bi-conn-form">
-    <div className="sd-session-bar">{kind==='web'?<Globe size={18}/>:<FolderOpen size={18}/>}<span>{connector?`Edit ${connector.name}`:kind==='web'?'New web API connector':'New folder connector'}</span>
+    <div className="sd-session-bar">{(()=>{const Icon=KIND_ICON[kind];return <Icon size={18}/>})()}<span>{connector?`Edit ${connector.name}`:FORM_TITLE[kind]}</span>
       <div className="bi-app-actions"><button className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={Boolean(problem)||saving} onClick={()=>void save()}>{saving?'Saving…':'Save and load'}</button></div></div>
     <div className="bi-card"><div className="bi-form-grid">
-      <label>Table name<input value={name} disabled={Boolean(connector)} onChange={event=>setName(event.target.value.toLowerCase())} placeholder={kind==='web'?'e.g. courier_deliveries':'e.g. branch_targets'}/></label>
+      <label>Table name<input value={name} disabled={Boolean(connector)} onChange={event=>setName(event.target.value.toLowerCase())} placeholder={kind==='web'?'e.g. courier_deliveries':kind==='sharepoint'?'e.g. budget_2026':'e.g. branch_targets'}/></label>
       <label>Description<input value={description} maxLength={500} onChange={event=>setDescription(event.target.value)}/></label>
       <label>Agent<select value={agentName} onChange={event=>setAgentName(event.target.value)}><option value="">Choose…</option>{agents.map(a=><option key={a.name} value={a.name}>{a.name}</option>)}</select></label>
       <label>Load every (minutes)<input type="number" min={5} value={interval} placeholder="Only on Reload" onChange={event=>setEvery(event.target.value)}/></label>
@@ -179,6 +196,18 @@ function ConnectorForm({kind,connector,agents,existing,onClose,onDone,setError}:
       <button className="text-button" onClick={()=>setHeaders([...headers,{name:'',value:''}])}><Plus size={13}/>Add header</button>
       <p className="hint">Never type an API key here: use <code>${'{'}NAME{'}'}</code> for a value in the agent's .env. {agent&&<>Agent {agent.name} allows hosts <b>{(agent.connector_options.hosts||[]).join(', ')||'none'}</b> and secrets <b>{Object.entries(agent.connector_options.secrets||{}).map(([k,v])=>`${k} → ${v}`).join(', ')||'none'}</b>.</>} JSON objects inside records become columns like <code>meta_zone</code>; lists are kept as text.</p>
     </div>
+    :kind==='sharepoint'?<div className="bi-card"><h3>SharePoint or OneDrive file</h3><div className="bi-form-grid">
+      <label>Location<select value={location} onChange={event=>setLocation(event.target.value)}><option value="">Choose…</option>
+        {Object.entries(agent?.connector_options.sharepoint||{}).map(([k,v])=><option key={k} value={k}>{k} — {v}</option>)}</select></label>
+      <label className="bi-span2">File path in the location<input value={path} onChange={event=>setPath(event.target.value)} placeholder="e.g. 2026/Budget 2026.xlsx or Sales/sales *.csv"/></label>
+      <label>Sheet (Excel)<input value={sheet} onChange={event=>setSheet(event.target.value)} placeholder="First sheet"/></label>
+      {hasWildcard(path)&&<label>When several files match<select value={combine} onChange={event=>setCombine(event.target.value as 'latest')}><option value="latest">Use the newest file</option><option value="all">Combine all files (adds source_file)</option></select></label>}
+    </div><p className="hint">Locations (a SharePoint site's library or someone's OneDrive, optionally one folder in it) are set up by name in the agent's config.toml, with the Microsoft app registration it signs in with. The path is relative to the location, as shown in SharePoint; use * or ? in the file name to pick up new files. The first non-empty row is the header.</p></div>
+    :kind==='gsheet'?<div className="bi-card"><h3>Google Sheet</h3><div className="bi-form-grid">
+      <label className="bi-span2">Link to the sheet<input value={link} onChange={event=>setLink(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…/edit"/></label>
+      <label>Tab<input value={sheet} onChange={event=>setSheet(event.target.value)} placeholder="First tab"/></label>
+      <label>Range<input value={range} onChange={event=>setRange(event.target.value.toUpperCase())} placeholder="Whole tab, or e.g. A1:H500"/></label>
+    </div><p className="hint">{agent?.connector_options.google?<>Share the sheet with <b>{agent.connector_options.google}</b> (Viewer is enough); the agent reads it with that Google account. </>:null}The first non-empty row is the header; numbers stay numbers and dates are read as shown in the sheet (use yyyy-mm-dd for real date columns).</p></div>
     :<div className="bi-card"><h3>Files from a folder</h3><div className="bi-form-grid">
       <label>Folder<select value={folder} onChange={event=>setFolder(event.target.value)}><option value="">Choose…</option>{folders.map(f=><option key={f}>{f}</option>)}</select></label>
       <label>File name pattern<input value={pattern} onChange={event=>setPattern(event.target.value)} placeholder="e.g. targets *.xlsx"/></label>
