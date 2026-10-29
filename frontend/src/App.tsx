@@ -672,7 +672,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <div className="sidebar-bottom">
             {key && <div className="communication-buttons"><button className="communication-button" aria-label="Open chat" title="Chat" onClick={() => setChatOpenRequest((value) => value + 1)}><MessageCircle size={17} /></button><NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />{isAdministrator && <button className="communication-button" aria-label="Open settings" title="Settings" onClick={() => setPage('Admin Settings')}><Settings size={17} /></button>}</div>}
             <div className="connection-dot" /> <span>Local workspace</span>
-          <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
+          <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}><span className="account-full">{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</span><span className="account-mobile">{profile.sales_code || profile.first_name || 'Account'}</span></button>
             {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
           </div>
         )}
@@ -705,7 +705,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <div className="sidebar-bottom">
               {key && <div className="communication-buttons"><button className="communication-button" aria-label="Open chat" title="Chat" onClick={() => setChatOpenRequest((value) => value + 1)}><MessageCircle size={17} /></button><NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />{isAdministrator && <button className="communication-button" aria-label="Open settings" title="Settings" onClick={() => setPage('Admin Settings')}><Settings size={17} /></button>}</div>}
               <div className="connection-dot" /> <span>Local workspace</span>
-              <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
+              <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}><span className="account-full">{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</span><span className="account-mobile">{profile.sales_code || profile.first_name || 'Account'}</span></button>
               {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
             </div>
           </>
