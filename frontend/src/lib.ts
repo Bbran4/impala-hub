@@ -41,6 +41,7 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
 import { loadAllRows } from './pagedRows.ts'
+import { readMarketingResponse } from './marketingResponse.ts'
 import { loadMarketingCampaigns, loadMarketingPosts, loadRfqList } from './recordLists.ts'
 import { AuthError, readSupabaseToken } from './sessionToken.ts'
 export { AuthError } from './sessionToken.ts'
@@ -172,8 +173,7 @@ async function supabaseApi(path: string, options: RequestInit) {
   if (path === '/api/integrations/sync' && method === 'POST') {
     const token = await currentSupabaseToken()
     const response = await fetch('/api/marketing/facebook/sync', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
-    const status = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(status.detail || 'Unable to check the Marketing server status.')
+    const status = await readMarketingResponse(response, 'Facebook refresh')
     return { facebook: status, instagram: { status: 'not_connected' } }
   }
   if (path === '/api/integrations/facebook/oauth-url' && method === 'POST') {

@@ -1,4 +1,4 @@
-import { loadMarketingPosts } from '../../src/recordLists.ts'
+import { loadMarketingPosts } from '../../src/recordLists.js'
 import { createClient } from '@supabase/supabase-js'
 
 export default async function handler(req: any, res: any) {

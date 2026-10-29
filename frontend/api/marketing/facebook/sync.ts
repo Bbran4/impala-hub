@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { facebookMediaId } from './_publishing.ts'
+import { facebookMediaId } from './_publishing.js'
 const timedFetch = (url: string) => fetch(url, { signal: AbortSignal.timeout(20_000) })
 import { createClient } from '@supabase/supabase-js'
 
@@ -83,7 +83,9 @@ export default async function handler(req: any, res: any) {
       const values = { caption: item.message || '', channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.views ?? null, reach: insights.reach ?? null, views: insights.views ?? null, clicks: insights.clicks ?? null, metrics_refreshed_at: new Date().toISOString() }
       // Serialize lookup/insert in the database; preserve all local editorial fields.
       const saved = await admin.rpc('sync_facebook_post', { p_values: values, p_actor: user.user.id })
-      if (saved.error) return res.status(500).json({ detail: 'Could not save imported Facebook post.' })
+      if (saved.error) return res.status(saved.error.code === 'PGRST202' ? 503 : 500).json({ detail: saved.error.code === 'PGRST202'
+        ? 'The Marketing database update is missing. Apply Supabase migration 0093_marketing_publish_integrity.sql before refreshing Facebook posts.'
+        : 'Could not save imported Facebook post.' })
       if (!existing) imported += 1
 
     }

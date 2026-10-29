@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { claimPost, publishClaimed } from './_publishing.ts'
+import { claimPost, publishClaimed } from './_publishing.js'
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ detail: 'Method not allowed' })
