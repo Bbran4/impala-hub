@@ -112,6 +112,12 @@ export default function App() {
   const [keyEntry, setKeyEntry] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
+  const [mfaFactorId, setMfaFactorId] = useState('')
+  const [mfaChallengeId, setMfaChallengeId] = useState('')
+  const [mfaPhone, setMfaPhone] = useState('')
+  const [mfaSetupFactorId, setMfaSetupFactorId] = useState('')
+  const [mfaSetupChallengeId, setMfaSetupChallengeId] = useState('')
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -162,6 +168,20 @@ export default function App() {
     ...(canAccessStock ? ['stock_control' as const] : []),
     ...(canAccessReporting ? ['reporting' as const] : []),
   ]
+
+  useEffect(() => {
+    if (!supabaseConfigured || !supabase) return
+    localStorage.removeItem(KEY_STORAGE)
+    let mounted = true
+    void supabase.auth.getSession().then(({ data }) => {
+      if (mounted && !data.session) { sessionStorage.removeItem(KEY_STORAGE); setKey('') }
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return
+      if (!session) { sessionStorage.removeItem(KEY_STORAGE); setKey('') }
+    })
+    return () => { mounted = false; listener.subscription.unsubscribe() }
+  }, [])
 
   const patchEditor = (changes: Partial<Post>) => setEditor((e) => (e ? { ...e, ...changes } : e))
 
@@ -216,6 +236,28 @@ export default function App() {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(profile.email, { redirectTo: window.location.origin })
       if (resetError) throw new Error(resetError.message)
       setNotice('A password reset link was sent to your email address.')
+    } catch (e) { handleError(e) } finally { setProfileBusy(false) }
+  }
+
+  async function startMfaEnrollment() {
+    if (!supabase || !mfaPhone.trim()) return
+    setProfileBusy(true); setError('')
+    try {
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: 'phone', phone: mfaPhone.trim() })
+      if (enrollError) throw new Error(enrollError.message)
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: data.id })
+      if (challengeError) throw new Error(challengeError.message)
+      setMfaSetupFactorId(data.id); setMfaSetupChallengeId(challenge.id); setNotice('A verification code was sent to your phone.')
+    } catch (e) { handleError(e) } finally { setProfileBusy(false) }
+  }
+
+  async function verifyMfaEnrollment() {
+    if (!supabase || !mfaSetupFactorId || !mfaSetupChallengeId) return
+    setProfileBusy(true); setError('')
+    try {
+      const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: mfaSetupFactorId, challengeId: mfaSetupChallengeId, code: mfaCode.trim() })
+      if (verifyError) throw new Error(verifyError.message)
+      setMfaCode(''); setMfaPhone(''); setMfaSetupFactorId(''); setMfaSetupChallengeId(''); setNotice('Phone verification is enabled for your account.')
     } catch (e) { handleError(e) } finally { setProfileBusy(false) }
   }
 
@@ -317,7 +359,16 @@ export default function App() {
         setError('Supabase did not create a session. Confirm the user email before signing in.')
         return
       }
-      localStorage.setItem(KEY_STORAGE, data.session.access_token)
+      const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (assurance.data?.currentLevel === 'aal1' && assurance.data?.nextLevel === 'aal2') {
+        const factors = await supabase.auth.mfa.listFactors()
+        const factor = factors.data?.all?.find((item) => item.factor_type === 'phone' && item.status === 'verified')
+        if (!factor) { await supabase.auth.signOut(); setError('Your account requires MFA, but no verified phone factor is available. Contact an administrator.'); return }
+        const challenge = await supabase.auth.mfa.challenge({ factorId: factor.id })
+        if (challenge.error) { await supabase.auth.signOut(); setError(challenge.error.message); return }
+        setMfaFactorId(factor.id); setMfaChallengeId(challenge.data.id); setNotice('Enter the verification code sent to your phone.'); return
+      }
+      sessionStorage.setItem(KEY_STORAGE, data.session.access_token)
       setKey(data.session.access_token)
       setPassword('')
       setPage('Apps')
@@ -331,6 +382,17 @@ export default function App() {
       localStorage.setItem(KEY_STORAGE, body.access_token)
       setKey(body.access_token); setPassword(''); setPage('Apps'); setNotice('Signed in successfully.')
     } catch (e) { setError((e as Error).message) }
+  }
+
+  async function verifyMfaLogin() {
+    if (!supabase || !mfaFactorId || !mfaChallengeId) return
+    setError('')
+    const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: mfaFactorId, challengeId: mfaChallengeId, code: mfaCode.trim() })
+    if (verifyError) { setError(verifyError.message); return }
+    const session = (await supabase.auth.getSession()).data.session
+    if (session) sessionStorage.setItem(KEY_STORAGE, session.access_token)
+    setMfaCode(''); setMfaFactorId(''); setMfaChallengeId(''); setPassword(''); setPage('Apps'); setNotice('Signed in with MFA.')
+    setKey(session?.access_token || '')
   }
 
   function connectKey() {
@@ -742,12 +804,12 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <section className="key-panel">
             <h2>Sign in to Impala Hub</h2>
             <p>Use your employee account to open the App Dashboard. Sessions persist securely across refreshes until they expire or you log out.</p>
-            <div className="inline-form">
+            {mfaChallengeId ? <div className="mfa-form"><p className="hint">Enter the verification code sent to your phone to finish signing in.</p><input inputMode="numeric" autoFocus aria-label="MFA verification code" placeholder="Verification code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void verifyMfaLogin() }} /><button className="primary" disabled={!mfaCode.trim()} onClick={() => void verifyMfaLogin()}>Verify code</button></div> : <div className="inline-form">
               <input aria-label="Email" type={supabaseConfigured ? 'email' : 'text'} placeholder={supabaseConfigured ? 'Email address' : 'Username'} value={username} onChange={(e) => setUsername(e.target.value)} />
               <input type="password" aria-label="Password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void signIn() }} />
               <button className="primary" onClick={() => void signIn()}>Sign in</button>
               {supabaseConfigured && <p className="hint">Authentication is provided by Supabase. Marketing and Sales Desk data migration is still in progress.</p>}
-            </div>
+            </div>}
           </section>
         )}
 
@@ -765,6 +827,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <label>Sales code<input value={profile.sales_code} placeholder="e.g. BB01" onChange={(e) => setProfile({ ...profile, sales_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></label>
                 <label>Email address<input value={profile.email} disabled /></label>
                 <div className="password-reset"><div><b>Password</b><p>Your password is changed through a secure email link.</p></div><button className="secondary" disabled={profileBusy} onClick={() => void sendPasswordReset()}>Send reset link</button></div>
+                <div className="mfa-settings"><div><b>Phone two-factor authentication</b><p>Require a verification code after your password when signing in.</p></div>{mfaSetupChallengeId ? <div className="mfa-inline"><input inputMode="numeric" aria-label="Phone verification code" placeholder="Verification code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaCode.trim()} onClick={() => void verifyMfaEnrollment()}>Verify phone</button></div> : <div className="mfa-inline"><input type="tel" aria-label="Phone number" placeholder="+27 82 123 4567" value={mfaPhone} onChange={(e) => setMfaPhone(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaPhone.trim()} onClick={() => void startMfaEnrollment()}>Send code</button></div>}</div>
                 <div className="account-actions"><button className="primary" disabled={profileBusy} onClick={() => void saveProfile()}>Save profile</button></div>
               </div>
             </div>

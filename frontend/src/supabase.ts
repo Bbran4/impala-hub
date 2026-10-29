@@ -9,7 +9,8 @@ export const supabaseConfigured = Boolean(url && publishableKey)
 export const supabase = supabaseConfigured
   ? createClient(url!, publishableKey!, {
       auth: {
-        persistSession: true,
+        // Keep authentication in memory. Closing the tab/browser ends the session.
+        persistSession: false,
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },

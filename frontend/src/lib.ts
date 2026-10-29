@@ -46,7 +46,7 @@ import { supplierWorkflowFields, prepareSupplierWorkflow } from './returnsWorkfl
 export { supabase }
 export { supabaseConfigured }
 export const KEY_STORAGE = 'impala_session_token'
-export const getKey = () => localStorage.getItem(KEY_STORAGE) || ''
+export const getKey = () => sessionStorage.getItem(KEY_STORAGE) || localStorage.getItem(KEY_STORAGE) || ''
 async function currentSupabaseToken() {
   if (supabase) {
     const { data } = await supabase.auth.getSession()
