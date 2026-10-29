@@ -309,6 +309,7 @@ function ChatAttachment({ attachment }: { attachment: Attachment }) {
   const [url, setUrl] = useState('')
   useEffect(() => { if (!supabase) return; void supabase.storage.from('chat-attachments').createSignedUrl(attachment.storage_path, 3600).then(({ data }) => { if (data?.signedUrl) setUrl(data.signedUrl) }) }, [attachment.storage_path])
   if (!url) return <span className="chat-attachment-loading"><FileText size={13} /> {attachment.file_name}</span>
+    const isImage = attachment.content_type.toLowerCase().startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(attachment.file_name)
     const download = async () => {
       const response = await fetch(url)
       if (!response.ok) return
@@ -319,5 +320,5 @@ function ChatAttachment({ attachment }: { attachment: Attachment }) {
       link.click()
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
     }
-    return <span className="chat-attachment-wrap"><a className="chat-attachment" href={url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>{attachment.content_type.startsWith('image/') ? <img src={url} alt={attachment.file_name} /> : <><FileText size={14} /> {attachment.file_name}</>}</a><button className="chat-download" onClick={(event) => { event.stopPropagation(); void download() }}>Download</button></span>
+    return <span className="chat-attachment-wrap"><a className="chat-attachment" href={url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>{isImage ? <img src={url} alt={attachment.file_name} /> : <><FileText size={14} /> {attachment.file_name}</>}</a><span className="chat-attachment-actions"><a href={url} target="_blank" rel="noopener noreferrer">Open</a><button className="chat-download" onClick={(event) => { event.stopPropagation(); void download() }}>Download</button></span></span>
 }
