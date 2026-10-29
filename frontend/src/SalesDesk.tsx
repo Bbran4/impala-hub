@@ -4,6 +4,8 @@ import { API, api, supabase, supabaseConfigured } from './lib'
 import CrossReference from './CrossReference'
 import './salesdesk.css'
 
+const METRIC_CATEGORIES = [['other','Unclassified'],['in_progress','In progress'],['completed','Completed'],['dropped','Dropped'],['scrapped','Scrapped'],['irrelevant','Irrelevant']] as const
+
 const FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx'
 const pad = (n: number) => String(n).padStart(2, '0')
 const toLocalInput = (value?: string | null) => {
@@ -16,22 +18,13 @@ const fmtDate = (v?: string | null, empty = '—') => (v ? new Date(v).toLocaleS
 const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 const formatRand = (value: number) => 'R' + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-const TEMP_MONTHLY_GROSS_SALES = 792436.44
-const TEMP_MONTHLY_GP_PERCENT = 25.33
 const GP_COLORS = [
   ['red', 'Red'], ['grey', 'Grey'], ['light-blue', 'Light blue'], ['dark-blue', 'Dark blue'],
   ['green', 'Green'], ['orange', 'Orange'], ['purple', 'Purple'], ['teal', 'Teal'],
   ['yellow', 'Yellow'], ['pink', 'Pink'], ['navy', 'Navy'], ['brown', 'Brown'],
 ] as const
 
-const TEMP_DAILY_SALES = [
-  { name: 'Brenton', total: 0, credits: 0, gross: 0, gp: 0 },
-  { name: 'Charles', total: 24722.13, credits: 0, gross: 24722.13, gp: 23.83 },
-  { name: 'Fredrik', total: 56186.21, credits: 0, gross: 56186.21, gp: 9.09 },
-  { name: 'Ian', total: 7200, credits: 0, gross: 7200, gp: 24.58 },
-  { name: 'Jan', total: 14250, credits: -6490, gross: 7760, gp: 50.66 },
-  { name: 'Miguel', total: 825, credits: 0, gross: 825, gp: 30.67 },
-]
+
 
 function describeDetail(detail: unknown, status: number): string {
   if (typeof detail === 'string') return detail
@@ -429,7 +422,8 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
   const [dashboard, setDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
   const [analytics, setAnalytics] = useState<any>({ totals: {}, series: [] })
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'year' | 'month' | 'week'>('year')
-  const [analyticsMonth, setAnalyticsMonth] = useState(new Date().getMonth() + 1)
+  const [analyticsYear, setAnalyticsYear] = useState(() => Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Johannesburg', year: 'numeric' }).format(new Date())))
+  const [analyticsMonth, setAnalyticsMonth] = useState(() => Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Johannesburg', month: 'numeric' }).format(new Date())))
   const [analyticsWeek, setAnalyticsWeek] = useState(1)
   const [view, setView] = useState<'dashboard' | 'rfqs' | 'analytics' | 'cross-reference'>('dashboard')
   const [users, setUsers] = useState<any[]>([])
@@ -440,7 +434,7 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('received_asc')
   const [newMedia, setNewMedia] = useState('')
-  const [newStatus, setNewStatus] = useState({ name: '', closed: false })
+  const [newStatus, setNewStatus] = useState({ name: '', closed: false, category: 'other' })
   const [newUser, setNewUser] = useState({ display_name: '', username: '', password: '', role: 'salesperson' })
   const [gpMilestones, setGpMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
   const [newMilestone, setNewMilestone] = useState('')
@@ -479,13 +473,14 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
     try {
       const [me, cfg, list, dash, analyticsResult] = await Promise.all([
         request('/api/sales-desk/auth/me'), request('/api/sales-desk/config'),
-        request('/api/sales-desk/rfqs?limit=500'), request('/api/sales-desk/dashboard'),
-        request('/api/sales-desk/analytics?period=' + analyticsPeriod + '&month=' + analyticsMonth + '&week=' + analyticsWeek),
+        page === 'RFQs' && view === 'rfqs' ? request('/api/sales-desk/rfqs') : Promise.resolve({ items: [] }),
+        page === 'RFQs' && view === 'dashboard' ? request('/api/sales-desk/dashboard') : Promise.resolve({}),
+        page === 'RFQs' && view === 'analytics' ? request('/api/sales-desk/analytics?period=' + analyticsPeriod + '&month=' + analyticsMonth + '&week=' + analyticsWeek + '&year=' + analyticsYear) : Promise.resolve({ totals: {}, series: [] }),
       ])
       setUser(me); setConfig(cfg); setRfqs(list.items || []); setDashboard(dash); setAnalytics(analyticsResult)
       if (me.role === 'administrator') setUsers(await request('/api/sales-desk/auth/users'))
     } catch (e) { setError((e as Error).message) }
-  }, [token, request, setError, analyticsPeriod, analyticsMonth, analyticsWeek])
+  }, [token, request, setError, analyticsPeriod, analyticsMonth, analyticsWeek, analyticsYear, page, view])
   useEffect(() => { void load() }, [load, page])
 
   async function act(work: () => Promise<unknown>, success?: string) {
@@ -531,13 +526,14 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
     if (sort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
     return (Number(!!a.sales_code) - Number(!!b.sales_code)) || String(a.received_at).localeCompare(String(b.received_at))
   })
-  const monthlySales = TEMP_MONTHLY_GROSS_SALES
+  const monthlySales = Number(dashboard.monthly_sales?.gross_sales || 0)
+  const monthlyGpPercent = Number(dashboard.monthly_sales?.gp_percent || 0)
   const rfqPerformance = dashboard.rfq_performance || []
   const sortedMilestones = [...gpMilestones].sort((a, b) => a - b)
   const reachedMilestone = sortedMilestones.filter((point) => monthlySales >= point).pop()
   const progressColor = reachedMilestone ? (milestoneColors[String(reachedMilestone)] || (reachedMilestone === sortedMilestones[sortedMilestones.length - 1] ? 'dark-blue' : 'grey')) : 'red'
   const sortedGpPercentMilestones = [...gpPercentMilestones].sort((a, b) => a - b)
-  const reachedGpPercent = sortedGpPercentMilestones.filter((point) => TEMP_MONTHLY_GP_PERCENT >= point).pop()
+  const reachedGpPercent = sortedGpPercentMilestones.filter((point) => monthlyGpPercent >= point).pop()
   const gpPercentColor = reachedGpPercent ? (gpPercentColors[String(reachedGpPercent)] || 'dark-blue') : 'red'
   const canConvert = (r: any) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
 
@@ -561,11 +557,11 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
                 <div className="sd-metric"><span>Open RFQs</span><strong>{dashboard.open}</strong></div>
               </div>
               <div className="sd-dashboard-card sd-gp-card">
-                <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Sales GP performance against configured milestones.</p></div><strong>R{monthlySales.toLocaleString()} <em className={`sd-gp-percent-text ${gpPercentColor}`}>@ {TEMP_MONTHLY_GP_PERCENT.toFixed(2)}%</em></strong></div>
+                <div className="sd-dashboard-card-head"><div><h3>Monthly sales GP%</h3><p>Verified sales for the current Johannesburg month; GP% is weighted by gross sales.</p></div><strong>{dashboard.monthly_sales?.has_data ? <>R{monthlySales.toLocaleString()} <em className={`sd-gp-percent-text ${gpPercentColor}`}>@ {monthlyGpPercent.toFixed(2)}%</em></> : 'No verified sales data'}</strong></div>
                 <div className="sd-gp-progress"><div className={`sd-gp-fill ${progressColor}`} style={{ width: Math.min(100, monthlySales / Math.max(...gpMilestones, 1) * 100) + '%' }} />{[...gpMilestones].sort((a, b) => a - b).map((point, index, points) => <span key={point} className={`${milestoneColors[String(point)] || (index === points.length - 1 ? 'dark-blue' : index === 0 ? 'grey' : 'light-blue')}${index === points.length - 1 ? ' final' : ''}`} style={{ left: (point / Math.max(...points, 1) * 100) + '%' }} title={'R' + point.toLocaleString()}>{'R' + point.toLocaleString()}</span>)}</div>
                 <div className="sd-gp-scale"><span>R0</span><span>R{Math.max(...gpMilestones, 0).toLocaleString()}</span></div>
               </div>
-              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Sales performance for the current business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{(dashboard.daily_sales || []).map((row: any) => <tr className="rfq-data-row" key={row.sales_person}><td>{row.sales_person}</td><td>{formatRand(Number(row.total_sales))}</td><td>{formatRand(Number(row.total_credits))}</td><td className={Number(row.gross_sales) === Math.max(...(dashboard.daily_sales || []).map((item: any) => Number(item.gross_sales))) ? 'sd-highlight-value' : ''}>{formatRand(Number(row.gross_sales))}</td><td className={Number(row.gp_percent) === Math.max(...(dashboard.daily_sales || []).map((item: any) => Number(item.gp_percent))) ? 'sd-highlight-value' : ''}>{Number(row.gp_percent).toFixed(2)}%</td></tr>)}</tbody></table></div></div>
+              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Verified sales for the current Johannesburg business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{(dashboard.daily_sales || []).map((row: any) => <tr className="rfq-data-row" key={row.sales_person}><td>{row.sales_person}</td><td>{formatRand(Number(row.total_sales))}</td><td>{formatRand(Number(row.total_credits))}</td><td className={Number(row.gross_sales) === Math.max(...(dashboard.daily_sales || []).map((item: any) => Number(item.gross_sales))) ? 'sd-highlight-value' : ''}>{formatRand(Number(row.gross_sales))}</td><td className={Number(row.gp_percent) === Math.max(...(dashboard.daily_sales || []).map((item: any) => Number(item.gp_percent))) ? 'sd-highlight-value' : ''}>{Number(row.gp_percent).toFixed(2)}%</td></tr>)}</tbody></table></div></div>
               <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>RFQ performance</h3><p>Lifecycle workload by sales person.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>In progress</th><th>Complete</th><th>Dropped</th><th>Scrapped</th><th>Irrelevant</th><th>Total</th><th>Bonus points</th><th>Response time</th><th>Score</th></tr></thead><tbody>{rfqPerformance.map((row: any) => <tr className="rfq-data-row" key={row.id || row.sales_person}><td>{row.sales_person}</td><td>{row.in_progress || 0}</td><td>{row.complete || 0}</td><td>{row.dropped || 0}</td><td>{row.scrapped || 0}</td><td>{row.irrelevant || 0}</td><td>{row.total || 0}</td><td>{row.bonus_points ?? '—'}</td><td>{row.response_time || '—'}</td><td>{row.score ?? '—'}</td></tr>)}</tbody></table></div></div>
               
             </div>
@@ -573,11 +569,12 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
             <div className="sd-analytics">
               <div className="sd-analytics-toolbar">
                 <label>Period<select value={analyticsPeriod} onChange={(e) => setAnalyticsPeriod(e.target.value as 'year' | 'month' | 'week')}><option value="year">Year</option><option value="month">Month</option><option value="week">Week</option></select></label>
-                <label>Month<select value={analyticsMonth} onChange={(e) => setAnalyticsMonth(Number(e.target.value))}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i, 1).toLocaleString(undefined, { month: 'long' })}</option>)}</select></label>
-                <label>Week<input type="number" min="1" max="53" value={analyticsWeek} onChange={(e) => setAnalyticsWeek(Number(e.target.value) || 1)} /></label>
+                <label>{analyticsPeriod === 'week' ? 'ISO year' : 'Year'}<input type="number" min="2000" max="2100" value={analyticsYear} onChange={(e) => setAnalyticsYear(Number(e.target.value))} /></label>
+                <label>Month<select disabled={analyticsPeriod !== 'month'} value={analyticsMonth} onChange={(e) => setAnalyticsMonth(Number(e.target.value))}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i, 1).toLocaleString(undefined, { month: 'long' })}</option>)}</select></label>
+                <label>ISO week<input disabled={analyticsPeriod !== 'week'} type="number" min="1" max="53" value={analyticsWeek} onChange={(e) => setAnalyticsWeek(Number(e.target.value) || 1)} /></label>
               </div>
               <div className="sd-dashboard-grid">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <div className="sd-metric" key={key}><span>{key[0].toUpperCase() + key.slice(1)}</span><strong>{analytics.totals?.[key] || 0}</strong></div>)}</div>
-              <div className="sd-chart"><h3>RFQ lifecycle by period</h3>{(analytics.series || []).map((point: any) => <div className="sd-chart-row" key={point.label}><b>{point.label}</b><div className="sd-chart-bars">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <span className={key} key={key} style={{ width: Math.max(2, ((point[key] || 0) / Math.max(1, ...((analytics.series || []).map((p: any) => Math.max(p.claimed || 0, p.scrapped || 0, p.dropped || 0, p.completed || 0, p.invoiced || 0))))) * 100) + '%' }}>{point[key] || 0}</span>)}</div></div>)}{!analytics.series?.length && <p className="hint">No RFQ data for this period.</p>}</div>
+              <div className="sd-chart"><h3>Current RFQ outcomes by received date</h3><p className="hint">Johannesburg dates; ISO weeks run Monday to Sunday. Claimed means currently assigned. Outcomes reflect current status, not status-change dates.</p>{(analytics.series || []).map((point: any) => <div className="sd-chart-row" key={point.label}><b>{point.label}</b><div className="sd-chart-bars">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <span className={key} key={key} style={{ width: Math.max(2, ((point[key] || 0) / Math.max(1, ...((analytics.series || []).map((p: any) => Math.max(p.claimed || 0, p.scrapped || 0, p.dropped || 0, p.completed || 0, p.invoiced || 0))))) * 100) + '%' }}>{point[key] || 0}</span>)}</div></div>)}{!analytics.series?.length && <p className="hint">No RFQ data for this period.</p>}</div>
             </div>
           ) : page === 'RFQs' ? (
             <>
@@ -640,13 +637,15 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
                   <h3>RFQ statuses</h3><p>Drag to set the order. Closed statuses leave the open total and allow conversion to an invoice.</p>
                   <div className="sd-config-add">
                     <input placeholder="New status name" value={newStatus.name} onChange={(e) => setNewStatus({ ...newStatus, name: e.target.value })} />
+                    <label>Analytics category<select value={newStatus.category} onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                     <label className="sd-inline-check"><input type="checkbox" checked={newStatus.closed} onChange={(e) => setNewStatus({ ...newStatus, closed: e.target.checked })} /> Closed status</label>
-                    <button className="primary" disabled={busy || !newStatus.name.trim()} onClick={() => void act(async () => { await request('/api/sales-desk/config/statuses', { method: 'POST', body: JSON.stringify({ name: newStatus.name, is_closed: newStatus.closed }) }); setNewStatus({ name: '', closed: false }) }, 'Status added.')}>Add</button>
+                    <button className="primary" disabled={busy || !newStatus.name.trim()} onClick={() => void act(async () => { await request('/api/sales-desk/config/statuses', { method: 'POST', body: JSON.stringify({ name: newStatus.name, is_closed: newStatus.closed, metric_category: newStatus.category }) }); setNewStatus({ name: '', closed: false, category: 'other' }) }, 'Status added.')}>Add</button>
                   </div>
                   <Sortable items={config.statuses} onReorder={(ids) => void reorder('statuses', 'statuses', ids)}>
                     {(s: any) => (<>
                       <div className="sd-option-text"><b>{s.name}</b><small>{s.is_closed ? 'Closed' : 'Open'} · {s.is_active ? 'Active' : 'Inactive'} · {s.rfq_count} RFQ{s.rfq_count === 1 ? '' : 's'}</small></div>
                       <div className="sd-actions">
+                        <label>Analytics category<select value={s.metric_category || 'other'} onChange={(e) => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { metric_category: e.target.value })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                         <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { is_closed: !s.is_closed })}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button>
                         <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { is_active: !s.is_active })}>{s.is_active ? 'Deactivate' : 'Activate'}</button>
                         <button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { name }) }}>Rename</button>

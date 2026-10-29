@@ -40,7 +40,6 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
-import { loadAllRows } from './pagedRows.ts'
 import { readMarketingResponse } from './marketingResponse.ts'
 import { loadMarketingCampaigns, loadMarketingPosts, loadRfqList } from './recordLists.ts'
 import { AuthError, readSupabaseToken } from './sessionToken.ts'
@@ -273,7 +272,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     const configId = mediaConfig?.[1] || statusConfig?.[1] || codeConfig?.[1]
     if (configTable && method === 'POST') {
       if (configTable === 'sales_desk_sales_codes') throw new Error('Sales codes are managed from user profiles.')
-      const result = await client.from(configTable).insert({ name: body.name, ...(configTable === 'sales_desk_statuses' ? { is_closed: !!body.is_closed } : {}), sort_order: 999 }).select().single()
+      const result = await client.from(configTable).insert({ name: body.name, ...(configTable === 'sales_desk_statuses' ? { is_closed: !!body.is_closed, metric_category: body.metric_category || 'other' } : {}), sort_order: 999 }).select().single()
       if (result.error) throw new Error(result.error.message)
       return result.data
     }
@@ -393,57 +392,20 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { ...refreshed.data, media_platform: refreshed.data.media_platform?.name, status: refreshed.data.status?.name, status_name: refreshed.data.status?.name, status_is_closed: !!refreshed.data.status?.is_closed, sales_code: refreshed.data.sales_code?.code || null }
     }
     if (path === '/api/sales-desk/dashboard' && method === 'GET') {
-      const all = await loadAllRows((from, to) => client.from('sales_desk_rfqs').select('id,status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed),sales_desk_sales_codes(code,display_name)', { count: 'exact' }).is('deleted_at', null).order('id').range(from, to))
-      const today = new Date().toISOString().slice(0, 10); const rows: any[] = all.data || []
-      const [daily, performance] = await Promise.all([
-        client.from('sales_desk_daily_sales').select('*').eq('business_date', today).order('gross_sales', { ascending: false }),
-        client.from('sales_desk_rfq_performance').select('*').eq('business_date', today).order('sales_person'),
-      ])
-      if (daily.error) throw new Error(daily.error.message)
-      if (performance.error) throw new Error(performance.error.message)
-      const performanceRows = (performance.data || []).map((saved: any) => {
-        const mine = rows.filter((row) => row.sales_desk_sales_codes?.code === saved.sales_person)
-        const named = mine.length ? mine : rows.filter((row) => row.sales_desk_sales_codes?.display_name === saved.sales_person)
-        const status = (row: any) => String(row.sales_desk_statuses?.name || '').toLowerCase()
-        return { ...saved, in_progress: named.filter((row) => status(row).includes('progress')).length, complete: named.filter((row) => status(row).includes('complete') || status(row).includes('quotation')).length, dropped: named.filter((row) => status(row).includes('drop')).length, scrapped: named.filter((row) => status(row).includes('scrap')).length, irrelevant: named.filter((row) => status(row).includes('irrelevant')).length, total: named.length }
-      })
-      return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length, daily_sales: daily.data || [], rfq_performance: performanceRows }
+      const result = await client.rpc('sales_desk_dashboard')
+      if (result.error) throw new Error(result.error.message)
+      return result.data
     }
     if (path.startsWith('/api/sales-desk/analytics') && method === 'GET') {
-      const result = await loadAllRows((from, to) => client.from('sales_desk_rfqs').select('id,rfq_type,status_id,created_at,sales_desk_statuses(name,is_closed)', { count: 'exact' }).is('deleted_at', null).order('id').range(from, to))
-      const rows: any[] = result.data || []
-      const totals = {
-        claimed: rows.filter((r) => !!r.status_id).length,
-        scrapped: rows.filter((r) => String(r.sales_desk_statuses?.name || '').toLowerCase().includes('scrap')).length,
-        dropped: rows.filter((r) => String(r.sales_desk_statuses?.name || '').toLowerCase().includes('drop')).length,
-        completed: rows.filter((r) => !!r.sales_desk_statuses?.is_closed && r.rfq_type === 'quotation').length,
-        invoiced: rows.filter((r) => r.rfq_type === 'invoice').length,
-      }
       const params = new URLSearchParams(path.split('?')[1] || '')
-      const period = params.get('period') || 'year'
-      const month = Number(params.get('month') || new Date().getMonth() + 1)
-      const year = new Date().getFullYear()
-      const filtered = rows.filter((row) => {
-        const date = new Date(row.created_at)
-        if (Number.isNaN(date.getTime()) || date.getFullYear() !== year) return false
-        if (period === 'month') return date.getMonth() + 1 === month
-        if (period === 'week') return Math.ceil((date.getDay() + 1 + Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / 86400000)) / 7) === Number(params.get('week') || 1)
-        return true
+      const result = await client.rpc('sales_desk_analytics', {
+        p_period: params.get('period') || 'year',
+        p_year: params.has('year') ? Number(params.get('year')) : null,
+        p_month: Number(params.get('month') || 1),
+        p_week: Number(params.get('week') || 1),
       })
-      const groups = new Map<string, any>()
-      for (const row of filtered) {
-        const date = new Date(row.created_at)
-        const label = period === 'year' ? date.toLocaleString(undefined, { month: 'short' }) : date.toLocaleDateString()
-        const point = groups.get(label) || { label, claimed: 0, scrapped: 0, dropped: 0, completed: 0, invoiced: 0 }
-        const name = String(row.sales_desk_statuses?.name || '').toLowerCase()
-        if (row.status_id) point.claimed += 1
-        if (name.includes('scrap')) point.scrapped += 1
-        if (name.includes('drop')) point.dropped += 1
-        if (row.sales_desk_statuses?.is_closed && row.rfq_type === 'quotation') point.completed += 1
-        if (row.rfq_type === 'invoice') point.invoiced += 1
-        groups.set(label, point)
-      }
-      return { totals, series: [...groups.values()] }
+      if (result.error) throw new Error(result.error.message)
+      return result.data
     }
   }
   if (path === '/api/returns-claims' || path.startsWith('/api/returns-claims/')) {
