@@ -123,6 +123,16 @@ In an app, **Report emails** (report builders) lists the app's scheduled emails:
 
 Each email has a picture of every sheet in the body, a PDF of every sheet attached, and a link to the hub.
 
+- **Filter**: a (shared) bookmark, and/or conditions such as `invoice_date = Today() - 1` (yesterday, recalculated
+  every time). The filter is shown at the top of each sheet and applies on top of each person's row access.
+- **Excel**: tick *Attach the data as Excel* for a workbook with one tab per chart.
+- **Alerts** (*New alert*): checked on their schedule and only sent when a measure meets a condition, e.g.
+  `Sum(reorder_level - qty_on_hand)` *is above* `0` *for each* `description`. The email lists the values that
+  meet the condition (up to 200); sheets and Excel can be attached too. When nothing meets it, the history shows
+  *Not needed*.
+- **Email me** (everyone): subscribe yourself to a sheet (with your current selections) or set up your own alert,
+  send it to yourself now, and stop or restart report emails that builders send you.
+
 ### Setting up sending (once)
 
 Sending runs in the cloud: `frontend/api/reporting/send-due.ts` (a Vercel function) draws each sheet in

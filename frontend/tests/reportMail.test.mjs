@@ -74,3 +74,31 @@ test('Vercel Hobby allows at most 12 functions per deployment',async()=>{
   const functions=walk(new URL('../api',import.meta.url).pathname)
   assert.ok(functions.length<=12,`${functions.length} functions in api/: ${functions.join(', ')}`)
 })
+
+test('alerts: the email shows the condition and the rows',async()=>{
+  const {emailBody:body,alertSentence}=await import('../api/reporting/_reportMail.ts')
+  const alert={matched:true,rows:[['Brake pads <x>',3],['Battery',1.5]],measure:'Sum(reorder - on_hand)',dimension:'item',op:'>',value:0,label:'Short by',dimension_label:'Item'}
+  assert.equal(alertSentence(alert),'Short by is above 0')
+  const {html,text}=body({...delivery,kind:'alert'},[],'https://hub.example/',new Date('2026-10-29T05:00:00Z'),alert)
+  assert.match(html,/Alert:<\/b> Short by is above 0 for 2 Item values/)
+  assert.match(html,/Brake pads &lt;x&gt;/);assert.ok(!html.includes('attached as PDF'),'no sheets mentioned without sheets')
+  assert.match(text,/Alert: Short by is above 0/);assert.match(text,/Battery: 1.5/)
+})
+
+test('schedules: alert checks and the payload sent to the database',async()=>{
+  const {newAlert,normalizeSchedule,schedulePayload}=await import('../src/biReports.ts')
+  const app={id:'app',model:[{alias:'stock',table_name:'t',parent_alias:null,join_type:'left',join_pairs:[],columns:[{name:'item',type:'text'},{name:'on_hand',type:'bigint'}]}],measures:[{name:'Stock',expression:'Sum(on_hand)'}],variables:[]}
+  const base={...newSchedule([]),name:'Low stock',kind:'alert',recipients:[{type:'role',principal:'management'}],alert:newAlert()}
+  assert.match(scheduleProblem(base,app),/Enter the measure/)
+  assert.match(scheduleProblem({...base,alert:{...base.alert,measure:{text:'on_hand + nope'}}},app),/Unknown field "nope"/)
+  assert.match(scheduleProblem({...base,alert:{...base.alert,measure:{text:'[Stock]'}},conditions:[{text:'Sum(on_hand) > 1'}]},app),/Condition 1: cannot use aggregations/)
+  const ok={...base,alert:{...base.alert,measure:{text:'[Stock]'},dimension:{text:'item'},op:'<',value:'5'}}
+  assert.equal(scheduleProblem(ok,app),null,'alerts need no sheets')
+  assert.equal(scheduleProblem({...ok,recipients:[]},app,true),null,'personal subscriptions need no recipients')
+  const payload=schedulePayload({...ok,conditions:[{text:'on_hand > 0'},{text:' '}]},app)
+  assert.deepEqual(payload.alert.measure.node,{t:'fn',name:'sum',args:[{t:'field',name:'on_hand'}]})
+  assert.deepEqual(payload.alert.dimension.node,{t:'field',name:'item'})
+  assert.equal(payload.alert.value,5);assert.equal(payload.alert.label,'[Stock]')
+  assert.equal(payload.conditions.length,1,'empty conditions are dropped')
+  assert.equal(normalizeSchedule({name:'Old'}).kind,'report','older schedules are reports')
+})

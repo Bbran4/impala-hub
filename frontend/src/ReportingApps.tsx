@@ -6,7 +6,7 @@ import {
   Image as ImageIcon,Calculator,History,ListTree,Mail,Star,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
 } from 'lucide-react'
 import {supabase} from './supabase'
-import {expandVariables,type AppVariable,type MasterMeasure} from './biExpression'
+import {expandVariables,type AppVariable,type ExprNode,type MasterMeasure} from './biExpression'
 import {checkExpression,ExpressionInput,type ExpressionContext} from './biExpressionEditor'
 import {
   GRID_COLS,KIND_INFO,ROW_HEIGHT,calcFieldProblem,compileObject,deleteApp,deleteSheet,loadHome,logView,sameValue,toggleFavourite,withCalcFields,describeRowAccess,displayValue,freeSpot,loadApp,loadApps,loadMyRowAccess,loadPrincipals,withWriteKeys,
@@ -20,7 +20,7 @@ import {ModelDiagram} from './biModelViewer'
 import {modelLinks} from './biModelGraph'
 import {type AppRuntime} from './biChartKit'
 import RowAccessCard from './biRowAccess'
-import ReportEmails from './biReportEmails'
+import ReportEmails,{MyReportEmails} from './biReportEmails'
 import {BookmarkMenu,ExportMenu,SmartSearch} from './biEveryday'
 import './reportingApps.css'
 
@@ -95,6 +95,7 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
   const [selectedObject,setSelectedObject]=useState<string|null>(null)
   const [settings,setSettings]=useState(false)
   const [reports,setReports]=useState(false)
+  const [myEmails,setMyEmails]=useState(false)
   const [myRows,setMyRows]=useState<string|null>(null)
   const [saving,setSaving]=useState(false)
   const [version,setVersion]=useState('')
@@ -174,6 +175,7 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
   }
 
   if(!app)return <section className="rfq-workspace"><div className="sd-session-bar"><span>Loading app…</span></div></section>
+  if(myEmails)return <MyReportEmails app={app} sheetId={sheet?.id||null} selections={selections} onClose={()=>setMyEmails(false)} setNotice={setNotice} setError={setError}/>
   if(reports)return <ReportEmails app={app} onClose={()=>setReports(false)} setNotice={setNotice} setError={setError}/>
   if(settings)return <AppSettings app={app} onClose={()=>setSettings(false)} onSaved={async()=>{setSettings(false);setSelections([]);await load()}} onDeleted={onBack} setNotice={setNotice} setError={setError}/>
 
@@ -186,6 +188,7 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
         <BookmarkMenu app={app} canBuild={canBuild} sheetId={sheet?.id||null} selections={selections} states={stateSelections} variables={variableValues}
           onApply={applyBookmark} setNotice={setNotice} setError={setError}/>
         {sheet&&<button className={`icon-button bi-fav ${favourites.has(sheet.id)?'on':''}`} title={favourites.has(sheet.id)?'Remove from favourites':'Add this sheet to your favourites'} aria-pressed={favourites.has(sheet.id)} onClick={()=>void favourite()}><Star size={16}/></button>}
+        <button className="secondary" onClick={()=>setMyEmails(true)} title="Get this sheet by email, or an alert"><Mail size={15}/>Email me</button>
         {sheet&&<ExportMenu app={viewApp||app} sheet={sheet} selectionsFor={object=>object.options.state?stateSelections[object.options.state]||[]:selections} setError={setError}/>}
       </div>}
       {canBuild&&!editing&&<div className="bi-app-actions">
@@ -254,9 +257,9 @@ function ObjectPalette({onAdd}:{onAdd:(kind:ObjectKind)=>void}){
 // ---------------------------------------------------------------------------
 // Sheet canvas (24-column grid; drag the header to move, the corner to resize)
 // ---------------------------------------------------------------------------
-export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange,stateSelections={},onStateSelect}:{
+export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange,stateSelections={},onStateSelect,extraConditions}:{
   sheet:Sheet;app:AppDetail;runtime?:AppRuntime;editing:boolean;selections:Selection[];onSelect:SelectFn;version:string
-  stateSelections?:Record<string,Selection[]>;onStateSelect?:(state:string,...args:Parameters<SelectFn>)=>void
+  stateSelections?:Record<string,Selection[]>;onStateSelect?:(state:string,...args:Parameters<SelectFn>)=>void;extraConditions?:ExprNode[]
   selectedObject:string|null;onPick:(id:string|null)=>void;onChange:(objects:SheetObject[])=>void
 }){
   const ref=useRef<HTMLDivElement>(null)
@@ -301,7 +304,7 @@ export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,versi
           {(object.title||editing)&&<div className={`bi-object-head ${editing?'handle':''}`} onPointerDown={event=>start(event,object,'move')}>
             {editing&&<GripVertical size={14}/>}{object.options.state&&<span className={`bi-state-tag state-${object.options.state}`} title={`Compare ${object.options.state}: own selections`}>{object.options.state}</span>}<span>{object.title?(editing?object.title:titleText(object.title,runtime?.values)):(editing?<i className="bi-muted"><Icon size={13}/> {KIND_INFO[object.kind].label}</i>:'')}</span>
           </div>}
-          <div className="bi-object-body"><ObjectBody object={object} app={app} runtime={runtime} dataVersion={version}
+          <div className="bi-object-body"><ObjectBody object={object} app={app} runtime={runtime} dataVersion={version} extraConditions={extraConditions}
             selections={editing?[]:object.options.state?stateSelections[object.options.state]||[]:selections}
             onSelect={object.options.state&&onStateSelect?(dimension,value,additive)=>onStateSelect(object.options.state!,dimension,value,additive):onSelect}/></div>
         </div>

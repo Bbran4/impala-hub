@@ -7,6 +7,7 @@ import {
   type AppDetail,type Bookmark,type FieldValue,type SearchHit,type Selection,type Sheet,type SheetObject,
 } from './biApps'
 import {downloadWorkbook,type ExportTable} from './biExport'
+import type {ExprNode} from './biExpression'
 
 // Closes a dropdown when clicking elsewhere
 function useOutside(open:boolean,close:()=>void){
@@ -97,9 +98,9 @@ export function SmartSearch({app,selections,onPick}:{app:AppDetail;selections:Se
 // ---------------------------------------------------------------------------
 // Exports: the sheet as PDF (the browser's print to PDF) or every chart's data as Excel
 // ---------------------------------------------------------------------------
-export async function objectTable(object:SheetObject,app:AppDetail,selections:Selection[]):Promise<ExportTable|null>{
+export async function objectTable(object:SheetObject,app:AppDetail,selections:Selection[],extraConditions:ExprNode[]=[]):Promise<ExportTable|null>{
   if(NO_DATA_KINDS.includes(object.kind)||['tabs','layout','trellis','filter','animator','button','datepicker','variable','slider'].includes(object.kind)||!supabase)return null
-  const compiled=compileObject(object,app,[],selections)
+  const compiled=compileObject(object,app,extraConditions,selections)
   if(compiled.errors.length||!compiled.dimensions.length&&!compiled.measures.length)return null
   const result=await runQuery(supabase,app.id,buildSpec(compiled,selections,{sort:defaultSort(object,compiled),limit:10000}))
   return {title:object.title||compiled.measures[0]?.label||compiled.dimensions[0]?.label||object.kind,

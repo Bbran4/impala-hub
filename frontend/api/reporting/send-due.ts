@@ -7,7 +7,8 @@
 import { createClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
 import type { Browser } from 'puppeteer-core'
-import { emailBody, errorText, fileName, hubUrl, subjectFor, type ClaimedDelivery, type RenderedSheet } from './_reportMail.js'
+import { emailBody, errorText, fileName, hubUrl, subjectFor, type AlertResult, type ClaimedDelivery, type RenderedSheet } from './_reportMail.js'
+import { workbookBuffer, type ExcelTable } from './_excel.js'
 
 const BUDGET_MS = 240_000 // stop claiming new work after this (functions may run 300 s)
 const PER_DELIVERY_MS = 60_000
@@ -19,19 +20,24 @@ async function launch(): Promise<Browser> {
   return puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true })
 }
 
-async function renderSheet(browser: Browser, base: string, ticket: string): Promise<{ png: Buffer; pdf: Buffer }> {
+async function renderSheet(browser: Browser, base: string, ticket: string, excel: boolean): Promise<{ png: Buffer; pdf: Buffer; tables: ExcelTable[] }> {
   const page = await browser.newPage()
   try {
     await page.setViewport({ width: 1400, height: 1000, deviceScaleFactor: 1 })
     await page.emulateMediaType('screen')
-    await page.goto(`${base}/#report-print=${ticket}`, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+    await page.goto(`${base}/#report-print=${ticket}${excel ? '&excel=1' : ''}`, { waitUntil: 'domcontentloaded', timeout: 30_000 })
     await page.waitForFunction(() => document.body.dataset.reportReady === '1' || Boolean(document.body.dataset.reportError), { timeout: 45_000 })
     const failure = await page.evaluate(() => document.body.dataset.reportError || '')
     if (failure) throw new Error(`The sheet could not be drawn: ${failure}`)
     const box = await page.evaluate(() => { const r = document.querySelector('.bi-print')!.getBoundingClientRect(); return { width: Math.ceil(r.width), height: Math.ceil(r.height) } })
     const png = Buffer.from(await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: box.width, height: box.height } }))
     const pdf = Buffer.from(await page.pdf({ width: `${box.width}px`, height: `${box.height + 2}px`, printBackground: true, pageRanges: '1' }))
-    return { png, pdf }
+    let tables: ExcelTable[] = []
+    if (excel) {
+      await page.waitForFunction(() => document.body.dataset.excelReady === '1', { timeout: 45_000 })
+      tables = (await page.evaluate(() => (window as unknown as { __reportTables?: ExcelTable[] }).__reportTables || [])) as ExcelTable[]
+    }
+    return { png, pdf, tables }
   } finally {
     await page.close().catch(() => undefined)
   }
@@ -86,16 +92,37 @@ export default async function handler(req: any, res: any) {
       if (!claimed.length) break
       for (const delivery of claimed) {
         try {
-          browser ??= await launch()
-          const rendered: RenderedSheet[] = []
-          for (const sheet of delivery.sheets) rendered.push({ title: sheet.title, ...(await renderSheet(browser, base, sheet.ticket)) })
+          // alerts: check the condition as the recipient first; nothing to send when it is not met
+          let alert: AlertResult | undefined
+          if (delivery.kind === 'alert' && delivery.alert_ticket) {
+            const { data: checked, error: alertError } = await admin.rpc('bi_render_alert', { p_ticket: delivery.alert_ticket })
+            if (alertError) throw new Error(`Could not check the alert: ${alertError.message}`)
+            alert = checked as AlertResult
+            if (!alert.matched) {
+              await admin.rpc('bi_report_finish', { p_delivery: delivery.delivery_id, p_status: 'not_needed' })
+              results.push({ delivery: delivery.delivery_id, status: 'not_needed' })
+              continue
+            }
+          }
+          const rendered: (RenderedSheet & { tables: ExcelTable[] })[] = []
+          if (delivery.sheets.length) {
+            browser ??= await launch()
+            for (const sheet of delivery.sheets) rendered.push({ title: sheet.title, ...(await renderSheet(browser, base, sheet.ticket, Boolean(delivery.attach_excel))) })
+          }
           const images = rendered.map((sheet, i) => ({ title: sheet.title, cid: `sheet${i + 1}@impala-hub` }))
-          const { html, text } = emailBody(delivery, images, `${base}/`, new Date())
+          const { html, text } = emailBody(delivery, images, `${base}/`, new Date(), alert)
+          // Excel: every chart of every sheet (one tab each), plus the alert's rows
+          const excelTables: ExcelTable[] = [
+            ...(alert ? [{ title: 'Alert', headers: [...(alert.dimension ? [alert.dimension_label || alert.dimension] : []), alert.label], formats: [], rows: alert.rows }] : []),
+            ...rendered.flatMap((sheet) => sheet.tables.map((table) => ({ ...table, title: rendered.length > 1 ? `${sheet.title} - ${table.title}` : table.title }))),
+          ]
+          const excel = delivery.attach_excel && excelTables.length ? Buffer.from(await workbookBuffer(excelTables)) : null
           await transport.sendMail({
             from, to: delivery.email, subject: subjectFor(delivery), html, text,
             attachments: [
               ...rendered.map((sheet, i) => ({ filename: fileName(delivery.app_name, sheet.title, 'png'), content: sheet.png, cid: images[i].cid, contentDisposition: 'inline' as const })),
               ...rendered.map((sheet) => ({ filename: fileName(delivery.app_name, sheet.title, 'pdf'), content: sheet.pdf, contentType: 'application/pdf' })),
+              ...(excel ? [{ filename: fileName(delivery.app_name, delivery.schedule_name, 'xlsx'), content: excel, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }] : []),
             ],
           })
           await admin.rpc('bi_report_finish', { p_delivery: delivery.delivery_id, p_status: 'sent' })
