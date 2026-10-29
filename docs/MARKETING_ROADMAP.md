@@ -65,11 +65,13 @@ This workspace tracks parity between the Odoo Social Marketing workflow and the 
 
 ## Search status
 
-Marketing currently provides literal substring search over post titles and captions plus basic status, campaign and month filters. Campaign-name search, saved filters and true wildcard-pattern syntax remain planned.
+Marketing provides server-side literal substring search across titles, captions and campaign names, with status, campaign, unassigned and Johannesburg month filters. Results are paged with verified totals; Pivot aggregates the complete matching set. Saved filters and true wildcard-pattern syntax remain planned.
 
 
 ## Recently completed
 
+- Database triggers now record post creation, meaningful edits and deletion, including trusted actor names and paged history.
+- Synced Facebook images are copied into durable Storage objects instead of persisting expiring CDN URLs.
 - Campaign deletion is available for empty campaigns only. Campaigns containing posts are protected from deletion.
 
 

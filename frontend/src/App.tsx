@@ -70,7 +70,7 @@ const SALES_ROADMAP_ROWS = [
   ['Sales-code dashboard membership', 'Not applicable', 'Dashboard demonstration rows are not yet linked to active profiles', 'Deferred until live sales data'],
   ['Workspace permissions', 'Role-based application access', 'Salespeople currently see Sales Desk only; Supabase workspace permission contract added', 'Partial; enforce on every workspace backend'],
   ['RFQ analytics', 'Not applicable', 'Period-filtered analytics', 'Implemented; funnel improvements planned'],
-  ['Search and filtering', 'Advanced search panels', 'Basic filters', 'Partial'],
+  ['Search and filtering', 'Advanced search panels', 'Server-side campaign-aware search, month/status filters and paged results', 'Implemented; saved filters planned'],
   ['Notifications', 'Activities/messages', 'Shared bell, unread state, app channels and RFQ In Progress links', 'Implemented foundation; additional Sales Desk events planned'],
   ['Bulk operations', 'Mass actions', 'Not implemented', 'Missing'],
   ['Export and reporting', 'List/report exports', 'CSV/XLSX/print RFQ export is not implemented', 'Missing'],
@@ -85,7 +85,7 @@ const ROADMAP_ROWS = [
   ['Facebook connection', 'Social account configuration', 'Meta OAuth, Page selection, diagnostics, disconnect', 'Implemented'],
   ['Instagram connection', 'Social account configuration', 'Schema and UI foundation only; Supabase OAuth is disabled', 'Deferred'],
   ['WhatsApp', 'Not central', 'Deferred', 'Correctly deferred'],
-  ['Search', 'Search panels', 'Literal title and caption substring search', 'Partial; campaign and wildcard search planned'],
+  ['Search', 'Search panels', 'Paged literal search across titles, captions and campaign names', 'Implemented; wildcard syntax planned'],
   ['Feed', 'Account feeds, streams, metrics', 'Network columns, 25 newest posts, metrics', 'Implemented; provider availability applies'],
   ['Create post', 'New Post workflow', 'Create Post editor', 'Implemented'],
   ['Edit draft posts', 'Yes', 'Yes', 'Implemented'],
@@ -970,7 +970,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
             <div className="roadmap-priorities">
               <strong>Next priorities</strong>
-              <span>Advanced and campaign-aware search</span><span>Notifications and social conversations</span><span>Sentiment analysis and reporting</span><span>Instagram integration remains deferred</span>
+              <span>Saved filters and bulk post actions</span><span>Notifications and social conversations</span><span>Sentiment analysis and reporting</span><span>Instagram integration remains deferred</span>
             </div>
             <div className="roadmap-filter-bar"><label>Show status<select value={roadmapFilter} onChange={(event) => setRoadmapFilter(event.target.value)}><option value="all">All statuses</option><option>Implemented</option><option>Partial</option><option>Planned</option><option>Deferred</option><option>Missing</option><option>Retired</option></select></label></div>
             <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Odoo</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
