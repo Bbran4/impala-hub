@@ -73,6 +73,22 @@ reloaded straight away. The agent's `config.toml` `[connectors]` section decides
 keys are allowed (see `bi-agent/README.md`); the page shows what each agent allows. Loaded connection
 tables appear in **Data** and **Data Model** and are added to apps like any other table.
 
+## Bookmarks, search, exports and favourites
+
+Everyone who can open an app gets these tools above the sheets:
+
+- **Search all fields**: type two or more letters to find values in every text field of the app (within the
+  current selections and your row access); click a value to select it.
+- **Bookmarks**: save the current selections, compare selections, variable values and sheet under a name and
+  apply them again later. Bookmarks are personal; report builders can also share them with everyone who can
+  open the app.
+- **☆ Favourite**: adds the sheet to *Favourites* on the Reporting home page, which also lists the sheets you
+  opened recently.
+- **Export**: *PDF or print* prints the sheet as you see it (choose "Save as PDF"); *Excel* downloads the data of
+  every chart and table on the sheet, one tab each, with number formats (up to 10,000 rows per chart). Tables
+  also have *CSV* and *Excel* buttons.
+- On phones the charts stack in one column, and the tabs, selections and tools scroll sideways.
+
 ## Row access (like Qlik section access)
 
 Under an app's **Data model & sharing → Row access**, a report builder can limit which records each viewer
@@ -106,6 +122,16 @@ In an app, **Report emails** (report builders) lists the app's scheduled emails:
   twice, after 5 and 10 minutes.
 
 Each email has a picture of every sheet in the body, a PDF of every sheet attached, and a link to the hub.
+
+- **Filter**: a (shared) bookmark, and/or conditions such as `invoice_date = Today() - 1` (yesterday, recalculated
+  every time). The filter is shown at the top of each sheet and applies on top of each person's row access.
+- **Excel**: tick *Attach the data as Excel* for a workbook with one tab per chart.
+- **Alerts** (*New alert*): checked on their schedule and only sent when a measure meets a condition, e.g.
+  `Sum(reorder_level - qty_on_hand)` *is above* `0` *for each* `description`. The email lists the values that
+  meet the condition (up to 200); sheets and Excel can be attached too. When nothing meets it, the history shows
+  *Not needed*.
+- **Email me** (everyone): subscribe yourself to a sheet (with your current selections) or set up your own alert,
+  send it to yourself now, and stop or restart report emails that builders send you.
 
 ### Setting up sending (once)
 
@@ -238,7 +264,7 @@ aggregation; a field on its own in a measure means `Only(field)`, as in Qlik (it
 in the chart row has the same value, otherwise empty), so `reorder_level - qty_on_hand` works in a table
 per item.
 
-There are 71 functions (aggregation, text, number, date and logic) plus `&` to join text and `//` or
+There are 80 functions (aggregation, chart, text, number, date, logic and colour) plus `&` to join text and `//` or
 `/* */` comments. The full list with examples is in [REPORTING_FUNCTIONS.md](REPORTING_FUNCTIONS.md) and in
 the app under **Reporting → Function Reference**. A few common ones:
 
@@ -278,6 +304,54 @@ missing brackets and measures without an aggregation are reported before anythin
 New functions are added in one place, `frontend/src/biFunctions.ts`, plus the SQL in a migration
 (`bi.compile_expr`). `npm test` fails if a function is missing from the migration, the generated database
 tests (`scripts/gen-function-tests.mjs`) or the generated docs (`scripts/gen-function-docs.mjs`).
+
+### Set analysis
+
+Like Qlik, an aggregation can use a different set of records than the current selections, written in
+`{…}` before its expression:
+
+| | |
+|---|---|
+| `Sum({1} sales)` | all records, ignoring the selections |
+| `Sum({<branch={'Centurion'}>} sales)` | Centurion, whatever branch is selected (other selections still apply) |
+| `Sum({<branch=>} sales)` | ignores the selection on branch only |
+| `Sum({<branch+={'Pretoria'}>} sales)`, `-=`, `*=` | adds to, removes from or narrows the selection |
+| `Sum({<category={"Brake*", "Filter?"}>} sales)` | search with `*` and `?` (not case-sensitive) |
+| `Sum({<qty={">=10<=50"}>} qty)` | comparisons; `"=…"` is not needed |
+| `Sum({<invoice_date={">=$(=AddMonths(Today(), -12))"}>} sales)` | `$(=…)` works out a value (no fields or aggregations) |
+| `Sum({<year={$(=Year(Today()) - 1)}>} sales)` | last year, with a calculated field `year` |
+| `Sum({A} sales)`, `Sum({A<category={'Brakes'}>} sales)` | the selections of compare state A (see below); `{Main}` is the main selections |
+
+`Count({1} DISTINCT invoice_no)` and `Count({1} *)` work too. Sets never see past row access.
+
+### Aggr and chart functions
+
+`Aggr(measure, dimension, …)` works out the measure per dimension value, to aggregate again:
+`Avg(Aggr(Sum(sales), customer_code))` is the average sales per customer, `Count(Aggr(If(Sum(qty) > 10, 1), item_code))`
+the number of items that sold more than 10.
+
+Chart functions work across the rows of the chart, in its sort order: `Above(Sum(sales))` (the row before),
+`Below()`, `RowNo()`, `NoOfRows()`, `Top()`, `Bottom()`, running totals with
+`RangeSum(Above(Sum(sales), 0, RowNo()))` and moving averages with `RangeAvg(Above(Sum(sales), 0, 3))`. With two
+dimensions they restart for each value of the first; `Above(TOTAL Sum(sales))` goes through all rows.
+
+### Calculated fields
+
+Under **Data model & sharing → Calculated fields**, add fields worked out per row from one table's fields,
+e.g. `line_value` = `qty * unit_price`, `month` = `YearMonth(invoice_date)`,
+`stock_status` = `If(qty_on_hand <= reorder_level, 'Reorder', 'OK')`. They are used like loaded fields everywhere:
+dimensions, measures, selections, sets and row access.
+
+### Drill-down, compare and pivot totals
+
+- **Drill-down dimensions**: a dimension's *Drill-down* adds levels below it (category › supplier › item). The
+  chart moves to the next level when one value is selected; the path above the chart goes back up.
+- **Compare (alternate states)**: set an object's *Selections* to *Compare A* or *Compare B* and it follows its
+  own selections, shown in their own bar. Two charts can show two branches side by side, and
+  `Sum({A} sales) - Sum({B} sales)` compares them in any chart.
+- **Pivot totals**: *Total row and column* adds totals; with three or more dimensions, *Subtotals* adds a total
+  per value of the first dimension, and clicking ˅ collapses the group to its total. Totals are calculated with
+  the measure (not by adding the cells), so averages and distinct counts are right.
 
 ## Security
 

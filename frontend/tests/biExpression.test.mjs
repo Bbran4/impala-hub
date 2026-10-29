@@ -72,7 +72,7 @@ test('argument counts and DISTINCT are checked against the catalogue',()=>{
   assert.throws(()=>parseExpression("Replace(branch, 'a')"),/Replace\(\) takes 3 arguments: Replace\(text, from, to\)/)
   assert.throws(()=>parseExpression('Left(item_code)'),/Left\(\) takes 2 arguments/)
   assert.throws(()=>parseExpression('Today(1)'),/Today\(\) takes 0 arguments/)
-  assert.throws(()=>parseExpression('RangeSum(qty)'),/at least 2/)
+  assert.throws(()=>parseExpression('Alt(qty)'),/at least 2/)
   assert.throws(()=>parseExpression('Max(DISTINCT qty)'),/does not take DISTINCT/)
   assert.deepEqual(parseExpression("Concat(DISTINCT branch, ', ')"),{t:'fn',name:'concat',args:[f('branch'),{t:'str',v:', '}],distinct:true})
   assert.deepEqual(parseExpression('Coalesce(a, b)'),{t:'fn',name:'alt',args:[f('a'),f('b')]},'aliases map to the catalogue name')

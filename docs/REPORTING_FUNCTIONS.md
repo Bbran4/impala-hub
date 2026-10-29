@@ -19,9 +19,10 @@ these functions as you type.
 
 ## Contents
 
-- [Aggregation](#aggregation): Sum, Count, Avg, Min, Max, Median, StDev, Concat, MinString, MaxString, Only
+- [Aggregation](#aggregation): Sum, Count, Avg, Min, Max, Median, StDev, Concat, MinString, MaxString, Only, Aggr
+- [Chart](#chart): Above, Below, RowNo, NoOfRows, Top, Bottom
 - [Text](#text): Upper, Lower, Capitalize, Trim, LTrim, RTrim, Len, Left, Right, Mid, Index, Replace, SubField, Repeat, Text
-- [Number](#number): Round, Floor, Ceil, Abs, Sign, Mod, Div, Sqrt, Pow, Exp, Log, Log10, RangeSum, RangeMax, RangeMin, Num
+- [Number](#number): Round, Floor, Ceil, Abs, Sign, Mod, Div, Sqrt, Pow, Exp, Log, Log10, RangeSum, RangeMax, RangeMin, RangeAvg, RangeCount, Num
 - [Date](#date): Today, Now, Date, Year, Quarter, Month, Week, Day, WeekDay, MonthName, YearMonth, WeekStart, MonthStart, MonthEnd, QuarterStart, YearStart, YearEnd, AddDays, AddMonths, AddYears, DaysBetween
 - [Logic](#logic): If, Alt, IsNull, Null, Pick, Match, MixMatch, WildMatch
 - [Color](#color): RGB, ColorMix1
@@ -148,6 +149,68 @@ Last text value in alphabetical order.
 The value if every row has the same one, otherwise empty. Useful in KPIs that should show one item.
 
 - `Only(branch)` → 'Centurion' when only Centurion is selected
+
+### Aggr
+
+`Aggr(measure, dimension1 [, dimension2 …])`
+
+Calculates the measure per value of the dimensions (a virtual table), to aggregate again: the average of per-customer totals, the number of items that sold more than 10. Use it inside Sum, Avg, Min, Max, Count, Median or StDev.
+
+- `Avg(Aggr(Sum(qty * unit_price), customer_code))` → Average sales per customer
+- `Count(Aggr(If(Sum(qty) > 10, 1), item_code))` → Items that sold more than 10
+
+## Chart
+
+undefined
+
+### Above
+
+`Above([TOTAL] measure [, offset [, count]])`
+
+The measure in an earlier row of the chart (offset 1 = the row above). Rows follow the chart's sort order; with two or more dimensions it restarts for each value of the leading dimensions unless TOTAL is used. With a count, use it inside RangeSum/RangeAvg/RangeMin/RangeMax/RangeCount.
+
+- `Sum(qty * unit_price) - Above(Sum(qty * unit_price))` → Change since the previous month
+- `RangeSum(Above(Sum(qty * unit_price), 0, RowNo()))` → Running total
+
+### Below
+
+`Below([TOTAL] measure [, offset [, count]])`
+
+The measure in a later row of the chart (offset 1 = the row below). Works like Above() in the other direction.
+
+- `Below(Sum(qty))` → Next month's quantity
+
+### RowNo
+
+`RowNo([TOTAL])`
+
+The row number in the chart (1, 2, 3, …), restarting for each value of the leading dimensions unless TOTAL is used.
+
+- `RowNo()` → Rank in a sorted table
+
+### NoOfRows
+
+`NoOfRows([TOTAL])`
+
+The number of rows in the chart (or in the current group of the leading dimensions).
+
+- `RowNo() / NoOfRows()` → Position as a share of all rows
+
+### Top
+
+`Top([TOTAL] measure)`
+
+The measure in the first row of the chart (or of the current group).
+
+- `Sum(qty) / Top(Sum(qty))` → Compared with the first month
+
+### Bottom
+
+`Bottom([TOTAL] measure)`
+
+The measure in the last row of the chart (or of the current group).
+
+- `Bottom(Sum(qty))` → The latest month's quantity
 
 ## Text
 
@@ -378,15 +441,16 @@ Base-10 logarithm (empty for 0 or less).
 
 `RangeSum(value1, value2, …)`
 
-Adds values, treating empty ones as 0 (unlike +, where one empty value makes the result empty).
+Adds values, treating empty ones as 0 (unlike +, where one empty value makes the result empty). With Above() it makes running totals: RangeSum(Above(Sum(sales), 0, RowNo())).
 
 - `RangeSum(qty, null, 2)` → qty + 2
+- `RangeSum(Above(Sum(qty * unit_price), 0, RowNo()))` → Running total of sales
 
 ### RangeMax
 
 `RangeMax(value1, value2, …)`
 
-Largest of the values, ignoring empty ones.
+Largest of the values, ignoring empty ones. With Above(): the largest of the last rows.
 
 - `RangeMax(0, qty - 5)` → qty - 5, but never below 0
 
@@ -394,9 +458,26 @@ Largest of the values, ignoring empty ones.
 
 `RangeMin(value1, value2, …)`
 
-Smallest of the values, ignoring empty ones.
+Smallest of the values, ignoring empty ones. With Above(): the smallest of the last rows.
 
 - `RangeMin(qty, 3)` → qty, capped at 3
+
+### RangeAvg
+
+`RangeAvg(value1, value2, …)`
+
+Average of the values, ignoring empty ones. With Above() it makes moving averages: RangeAvg(Above(Sum(sales), 0, 3)).
+
+- `RangeAvg(1, null, 3)` → 2
+- `RangeAvg(Above(Sum(qty * unit_price), 0, 3))` → 3-month moving average in a chart by month
+
+### RangeCount
+
+`RangeCount(value1, value2, …)`
+
+How many of the values are not empty.
+
+- `RangeCount(1, null, 3)` → 2
 
 ### Num
 

@@ -14,7 +14,14 @@ export type ExprNode =
   | {t:'bin';op:string;l:ExprNode;r:ExprNode}
   | {t:'neg';e:ExprNode}
   | {t:'not';e:ExprNode}
-  | {t:'fn';name:string;args:ExprNode[];distinct?:boolean}
+  | {t:'fn';name:string;args:ExprNode[];distinct?:boolean;total?:boolean;set?:SetExpr}
+
+// Set analysis (Qlik): Sum({<year={2025}, branch=>} sales). base: '$' current selections, '1' all
+// data, or an alternate state's name. Each modifier replaces (=), adds to (+=), removes from (-=) or
+// narrows (*=) the selection on a field; values: null clears the field.
+export type SetValue={v:string|number}|{search:string}|{cmp:{op:string;e:ExprNode}[]}|{e:ExprNode}
+export type SetModifier={field:ExprNode;op:'='|'+='|'-='|'*=';values:SetValue[]|null}
+export type SetExpr={base:string;mods:SetModifier[]}
 
 import {AGGREGATION_NAMES,findFunction} from './biFunctions.ts'
 
@@ -35,7 +42,7 @@ export function fieldKey(name:string){
   return s.slice(0,63)
 }
 
-type Token={k:'num'|'str'|'id'|'br'|'op'|'('|')'|','|'eof';v:string;p:number}
+type Token={k:'num'|'str'|'id'|'br'|'op'|'('|')'|','|'{'|'}'|'$'|'dq'|'dexpr'|'eof';v:string;p:number}
 
 function tokenize(src:string):Token[]{
   const out:Token[]=[];let i=0
@@ -56,6 +63,23 @@ function tokenize(src:string):Token[]{
       }
       out.push({k:'str',v,p:i});i=j+1;continue
     }
+    if(c==='"'){
+      let j=i+1,v=''
+      for(;;){
+        if(j>=src.length)throw new ExpressionError('Search text is missing its closing "',i)
+        if(src[j]==='"'){if(src[j+1]==='"'){v+='"';j+=2;continue}break}
+        v+=src[j++]
+      }
+      out.push({k:'dq',v,p:i});i=j+1;continue
+    }
+    if(c==='$'&&src.startsWith('$(=',i)){
+      let depth=0,j=i+1
+      for(;j<src.length;j++){if(src[j]==='(')depth++;else if(src[j]===')'){depth--;if(depth===0)break}}
+      if(j>=src.length)throw new ExpressionError('$(= is missing its closing )',i)
+      out.push({k:'dexpr',v:src.slice(i+3,j),p:i});i=j+1;continue
+    }
+    if(c==='$'){out.push({k:'$',v:c,p:i});i++;continue}
+    if(c==='{'||c==='}'){out.push({k:c,v:c,p:i});i++;continue}
     if(c==='['){
       const j=src.indexOf(']',i)
       if(j<0)throw new ExpressionError('Field name is missing its closing ]',i)
@@ -66,6 +90,7 @@ function tokenize(src:string):Token[]{
     }
     const two=src.slice(i,i+2)
     if(two==='<='||two==='>='||two==='<>'||two==='!='){out.push({k:'op',v:two==='!='?'<>':two,p:i});i+=2;continue}
+    if(two==='+='||two==='-='||two==='*='){out.push({k:'op',v:two,p:i});i+=2;continue}
     if('+-*/&=<>'.includes(c)){out.push({k:'op',v:c,p:i});i++;continue}
     if(c==='('||c===')'||c===','){out.push({k:c,v:c,p:i});i++;continue}
     throw new ExpressionError(`Unexpected "${c}"`,i)
@@ -153,8 +178,17 @@ export function parseExpression(src:string,options:{measures?:MasterMeasure[];st
         const spec=findFunction(lower)
         if(!spec)throw new ExpressionError(`Unknown function ${t.v}(). See the Function reference for the list.`,t.p)
         const name=spec.name.toLowerCase()
-        const args:ExprNode[]=[];let distinct=false
-        if(name==='count'&&peek().k==='op'&&peek().v==='*'){next();args.push({t:'star'});expect(')','a closing )');return {t:'fn',name,args}}
+        const args:ExprNode[]=[];let distinct=false,total=false
+        let set:SetExpr|undefined
+        if(peek().k==='{'){
+          if(!spec.aggregate)throw new ExpressionError(`${spec.name}() does not take a set expression; sets go in aggregations such as Sum({<year={2025}>} sales)`,peek().p)
+          set=parseSet()
+        }
+        if(name==='count'&&peek().k==='op'&&peek().v==='*'){next();args.push({t:'star'});expect(')','a closing )');return set?{t:'fn',name,args,set}:{t:'fn',name,args}}
+        if(keyword(peek())==='total'){
+          if(!spec.total)throw new ExpressionError(`${spec.name}() does not take TOTAL`,peek().p)
+          next();total=true
+        }
         if(keyword(peek())==='distinct'){
           if(!spec.distinct)throw new ExpressionError(`${spec.name}() does not take DISTINCT`,peek().p)
           next();distinct=true
@@ -166,13 +200,93 @@ export function parseExpression(src:string,options:{measures?:MasterMeasure[];st
         expect(')','a closing ) or a comma')
         const [min,max]=spec.args
         if(args.length<min||args.length>max)throw new ExpressionError(`${spec.name}() takes ${min===max?min:max===Infinity?`at least ${min}`:`${min} to ${max}`} argument${max===1&&min===1?'':'s'}: ${spec.signature}`,t.p)
-        return distinct?{t:'fn',name,args,distinct}:{t:'fn',name,args}
+        const node:ExprNode={t:'fn',name,args}
+        if(distinct)node.distinct=true
+        if(total)node.total=true
+        if(set)node.set=set
+        return node
       }
       return fieldOrMeasure(t.v,t.p,false)
     }
     if(t.k==='eof')throw new ExpressionError('The expression ends too early',t.p)
     throw new ExpressionError(`Unexpected "${t.v}"`,t.p)
   }
+  // {<field={values}, field2=>} — see SetExpr
+  function parseSet():SetExpr{
+    expect('{','{')
+    let base='$'
+    const t=peek()
+    if(t.k==='$'){next()}
+    else if(t.k==='num'){if(t.v!=='1')throw new ExpressionError('A set starts with $ (current selections) or 1 (all data)',t.p);next();base='1'}
+    else if(t.k==='id'){next();base=t.v}
+    const mods:SetModifier[]=[]
+    if(peek().k==='op'&&peek().v==='<'){
+      next()
+      while(!(peek().k==='op'&&peek().v==='>')){
+        const ft=next()
+        if(ft.k!=='id'&&ft.k!=='br')throw new ExpressionError('Expected a field name in the set',ft.p)
+        const field:ExprNode=ft.k==='br'?{t:'field',name:fieldKey(ft.v)}:fieldOrMeasure(ft.v,ft.p,false)
+        const ot=next()
+        if(ot.k!=='op'||!['=','+=','-=','*='].includes(ot.v))throw new ExpressionError('Expected = after the field name, e.g. year={2025}',ot.p)
+        let values:SetValue[]|null=null
+        if(peek().k==='{'){
+          next();values=[]
+          while(peek().k!=='}'){
+            values.push(setValue())
+            if(peek().k===',')next();else if(peek().k!=='}')throw new ExpressionError('Expected , or } in the value list',peek().p)
+          }
+          next()
+        }else if(ot.v!=='='){throw new ExpressionError(`${ot.v} needs a list of values, e.g. ${ot.v}{'x'}`,ot.p)}
+        mods.push({field,op:ot.v as SetModifier['op'],values})
+        if(peek().k===',')next();else if(!(peek().k==='op'&&peek().v==='>'))throw new ExpressionError('Expected , or > in the set',peek().p)
+      }
+      next()
+    }
+    expect('}','} to close the set')
+    return {base,mods}
+  }
+  function inner(text:string,p:number):ExprNode{
+    let node:ExprNode
+    try{node=parseExpression(text,{measures:options.measures,variables:options.variables})}catch(error){throw new ExpressionError(`In $(=…): ${(error as Error).message}`,p)}
+    if(hasAggregation(node))throw new ExpressionError('$(=…) in a set must work without aggregations, e.g. $(=Year(Today()) - 1)',p)
+    return node
+  }
+  function setValue():SetValue{
+    const t=next()
+    if(t.k==='num')return {v:Number(t.v)}
+    if(t.k==='op'&&t.v==='-'&&peek().k==='num')return {v:-Number(next().v)}
+    if(t.k==='str')return {v:t.v}
+    if(t.k==='dexpr')return {e:inner(t.v,t.p)}
+    if(t.k==='dq')return searchValue(t.v.trim(),t.p)
+    throw new ExpressionError('Expected a value: a number, \'text\', "search" or $(=expression)',t.p)
+  }
+  // "*brake*" (wildcards), ">=2025", ">=2025<=2026", ">=$(=AddMonths(Today(), -12))"
+  function searchValue(text:string,p:number):SetValue{
+    if(!/^(>=|<=|<>|>|<|=)/.test(text)){
+      if(/^\$\(=.*\)$/.test(text))return {e:inner(text.slice(3,-1),p)}
+      return {search:text}
+    }
+    const cmp:{op:string;e:ExprNode}[]=[]
+    let rest=text
+    while(rest){
+      const m=/^(>=|<=|<>|>|<|=)\s*/.exec(rest)
+      if(!m||cmp.length>=2)throw new ExpressionError(`Cannot read the search "${text}"`,p)
+      rest=rest.slice(m[0].length)
+      let value:string
+      if(rest.startsWith('$(=')){
+        let depth=0,j=1
+        for(;j<rest.length;j++){if(rest[j]==='(')depth++;else if(rest[j]===')'){depth--;if(depth===0)break}}
+        value=rest.slice(0,j+1);rest=rest.slice(j+1).trim()
+        cmp.push({op:m[1],e:inner(value.slice(3,-1),p)});continue
+      }
+      const end=rest.search(/(>=|<=|<>|>|<|=)/)
+      value=(end<0?rest:rest.slice(0,end)).trim();rest=end<0?'':rest.slice(end)
+      if(!value)throw new ExpressionError(`Cannot read the search "${text}"`,p)
+      cmp.push({op:m[1],e:/^-?\d+(\.\d+)?$/.test(value)?{t:'num',v:Number(value)}:{t:'str',v:value}})
+    }
+    return {cmp}
+  }
+
   const result=parse(1)
   if(peek().k!=='eof')throw new ExpressionError(`Unexpected "${peek().v}"`,peek().p)
   return result
@@ -180,7 +294,7 @@ export function parseExpression(src:string,options:{measures?:MasterMeasure[];st
 
 export function hasAggregation(node:ExprNode):boolean{
   switch(node.t){
-    case 'fn':return AGGREGATIONS.includes(node.name)||node.args.some(hasAggregation)
+    case 'fn':return AGGREGATIONS.includes(node.name)||node.name==='rowno'||node.name==='noofrows'||node.args.some(hasAggregation)
     case 'bin':return hasAggregation(node.l)||hasAggregation(node.r)
     case 'neg':case 'not':return hasAggregation(node.e)
     default:return false
@@ -210,7 +324,13 @@ export function asColorMeasure(node:ExprNode):ExprNode{
 export function referencedFields(node:ExprNode,out:{table?:string;name:string}[]=[]){
   switch(node.t){
     case 'field':out.push({table:node.table,name:node.name});break
-    case 'fn':node.args.forEach(arg=>referencedFields(arg,out));break
+    case 'fn':
+      node.args.forEach(arg=>referencedFields(arg,out))
+      node.set?.mods.forEach(mod=>{referencedFields(mod.field,out);mod.values?.forEach(value=>{
+        if('e' in value)referencedFields(value.e,out)
+        if('cmp' in value)value.cmp.forEach(c=>referencedFields(c.e,out))
+      })})
+      break
     case 'bin':referencedFields(node.l,out);referencedFields(node.r,out);break
     case 'neg':case 'not':referencedFields(node.e,out);break
   }

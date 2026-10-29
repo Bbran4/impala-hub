@@ -12,7 +12,9 @@ export type ModelTable={
 }
 export type AccessEntry={type:'role'|'user';principal:string}
 export type NumberFormat='auto'|'number'|'integer'|'money'|'percent'
-export type ObjectItem={expr:string;label?:string;format?:NumberFormat;background?:string;textColor?:string}
+// drill: further levels of a drill-down dimension (Qlik drill-down group): the chart moves to the
+// next level when one value of the current level is selected
+export type ObjectItem={expr:string;label?:string;format?:NumberFormat;background?:string;textColor?:string;drill?:string[]}
 export type ObjectKind='kpi'|'bar'|'line'|'pie'|'table'|'pivot'|'filter'|'text'
   |'combo'|'scatter'|'gauge'|'bullet'|'funnel'|'waterfall'|'treemap'|'histogram'|'boxplot'|'distribution'|'radar'|'mekko'|'grid'|'wordcloud'
   |'variable'|'slider'|'datepicker'|'button'|'navigation'|'tabs'|'layout'|'trellis'|'image'|'textimage'|'divider'|'video'
@@ -35,13 +37,21 @@ export type ObjectOptions={
   writeColumns?:WriteColumn[];writeEditors?:'everyone'|'builders'
   // write tables: the parsed dimensions, saved so the database can check row access on the rows
   keyDims?:ExprNode[]
+  // alternate state (Qlik): the object follows its own selections, e.g. to compare two branches
+  state?:string
+  subtotals?:boolean
 }
+export const ALTERNATE_STATES=['A','B']
 export type WriteColumn={name:string;type:'text'|'number'|'choice';choices?:string}
 export type WriteCell={row_key:string;column:string;value:string;updated_at:string;updated_by:string}
 export type SheetObject={id:string;kind:ObjectKind;title:string;x:number;y:number;w:number;h:number;dimensions:ObjectItem[];measures:ObjectItem[];options:ObjectOptions}
 export type Sheet={id:string;title:string;position:number;objects:SheetObject[];updated_at?:string}
 export type AppSummary={id:string;name:string;description:string;updated_at:string;can_edit:boolean;tables:string[];sheets:{id:string;title:string}[];last_loaded_at:string|null}
-export type AppDetail={id:string;name:string;description:string;measures:MasterMeasure[];variables:AppVariable[];variableValues?:Record<string,string>;updated_at:string;can_edit:boolean;model:ModelTable[];sheets:Sheet[];access:AccessEntry[]|null}
+// Calculated field: a per-row expression over one table's loaded fields, used like any other field
+export type CalcField={table:string;name:string;expression:string}
+export type AppDetail={id:string;name:string;description:string;measures:MasterMeasure[];variables:AppVariable[];calc_fields?:CalcField[];variableValues?:Record<string,string>
+  // selections of the alternate states (and of the main state as "Main"), for set analysis like Sum({A} sales)
+  stateSelections?:Record<string,Selection[]>;updated_at:string;can_edit:boolean;model:ModelTable[];sheets:Sheet[];access:AccessEntry[]|null}
 export type MyAccess={admin:boolean;builder:boolean;catalogue:boolean;apps:number}
 export type Principals={roles:{id:string;label:string}[];users:{id:string;name:string;email:string}[]}
 export type Selection={key:string;label:string;node:ExprNode;values:FieldValue[]}
@@ -108,8 +118,10 @@ function fail(error:{message:string}|null){if(error)throw new Error(error.messag
 export async function loadMyAccess(client:SupabaseClient){const {data,error}=await client.rpc('bi_my_access');fail(error);return data as MyAccess}
 export async function loadApps(client:SupabaseClient){const {data,error}=await client.rpc('bi_list_apps');fail(error);return (data||[]) as AppSummary[]}
 export async function loadApp(client:SupabaseClient,id:string){const {data,error}=await client.rpc('bi_get_app',{p_app:id});fail(error);return normalizeApp(data as AppDetail)}
-export async function saveApp(client:SupabaseClient,app:{id?:string;name:string;description:string;model:ModelTable[];measures:MasterMeasure[];variables?:AppVariable[];access?:AccessEntry[]}){
-  const payload={...app,model:app.model.map(({alias,table_name,parent_alias,join_type,join_pairs})=>({alias,table_name,parent_alias,join_type,join_pairs}))}
+export async function saveApp(client:SupabaseClient,app:{id?:string;name:string;description:string;model:ModelTable[];measures:MasterMeasure[];variables?:AppVariable[];access?:AccessEntry[];calc_fields?:CalcField[]}){
+  const payload={...app,
+    calc_fields:app.calc_fields?.filter(c=>app.model.some(t=>t.alias===c.table)).map(c=>({...c,node:parseExpression(c.expression)})),
+    model:app.model.map(({alias,table_name,parent_alias,join_type,join_pairs})=>({alias,table_name,parent_alias,join_type,join_pairs}))}
   const {data,error}=await client.rpc('bi_save_app',{p:payload});fail(error);return data as string
 }
 export async function deleteApp(client:SupabaseClient,id:string){const {error}=await client.rpc('bi_delete_app',{p_app:id});fail(error)}
@@ -147,6 +159,27 @@ export function withWriteKeys(objects:SheetObject[],app:Pick<AppDetail,'model'|'
   })
 }
 
+// Bookmarks, favourites, recently opened sheets, smart search
+export type Bookmark={id:string;name:string;description:string;shared:boolean;mine:boolean;owner_name:string|null;sheet_id:string|null
+  selections:Selection[];states:Record<string,Selection[]>;variables:Record<string,string>;updated_at:string}
+export type HomeEntry={app_id:string;app_name:string;sheet_id:string;sheet_title:string;at?:string}
+export type SearchHit={table:string;field:string;values:FieldValue[];more:boolean}
+export async function loadBookmarks(client:SupabaseClient,appId:string){const {data,error}=await client.rpc('bi_list_bookmarks',{p_app:appId});fail(error);return (data||[]) as Bookmark[]}
+export async function saveBookmark(client:SupabaseClient,appId:string,bookmark:Partial<Bookmark>&{name:string}){
+  const {data,error}=await client.rpc('bi_save_bookmark',{p:{id:bookmark.id,app_id:appId,name:bookmark.name,description:bookmark.description||'',shared:Boolean(bookmark.shared),
+    sheet_id:bookmark.sheet_id||null,selections:bookmark.selections||[],states:bookmark.states||{},variables:bookmark.variables||{}}});fail(error);return data as string}
+export async function deleteBookmark(client:SupabaseClient,id:string){const {error}=await client.rpc('bi_delete_bookmark',{p_id:id});fail(error)}
+export async function loadHome(client:SupabaseClient){const {data,error}=await client.rpc('bi_my_home');fail(error);return data as {favourites:HomeEntry[];recent:HomeEntry[]}}
+export async function toggleFavourite(client:SupabaseClient,appId:string,sheetId:string){const {data,error}=await client.rpc('bi_toggle_favourite',{p_app:appId,p_sheet:sheetId});fail(error);return data as boolean}
+export async function logView(client:SupabaseClient,appId:string,sheetId:string|null){await client.rpc('bi_log_view',{p_app:appId,p_sheet:sheetId})}
+export async function searchValues(client:SupabaseClient,appId:string,text:string,selections:Selection[]){
+  const {data,error}=await client.rpc('bi_search_values',{p_app:appId,p_text:text,p_selections:selections.filter(s=>s.values.length).map(s=>({expr:s.node,values:s.values}))})
+  fail(error);return (data||[]) as SearchHit[]}
+// A bookmark keeps only selections with values, and drops states without any
+export function bookmarkState(selections:Selection[],states:Record<string,Selection[]>){
+  return {selections:selections.filter(s=>s.values.length),states:Object.fromEntries(Object.entries(states).filter(([,list])=>list.some(s=>s.values.length)))}
+}
+
 // Row access (like Qlik section access)
 export type RowRule={type:'role'|'user';principal:string;field:string;all:boolean;values:string[]}
 export type RowAccess={enabled:boolean;rules:RowRule[]}
@@ -169,7 +202,7 @@ export function describeRowAccess(access:MyRowAccess){
 }
 
 export function normalizeApp(app:AppDetail):AppDetail{
-  return {...app,measures:app.measures||[],variables:app.variables||[],model:(app.model||[]).map(table=>({...table,join_pairs:table.join_pairs||[],columns:table.columns||[]})),
+  return {...app,measures:app.measures||[],variables:app.variables||[],calc_fields:app.calc_fields||[],model:(app.model||[]).map(table=>({...table,join_pairs:table.join_pairs||[],columns:table.columns||[]})),
     sheets:(app.sheets||[]).map(sheet=>({...sheet,objects:(sheet.objects||[]).map(normalizeObject)}))}
 }
 export function normalizeObject(object:Partial<SheetObject>):SheetObject{
@@ -302,6 +335,29 @@ export function removeFromModel(model:ModelTable[],alias:string){
     ?{...item,parent_alias:removed.parent_alias,join_pairs:neighbour?suggestLinks(item.columns,neighbour.columns).filter(link=>link.likelyKey).map(link=>link.pair):[]}:item)
 }
 
+// Problems with a calculated field (null when fine). Its expression may only use its own table's
+// loaded fields and no aggregations.
+export function calcFieldProblem(field:CalcField,all:CalcField[],model:ModelTable[]):string|null{
+  const table=model.find(t=>t.alias===field.table)
+  if(!table)return 'Choose a table'
+  if(!/^[a-z][a-z0-9_]{0,62}$/.test(field.name))return 'Name: start with a letter; use a–z, 0–9 and _'
+  if(table.columns.some(c=>c.name===field.name&&c.type!=='calculated'))return `${field.table} already has a field named ${field.name}`
+  if(all.filter(c=>c.table===field.table&&c.name===field.name).length>1)return 'Two calculated fields have this name'
+  if(!field.expression.trim())return 'Enter an expression'
+  try{
+    const node=parseExpression(field.expression)
+    const problem=checkFields(node,[{alias:table.alias,columns:table.columns.filter(c=>c.type!=='calculated')}])
+    if(problem)return `${problem} (calculated fields use their own table's fields)`
+    if(hasAggregation(node))return 'Calculated fields work per row; use aggregations such as Sum() in measures'
+  }catch(error){return (error as Error).message}
+  return null
+}
+// The model with valid calculated fields added to their tables' columns (for pickers and checks)
+export function withCalcFields(model:ModelTable[],calc:CalcField[]):ModelTable[]{
+  return model.map(table=>({...table,columns:[...table.columns.filter(c=>c.type!=='calculated'),
+    ...calc.filter(c=>c.table===table.alias&&!calcFieldProblem(c,calc,model)).map(c=>({name:c.name,type:'calculated'}))]}))
+}
+
 // ---------------------------------------------------------------------------
 // Selections (Qlik-style: clicking values filters every object in the app)
 // ---------------------------------------------------------------------------
@@ -329,16 +385,19 @@ export function sameValue(a:FieldValue,b:FieldValue){
 // ---------------------------------------------------------------------------
 // Query specs
 // ---------------------------------------------------------------------------
+export type DrillInfo={level:number;levels:{label:string;key:string;node:ExprNode}[]}
 export type CompiledObject={
-  dimensions:{node:ExprNode;label:string;selectKey:string;format?:NumberFormat}[]
+  dimensions:{node:ExprNode;label:string;selectKey:string;format?:NumberFormat;drill?:DrillInfo}[]
   measures:{node:ExprNode;label:string;format?:NumberFormat}[]
   conditions:ExprNode[]
   // table and pivot cell colours: one extra query column each, after the measures
   styles:{column:number;kind:'background'|'color';node:ExprNode}[]
   errors:string[]
+  // other states' selections, sent with every query so sets like {A} work
+  states?:Record<string,{expr:ExprNode;values:FieldValue[]}[]>
 }
 
-export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'measures'>&{variableValues?:Record<string,string>},extraConditions:ExprNode[]=[]):CompiledObject{
+export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'measures'>&{variableValues?:Record<string,string>;stateSelections?:Record<string,Selection[]>},extraConditions:ExprNode[]=[],selections:Selection[]=[]):CompiledObject{
   const errors:string[]=[]
   const info=KIND_INFO[object.kind]
   const parse=(text:string,where:string)=>{
@@ -351,9 +410,18 @@ export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'mea
   }
   const dimensions:CompiledObject['dimensions']=[]
   object.dimensions.forEach((item,i)=>{
-    const node=parse(item.expr,`Dimension ${i+1}`);if(!node)return
-    if(hasAggregation(node)){errors.push(`Dimension ${i+1}: dimensions cannot use aggregations such as Sum() or Count(); put those in a measure`);return}
-    dimensions.push({node,label:item.label||(node.t==='field'?humanize(node.name):item.expr),selectKey:selectionKey(app.model,node)||'expr:'+JSON.stringify(node),format:item.format})
+    const levelTexts=[item.expr,...(item.drill||[]).filter(text=>text.trim())]
+    const levels:DrillInfo['levels']=[]
+    for(const [k,text] of levelTexts.entries()){
+      const node=parse(text,k?`Dimension ${i+1}, drill level ${k+1}`:`Dimension ${i+1}`);if(!node)return
+      if(hasAggregation(node)){errors.push(`Dimension ${i+1}: dimensions cannot use aggregations such as Sum() or Count(); put those in a measure`);return}
+      levels.push({node,label:k===0&&item.label?item.label:(node.t==='field'?humanize(node.name):text),key:selectionKey(app.model,node)||'expr:'+JSON.stringify(node)})
+    }
+    // drill down: move on while exactly one value of the level is selected
+    let level=0
+    while(level<levels.length-1&&selections.find(sel=>sel.key===levels[level].key)?.values.length===1)level++
+    const current=levels[level]
+    dimensions.push({node:current.node,label:current.label,selectKey:current.key,format:item.format,drill:levels.length>1?{level,levels}:undefined})
   })
   const measures:CompiledObject['measures']=[]
   object.measures.forEach((item,i)=>{
@@ -384,7 +452,11 @@ export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'mea
     if(object.kind==='table'&&!object.dimensions.length&&!object.measures.length)errors.push('Add a dimension or a measure.')
     if((object.kind==='bar'||object.kind==='line'||object.kind==='radar')&&object.dimensions.length===2&&object.measures.length>1)errors.push('With two dimensions, use one measure.')
   }
-  return {dimensions,measures,conditions,styles,errors}
+  // send other states' selections only when a measure's set refers to a state, e.g. Sum({A} sales)
+  const usesState=(node:ExprNode):boolean=>node.t==='fn'?Boolean(node.set&&node.set.base!=='$'&&node.set.base!=='1')||node.args.some(usesState)
+    :node.t==='bin'?usesState(node.l)||usesState(node.r):node.t==='neg'||node.t==='not'?usesState(node.e):false
+  const states=!measures.some(m=>usesState(m.node))&&!styles.some(st=>usesState(st.node))?{}:Object.fromEntries(Object.entries(app.stateSelections||{}).map(([name,list])=>[name,list.filter(sel=>sel.values.length).map(sel=>({expr:sel.node,values:sel.values}))]))
+  return {dimensions,measures,conditions,styles,errors,states:Object.keys(states).length?states:undefined}
 }
 
 export function buildSpec(compiled:CompiledObject,selections:Selection[],options:{
@@ -397,6 +469,7 @@ export function buildSpec(compiled:CompiledObject,selections:Selection[],options
     measures:[...meas.map(item=>({expr:item.node})),...(options.styles?compiled.styles.map(style=>({expr:style.node})):[])],
     selections:selections.filter(item=>item.key!==options.ignoreKey&&item.values.length).map(item=>({expr:item.node,values:item.values})),
     conditions:compiled.conditions,
+    ...(compiled.states?{states:compiled.states}:{}),
     sort:options.sort||[],
     limit:options.limit??1000,
     offset:options.offset??0,

@@ -11,7 +11,8 @@ import {parseExpression} from '../src/biExpression.ts'
 //  3 | Centurion | IT0003 |  1  |  10.00 | 2026-03-15 | 'GRV-2026-0042'
 const ONE='id = 1', TWO='id = 2', THREE='id = 3'
 
-// m: measure (aggregate over all rows unless cond); d: dimension value (distinct rows); expect: rows
+// m: measure (aggregate over all rows unless cond; or a list); d: dimension value (distinct rows);
+// dims: chart dimensions for m; sel: selections {field: [values]}; states: {A: {field: [values]}}; expect: rows
 export const CASES=[
   // aggregation
   {m:'Sum(qty * price)',expect:[[462.5]]},
@@ -72,6 +73,47 @@ export const CASES=[
   {d:"ColorMix1(0.5, 'red', '#ffffff')",cond:ONE,expect:[[null]]},
   {d:"not IsNull(note) and qty < 3",cond:ONE,expect:[[true]]},
   {d:'1 + 2 * 3 // comment', expect:[[7]]},
+  {d:'RangeAvg(1, null, 3)',expect:[[2]]},{d:'RangeCount(1, null, 3)',expect:[[2]]},
+  // set analysis
+  {m:'Sum(qty)',sel:{branch:['Pretoria']},expect:[[5]]},
+  {m:'Sum({1} qty)',sel:{branch:['Pretoria']},expect:[[8]]},
+  {m:'Sum({$} qty)',sel:{branch:['Pretoria']},expect:[[5]]},
+  {m:"Sum({<branch={'Centurion'}>} qty)",sel:{branch:['Pretoria']},expect:[[3]]},
+  {m:'Sum({<branch=>} qty)',sel:{branch:['Pretoria']},expect:[[8]]},
+  {m:"Sum({<branch+={'Centurion'}>} qty)",sel:{branch:['Pretoria']},expect:[[8]]},
+  {m:"Sum({<branch-={'Centurion'}>} qty)",expect:[[5]]},
+  {m:'Sum({<branch*={"cent*"}>} qty)',sel:{branch:['Centurion','Pretoria']},expect:[[3]]},
+  {m:'Sum({<qty={">=2"}>} qty)',expect:[[7]]},{m:'Sum({<qty={">=2<=4"}>} qty)',expect:[[2]]},
+  {m:'Count({<code={"it*1"}>} code)',expect:[[1]]},{m:'Count({<code={}>} code)',expect:[[0]]},
+  {m:"Sum({<d={\">=$(=Date('2026-10-01'))\"}>} qty)",expect:[[7]]},
+  {m:"Sum({<branch={$(=Capitalize('pretoria'))}>} qty)",expect:[[5]]},
+  {m:'Sum({<qty={2, 5}>} qty)',expect:[[7]]},{m:'Count({1} DISTINCT branch)',sel:{branch:['Pretoria']},expect:[[2]]},
+  {m:['Count(*)','Count({1} *)'],sel:{branch:['Pretoria']},expect:[[1,3]]},
+  {dims:['branch'],m:'Sum({1} qty)',sel:{branch:['Pretoria']},expect:[['Centurion',3],['Pretoria',5]]},
+  {dims:['branch'],m:['Sum(qty)','Sum({1} qty)'],sel:{branch:['Pretoria']},expect:[['Centurion',null,3],['Pretoria',5,5]]},
+  {m:'Sum({A} qty)',states:{A:{branch:['Centurion']}},expect:[[3]]},
+  {m:'Sum({A<code={"IT0003"}>} qty) + Sum(qty)',states:{A:{branch:['Centurion']}},sel:{branch:['Pretoria']},expect:[[6]]},
+  // Aggr
+  {m:'Avg(Aggr(Sum(qty), branch))',expect:[[4]]},{m:'Max(Aggr(Sum(qty * price), branch))',expect:[[252.5]]},
+  {m:'Count(Aggr(If(Sum(qty) > 2, 1), code))',expect:[[1]]},{m:'Sum(Aggr(Max(qty), branch, code))',expect:[[8]]},
+  {m:'Median(Aggr(Sum(qty), code))',expect:[[2]]},{m:'Round(StDev(Aggr(Sum(qty), code)), 4)',expect:[[2.0817]]},
+  {m:'Min(Aggr(Sum(qty), branch))',expect:[[3]]},
+  {dims:['branch'],m:'Avg(Aggr(Sum(qty), code))',expect:[['Centurion',1.5],['Pretoria',5]]},
+  {m:['Sum({1} qty)','Avg(Aggr(Sum(qty), branch))'],sel:{branch:['Pretoria']},expect:[[8,5]]},
+  // chart (inter-record) functions: rows in dimension order
+  {dims:['code'],m:'Above(Sum(qty))',expect:[['IT0001',null],['IT0002',2],['IT0003',5]]},
+  {dims:['code'],m:'Above(Sum(qty), 2)',expect:[['IT0001',null],['IT0002',null],['IT0003',2]]},
+  {dims:['code'],m:'Below(Sum(qty))',expect:[['IT0001',5],['IT0002',1],['IT0003',null]]},
+  {dims:['code'],m:'RangeSum(Above(Sum(qty), 0, RowNo()))',expect:[['IT0001',2],['IT0002',7],['IT0003',8]]},
+  {dims:['code'],m:'RangeAvg(Above(Sum(qty), 0, 2))',expect:[['IT0001',2],['IT0002',3.5],['IT0003',3]]},
+  {dims:['code'],m:'RangeMax(Above(Sum(qty), 0, 2))',expect:[['IT0001',2],['IT0002',5],['IT0003',5]]},
+  {dims:['code'],m:'RangeMin(Above(Sum(qty), 0, 2))',expect:[['IT0001',2],['IT0002',2],['IT0003',1]]},
+  {dims:['code'],m:'RangeCount(Above(Sum(qty), 1, 2))',expect:[['IT0001',0],['IT0002',1],['IT0003',2]]},
+  {dims:['code'],m:'RangeSum(Below(Sum(qty), 0, NoOfRows()))',expect:[['IT0001',8],['IT0002',6],['IT0003',1]]},
+  {dims:['code'],m:['RowNo()','NoOfRows()','Top(Sum(qty))','Bottom(Sum(qty))'],expect:[['IT0001',1,3,2,1],['IT0002',2,3,2,1],['IT0003',3,3,2,1]]},
+  {dims:['code'],m:'Sum(qty) - Above(Sum(qty))',expect:[['IT0001',null],['IT0002',3],['IT0003',-4]]},
+  {dims:['branch','code'],m:['RowNo()','RowNo(TOTAL)','Above(Sum(qty))','Above(TOTAL Sum(qty))'],
+    expect:[['Centurion','IT0001',1,1,null,null],['Centurion','IT0003',2,2,2,2],['Pretoria','IT0002',1,3,null,1]]},
 ]
 
 const sql=s=>s.replace(/'/g,"''")
@@ -99,11 +141,17 @@ set local role authenticated;
 set local request.jwt.claims='{"sub":"52000000-0000-0000-0000-000000000001","role":"authenticated"}';
 select set_config('fn_test.app', public.bi_save_app('{"name":"Function tests","model":[{"alias":"lines","table_name":"fn_lines"}]}'::jsonb)::text, true) is not null as app_created;
 `]
+const selections=sel=>Object.entries(sel||{}).map(([field,values])=>({expr:{t:'field',name:field},values}))
 for(const c of CASES){
-  const text=c.m||c.d
-  const node=parseExpression(text)
-  const spec={dimensions:c.d?[{expr:node}]:[],measures:c.m?[{expr:node}]:[],conditions:c.cond?[parseExpression(c.cond)]:[],limit:10}
-  lines.push(`select is(public.bi_query(current_setting('fn_test.app')::uuid, '${sql(JSON.stringify(spec))}')->'rows', '${sql(JSON.stringify(c.expect))}'::jsonb, '${sql(text+(c.cond?`  [where ${c.cond}]`:''))}');`)
+  const measures=c.m?(Array.isArray(c.m)?c.m:[c.m]):[]
+  const text=c.d||measures.join(' | ')
+  const dims=c.d?[c.d]:c.dims||[]
+  const spec={dimensions:dims.map(d=>({expr:parseExpression(d)})),measures:measures.map(m=>({expr:parseExpression(m)})),
+    conditions:c.cond?[parseExpression(c.cond)]:[],selections:selections(c.sel),limit:10}
+  if(c.states)spec.states=Object.fromEntries(Object.entries(c.states).map(([name,sel])=>[name,selections(sel)]))
+  if(dims.length&&measures.length)spec.sort=dims.map((_,index)=>({index,desc:false}))
+  const label=text+(c.dims?`  [by ${c.dims.join(', ')}]`:'')+(c.cond?`  [where ${c.cond}]`:'')+(c.sel?`  [selected ${JSON.stringify(c.sel)}]`:'')+(c.states?`  [states ${JSON.stringify(c.states)}]`:'')
+  lines.push(`select is(public.bi_query(current_setting('fn_test.app')::uuid, '${sql(JSON.stringify(spec))}')->'rows', '${sql(JSON.stringify(c.expect))}'::jsonb, '${sql(label)}');`)
 }
 // errors the database must raise even if a browser skipped the parser's checks
 const bad=[
@@ -112,6 +160,15 @@ const bad=[
   ['{"dimensions":[{"expr":{"t":"fn","name":"pg_read_file","args":[{"t":"str","v":"/etc/passwd"}]}}]}','22023','functions outside the catalogue are rejected'],
   ['{"dimensions":[{"expr":{"t":"fn","name":"concat","args":[{"t":"field","name":"code"}]}}]}','22023','aggregations are rejected in dimensions'],
   ['{"measures":[{"expr":{"t":"fn","name":"sum","args":[{"t":"fn","name":"only","args":[{"t":"field","name":"qty"}]}]}}]}','22023','nested aggregations are rejected'],
+  ['{"dimensions":[{"expr":{"t":"fn","name":"rowno","args":[]}}]}','22023','chart functions are rejected in dimensions'],
+  ['{"measures":[{"expr":{"t":"fn","name":"aggr","args":[{"t":"fn","name":"sum","args":[{"t":"field","name":"qty"}]},{"t":"field","name":"branch"}]}}]}','22023','Aggr() must be inside an aggregation'],
+  ['{"measures":[{"expr":{"t":"fn","name":"sum","args":[{"t":"fn","name":"above","args":[{"t":"fn","name":"sum","args":[{"t":"field","name":"qty"}]}]}]}}]}','22023','chart functions cannot be inside an aggregation'],
+  ['{"measures":[{"expr":{"t":"fn","name":"above","args":[{"t":"fn","name":"sum","args":[{"t":"field","name":"qty"}]},{"t":"num","v":0},{"t":"num","v":3}]}}]}','22023','Above() with a count needs a Range function'],
+  ['{"measures":[{"expr":{"t":"fn","name":"upper","total":true,"args":[{"t":"str","v":"a"}]}}]}','22023','TOTAL only where allowed'],
+  ['{"measures":[{"expr":{"t":"fn","name":"sum","set":{"base":"Z"},"args":[{"t":"field","name":"qty"}]}}]}','22023','unknown states are rejected'],
+  ['{"measures":[{"expr":{"t":"fn","name":"sum","set":{"base":"$","mods":[{"field":{"t":"field","name":"qty"},"op":"; drop","values":[{"v":1}]}]},"args":[{"t":"field","name":"qty"}]}}]}','22023','set operators are checked'],
+  ['{"measures":[{"expr":{"t":"fn","name":"sum","set":{"base":"$","mods":[{"field":{"t":"field","name":"qty"},"op":"=","values":[{"e":{"t":"field","name":"price"}}]}]},"args":[{"t":"field","name":"qty"}]}}]}','22023','set values cannot refer to fields'],
+  ['{"measures":[{"expr":{"t":"fn","name":"upper","set":{"base":"1"},"args":[{"t":"str","v":"a"}]}}]}','22023','only aggregations take a set'],
 ]
 for(const [spec,code,desc] of bad)lines.push(`select throws_ok($q$select public.bi_query(current_setting('fn_test.app')::uuid, '${spec}')$q$, '${code}', null, '${desc}');`)
 lines.push(`select is(public.bi_query(current_setting('fn_test.app')::uuid, '${sql(JSON.stringify({dimensions:[{expr:parseExpression("WildMatch(code, '%')")}],limit:5}))}')->'rows', '[[0]]'::jsonb, 'a % in a WildMatch pattern is literal, not a wildcard');`)

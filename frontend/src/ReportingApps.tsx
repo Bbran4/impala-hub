@@ -3,15 +3,15 @@ import {
   ArrowLeft,BarChart3,Palette,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
   Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,Hash,ChartColumnIncreasing,ScatterChart,Target,ListFilter,ChartNoAxesColumn,LayoutDashboard,
   BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,Variable,SlidersHorizontal,CalendarDays,MousePointerClick,Menu,PanelTop,Columns2,Grid2x2,
-  Image as ImageIcon,Mail,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
+  Image as ImageIcon,Calculator,History,ListTree,Mail,Star,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
 } from 'lucide-react'
 import {supabase} from './supabase'
-import {expandVariables,type AppVariable,type MasterMeasure} from './biExpression'
+import {expandVariables,type AppVariable,type ExprNode,type MasterMeasure} from './biExpression'
 import {checkExpression,ExpressionInput,type ExpressionContext} from './biExpressionEditor'
 import {
-  GRID_COLS,KIND_INFO,ROW_HEIGHT,compileObject,deleteApp,deleteSheet,describeRowAccess,displayValue,freeSpot,loadApp,loadApps,loadMyRowAccess,loadPrincipals,withWriteKeys,
-  CONTAINER_KINDS,NO_DATA_KINDS,columnOrder,fitOptions,isContained,modelProblems,moveColumn,newId,removeObject,setContainer,normalizeObject,orderedModel,relinkModel,removeFromModel,rerootModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
-  type AccessEntry,type AppDetail,type AppSummary,type ModelTable,type NumberFormat,type ObjectKind,
+  GRID_COLS,KIND_INFO,ROW_HEIGHT,calcFieldProblem,compileObject,deleteApp,deleteSheet,loadHome,logView,sameValue,toggleFavourite,withCalcFields,describeRowAccess,displayValue,freeSpot,loadApp,loadApps,loadMyRowAccess,loadPrincipals,withWriteKeys,
+  ALTERNATE_STATES,CONTAINER_KINDS,NO_DATA_KINDS,columnOrder,fitOptions,isContained,modelProblems,moveColumn,newId,removeObject,setContainer,normalizeObject,orderedModel,relinkModel,removeFromModel,rerootModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
+  type AccessEntry,type AppDetail,type Bookmark,type CalcField,type FieldValue,type HomeEntry,type SearchHit,type AppSummary,type ModelTable,type NumberFormat,type ObjectKind,
   type Principals,type Selection,type Sheet,type SheetObject,
 } from './biApps'
 import {loadDataTables,ago,type DataTable} from './reportingData'
@@ -20,7 +20,8 @@ import {ModelDiagram} from './biModelViewer'
 import {modelLinks} from './biModelGraph'
 import {type AppRuntime} from './biChartKit'
 import RowAccessCard from './biRowAccess'
-import ReportEmails from './biReportEmails'
+import ReportEmails,{MyReportEmails} from './biReportEmails'
+import {BookmarkMenu,ExportMenu,SmartSearch} from './biEveryday'
 import './reportingApps.css'
 
 type Props={canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
@@ -43,22 +44,34 @@ const FORMATS:[NumberFormat,string][]=[['auto','Automatic'],['number','Number'],
 
 export default function ReportingApps({canBuild,setNotice,setError}:Props){
   const [openId,setOpenId]=useState<string|null>(()=>{try{return sessionStorage.getItem('bi-open-app')}catch{return null}})
+  const [openSheet,setOpenSheet]=useState<string|null>(null)
   const [creating,setCreating]=useState(false)
   useEffect(()=>{try{openId?sessionStorage.setItem('bi-open-app',openId):sessionStorage.removeItem('bi-open-app')}catch{/* storage unavailable */}},[openId])
+  const back=useCallback(()=>{setOpenId(null);setOpenSheet(null)},[])
   if(creating)return <AppSettings app={null} onClose={()=>setCreating(false)} onSaved={id=>{setCreating(false);setOpenId(id)}} setNotice={setNotice} setError={setError}/>
-  if(openId)return <AppView appId={openId} canBuild={canBuild} onBack={()=>setOpenId(null)} setNotice={setNotice} setError={setError}/>
-  return <AppHub canBuild={canBuild} onOpen={setOpenId} onCreate={()=>setCreating(true)} setError={setError}/>
+  if(openId)return <AppView key={openId} appId={openId} initialSheet={openSheet} canBuild={canBuild} onBack={back} setNotice={setNotice} setError={setError}/>
+  return <AppHub canBuild={canBuild} onOpen={(id,sheet)=>{setOpenSheet(sheet||null);setOpenId(id)}} onCreate={()=>setCreating(true)} setError={setError}/>
 }
 
 // ---------------------------------------------------------------------------
 // Hub
 // ---------------------------------------------------------------------------
-function AppHub({canBuild,onOpen,onCreate,setError}:{canBuild:boolean;onOpen:(id:string)=>void;onCreate:()=>void;setError:(m:string)=>void}){
+function AppHub({canBuild,onOpen,onCreate,setError}:{canBuild:boolean;onOpen:(id:string,sheet?:string)=>void;onCreate:()=>void;setError:(m:string)=>void}){
   const [apps,setApps]=useState<AppSummary[]|null>(null)
-  useEffect(()=>{if(supabase)loadApps(supabase).then(setApps).catch(error=>{setError((error as Error).message);setApps([])})},[setError])
+  const [home,setHome]=useState<{favourites:HomeEntry[];recent:HomeEntry[]}|null>(null)
+  useEffect(()=>{if(!supabase)return
+    loadApps(supabase).then(setApps).catch(error=>{setError((error as Error).message);setApps([])})
+    loadHome(supabase).then(setHome).catch(()=>setHome(null))},[setError])
   const now=new Date()
+  const shortcut=(entry:HomeEntry,kind:'fav'|'recent')=><button key={kind+entry.sheet_id} className="bi-shortcut" onClick={()=>onOpen(entry.app_id,entry.sheet_id)}>
+    {kind==='fav'?<Star size={15} className="bi-star on"/>:<History size={15}/>}<span><b>{entry.sheet_title}</b><small>{entry.app_name}{entry.at?` · ${ago(entry.at,now).toLowerCase()}`:''}</small></span></button>
   return <section className="rfq-workspace">
     <div className="sd-session-bar"><LayoutGrid size={18}/><span>Apps</span>{canBuild&&<button className="primary" onClick={onCreate}><Plus size={15}/>Create app</button>}</div>
+    {home&&(()=>{const recent=home.recent.filter(r=>!home.favourites.some(f=>f.sheet_id===r.sheet_id)).slice(0,6)
+      return (home.favourites.length>0||recent.length>0)&&<div className="bi-home">
+        {home.favourites.length>0&&<div><div className="bi-section-title"><Star size={13}/>Favourites</div><div className="bi-shortcuts">{home.favourites.map(f=>shortcut(f,'fav'))}</div></div>}
+        {recent.length>0&&<div><div className="bi-section-title"><History size={13}/>Recently opened</div><div className="bi-shortcuts">{recent.map(r=>shortcut(r,'recent'))}</div></div>}
+      </div>})()}
     {apps&&!apps.length&&<div className="rfq-empty-card"><LayoutGrid size={26}/><h3>No apps yet</h3><p>{canBuild?'Create an app: choose the loaded ERP tables it uses, link them, then build dashboard sheets.':'No apps have been shared with you yet. Ask an administrator or report builder.'}</p></div>}
     <div className="bi-app-grid">{(apps||[]).map(app=><button key={app.id} className="bi-app-card" onClick={()=>onOpen(app.id)}>
       <div className="bi-app-card-icon"><BarChart3 size={22}/></div>
@@ -71,14 +84,18 @@ function AppHub({canBuild,onOpen,onCreate,setError}:{canBuild:boolean;onOpen:(id
 // ---------------------------------------------------------------------------
 // App view: sheets, selections, editing
 // ---------------------------------------------------------------------------
-function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBuild:boolean;onBack:()=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
+function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:string;initialSheet?:string|null;canBuild:boolean;onBack:()=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
   const [app,setApp]=useState<AppDetail|null>(null)
-  const [sheetId,setSheetId]=useState<string|null>(null)
+  const [sheetId,setSheetId]=useState<string|null>(initialSheet||null)
+  const [favourites,setFavourites]=useState<Set<string>>(new Set())
   const [selections,setSelections]=useState<Selection[]>([])
+  // alternate states (Qlik): objects set to state A or B have their own selections
+  const [stateSelections,setStateSelections]=useState<Record<string,Selection[]>>({})
   const [editing,setEditing]=useState<Sheet|null>(null)
   const [selectedObject,setSelectedObject]=useState<string|null>(null)
   const [settings,setSettings]=useState(false)
   const [reports,setReports]=useState(false)
+  const [myEmails,setMyEmails]=useState(false)
   const [myRows,setMyRows]=useState<string|null>(null)
   const [saving,setSaving]=useState(false)
   const [version,setVersion]=useState('')
@@ -90,6 +107,7 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
     }catch(error){setError((error as Error).message);onBack()}
   },[appId,onBack,setError])
   useEffect(()=>{void load()},[load])
+  useEffect(()=>{if(supabase)loadHome(supabase).then(home=>setFavourites(new Set(home.favourites.filter(f=>f.app_id===appId).map(f=>f.sheet_id)))).catch(()=>{})},[appId])
   // viewers: what row access limits them to
   useEffect(()=>{if(canBuild||!supabase)return;loadMyRowAccess(supabase,appId).then(access=>setMyRows(describeRowAccess(access))).catch(()=>setMyRows(null))},[appId,canBuild])
   // pick up fresh data from the sync agent every minute
@@ -101,7 +119,26 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
   const [variableValues,setVariableValues]=useState<Record<string,string>>({})
   const defaults=useMemo(()=>Object.fromEntries((app?.variables||[]).map(v=>[v.name,v.value])),[app?.variables])
   const values=useMemo(()=>({...defaults,...Object.fromEntries(Object.entries(variableValues).filter(([name])=>name in defaults))}),[defaults,variableValues])
-  const viewApp=useMemo(()=>app?{...app,variableValues:values}:null,[app,values])
+  const viewApp=useMemo(()=>app?{...app,variableValues:values,stateSelections:{Main:selections,...stateSelections}}:null,[app,values,selections,stateSelections])
+  useEffect(()=>{if(supabase&&app&&sheetId&&!editing)void logView(supabase,app.id,sheetId).catch(()=>{})},[app?.id,sheetId,editing])// eslint-disable-line react-hooks/exhaustive-deps
+  function applyBookmark(bookmark:Bookmark){
+    setSelections(bookmark.selections||[]);setStateSelections(bookmark.states||{});setVariableValues(bookmark.variables||{})
+    if(bookmark.sheet_id&&app?.sheets.some(item=>item.id===bookmark.sheet_id))setSheetId(bookmark.sheet_id)
+    setNotice(`Bookmark "${bookmark.name}" applied.`)
+  }
+  function pickSearch(hit:SearchHit,value:FieldValue){
+    const key=`${hit.table}.${hit.field}`
+    const label=hit.field.replace(/_/g,' ').replace(/^./,c=>c.toUpperCase())
+    setSelections(current=>current.some(item=>item.key===key&&item.values.some(v=>sameValue(v,value)))?current:toggleSelection(current,{key,label,node:{t:'field',table:hit.table,name:hit.field}},value,true))
+  }
+  async function favourite(){
+    if(!supabase||!app||!sheetId)return
+    try{const on=await toggleFavourite(supabase,app.id,sheetId);setFavourites(current=>{const next=new Set(current);if(on)next.add(sheetId);else next.delete(sheetId);return next})
+      setNotice(on?'Added to your favourites on the Reporting home page.':'Removed from your favourites.')}
+    catch(error){setError((error as Error).message)}
+  }
+  const onStateSelect=(state:string,dimension:Parameters<SelectFn>[0],value:Parameters<SelectFn>[1],additive:boolean)=>{
+    if(!editing)setStateSelections(current=>({...current,[state]:toggleSelection(current[state]||[],dimension,value,additive)}))}
   const runtime=useMemo<AppRuntime|undefined>(()=>app&&sheet?{
     objects:sheet.objects,sheets:app.sheets.map(item=>({id:item.id,title:item.title})),sheetId:sheet.id,editing:Boolean(editing),
     variables:app.variables,values,
@@ -138,6 +175,7 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
   }
 
   if(!app)return <section className="rfq-workspace"><div className="sd-session-bar"><span>Loading app…</span></div></section>
+  if(myEmails)return <MyReportEmails app={app} sheetId={sheet?.id||null} selections={selections} onClose={()=>setMyEmails(false)} setNotice={setNotice} setError={setError}/>
   if(reports)return <ReportEmails app={app} onClose={()=>setReports(false)} setNotice={setNotice} setError={setError}/>
   if(settings)return <AppSettings app={app} onClose={()=>setSettings(false)} onSaved={async()=>{setSettings(false);setSelections([]);await load()}} onDeleted={onBack} setNotice={setNotice} setError={setError}/>
 
@@ -145,6 +183,14 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
     <div className="bi-app-bar">
       <button className="secondary" onClick={()=>editing?cancelEditing():onBack()}><ArrowLeft size={15}/>{editing?'Stop editing':'Apps'}</button>
       <div className="bi-app-title"><b>{app.name}</b>{app.description&&<small>{app.description}</small>}</div>
+      {!editing&&<div className="bi-app-tools">
+        <SmartSearch app={app} selections={selections} onPick={pickSearch}/>
+        <BookmarkMenu app={app} canBuild={canBuild} sheetId={sheet?.id||null} selections={selections} states={stateSelections} variables={variableValues}
+          onApply={applyBookmark} setNotice={setNotice} setError={setError}/>
+        {sheet&&<button className={`icon-button bi-fav ${favourites.has(sheet.id)?'on':''}`} title={favourites.has(sheet.id)?'Remove from favourites':'Add this sheet to your favourites'} aria-pressed={favourites.has(sheet.id)} onClick={()=>void favourite()}><Star size={16}/></button>}
+        <button className="secondary" onClick={()=>setMyEmails(true)} title="Get this sheet by email, or an alert"><Mail size={15}/>Email me</button>
+        {sheet&&<ExportMenu app={viewApp||app} sheet={sheet} selectionsFor={object=>object.options.state?stateSelections[object.options.state]||[]:selections} setError={setError}/>}
+      </div>}
       {canBuild&&!editing&&<div className="bi-app-actions">
         <button className="secondary" onClick={()=>setSettings(true)}><Settings2 size={15}/>Data model &amp; sharing</button>
         <button className="secondary" onClick={()=>setReports(true)}><Mail size={15}/>Report emails</button>
@@ -165,6 +211,8 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
 
     {myRows&&!editing&&<div className="bi-my-rows"><ShieldCheck size={14}/>Your data in this app: {myRows}</div>}
     {!editing&&<SelectionsBar selections={selections} onClear={key=>setSelections(current=>key?current.filter(item=>item.key!==key):[])}/>}
+    {!editing&&Object.entries(stateSelections).filter(([,list])=>list.length).map(([state,list])=><SelectionsBar key={state} state={state} selections={list}
+      onClear={key=>setStateSelections(current=>({...current,[state]:key?(current[state]||[]).filter(item=>item.key!==key):[]}))}/>)}
 
     {!sheet&&<div className="rfq-empty-card"><LayoutGrid size={26}/><h3>No sheets yet</h3><p>{canBuild?'Add a sheet, then add charts, tables and filters to it.':'This app has no sheets yet.'}</p></div>}
     {sheet&&<div className={`bi-workarea ${editing?'editing':''}`}>
@@ -174,6 +222,7 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
           options:kind==='text'||kind==='textimage'?{text:''}:kind==='button'?{action:'clear',text:'Clear selections'}:{}})
         setEditing({...editing,objects:[...editing.objects,object]});setSelectedObject(object.id)}}/>}
       <SheetCanvas sheet={sheet} app={viewApp||app} runtime={runtime} editing={Boolean(editing)} selections={selections} onSelect={onSelect} version={version}
+        stateSelections={stateSelections} onStateSelect={onStateSelect}
         selectedObject={selectedObject} onPick={setSelectedObject}
         onChange={objects=>editing&&setEditing({...editing,objects})}/>
       {editing&&<SidePanel app={viewApp||app} sheet={editing} objectId={selectedObject} onPick={setSelectedObject}
@@ -186,8 +235,8 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
   </section>
 }
 
-function SelectionsBar({selections,onClear}:{selections:Selection[];onClear:(key?:string)=>void}){
-  return <div className="bi-selections">
+function SelectionsBar({selections,onClear,state}:{selections:Selection[];onClear:(key?:string)=>void;state?:string}){
+  return <div className={`bi-selections ${state?'bi-state-bar':''}`}>{state&&<span className={`bi-state-tag state-${state}`}>Compare {state}</span>}
     {!selections.length?<span className="bi-muted">No selections. Click a bar, slice, row or filter value to filter every chart in this app; Ctrl+click adds to a selection.</span>
       :<>{selections.map(item=><span key={item.key} className="bi-chip"><b>{item.label}</b>{item.values.length<=3?item.values.map(value=>displayValue(value)).join(', '):`${item.values.length} of values`}
         <button aria-label={`Clear ${item.label}`} onClick={()=>onClear(item.key)}><X size={12}/></button></span>)}
@@ -208,8 +257,9 @@ function ObjectPalette({onAdd}:{onAdd:(kind:ObjectKind)=>void}){
 // ---------------------------------------------------------------------------
 // Sheet canvas (24-column grid; drag the header to move, the corner to resize)
 // ---------------------------------------------------------------------------
-export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange}:{
+export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange,stateSelections={},onStateSelect,extraConditions}:{
   sheet:Sheet;app:AppDetail;runtime?:AppRuntime;editing:boolean;selections:Selection[];onSelect:SelectFn;version:string
+  stateSelections?:Record<string,Selection[]>;onStateSelect?:(state:string,...args:Parameters<SelectFn>)=>void;extraConditions?:ExprNode[]
   selectedObject:string|null;onPick:(id:string|null)=>void;onChange:(objects:SheetObject[])=>void
 }){
   const ref=useRef<HTMLDivElement>(null)
@@ -252,9 +302,11 @@ export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,versi
         onClick={()=>editing&&onPick(object.id)}>
         <div className="bi-object-inner">
           {(object.title||editing)&&<div className={`bi-object-head ${editing?'handle':''}`} onPointerDown={event=>start(event,object,'move')}>
-            {editing&&<GripVertical size={14}/>}<span>{object.title?(editing?object.title:titleText(object.title,runtime?.values)):(editing?<i className="bi-muted"><Icon size={13}/> {KIND_INFO[object.kind].label}</i>:'')}</span>
+            {editing&&<GripVertical size={14}/>}{object.options.state&&<span className={`bi-state-tag state-${object.options.state}`} title={`Compare ${object.options.state}: own selections`}>{object.options.state}</span>}<span>{object.title?(editing?object.title:titleText(object.title,runtime?.values)):(editing?<i className="bi-muted"><Icon size={13}/> {KIND_INFO[object.kind].label}</i>:'')}</span>
           </div>}
-          <div className="bi-object-body"><ObjectBody object={object} app={app} runtime={runtime} selections={editing?[]:selections} onSelect={onSelect} dataVersion={version}/></div>
+          <div className="bi-object-body"><ObjectBody object={object} app={app} runtime={runtime} dataVersion={version} extraConditions={extraConditions}
+            selections={editing?[]:object.options.state?stateSelections[object.options.state]||[]:selections}
+            onSelect={object.options.state&&onStateSelect?(dimension,value,additive)=>onStateSelect(object.options.state!,dimension,value,additive):onSelect}/></div>
         </div>
         {editing&&<div className="bi-resize" onPointerDown={event=>start(event,object,'resize')} title="Drag to resize"/>}
       </div>})}
@@ -290,6 +342,13 @@ function SidePanel({app,sheet,objectId,onPick,onSheet,onObject,onObjects,onDelet
       {(Object.keys(KIND_INFO) as ObjectKind[]).map(kind=><option key={kind} value={kind}>{KIND_INFO[kind].label}</option>)}</select></label>
     <p className="hint">{info.hint}</p>
     <label>Title<input value={object.title} maxLength={120} onChange={event=>set({title:event.target.value})}/></label>
+    {!NO_DATA_KINDS.includes(object.kind)&&!object.options.container&&<label>Selections<select value={object.options.state||''} onChange={event=>setOption({state:event.target.value||undefined})}>
+      <option value="">Main (the app's selections)</option>{ALTERNATE_STATES.map(st=><option key={st} value={st}>Compare {st} (its own selections)</option>)}</select></label>}
+    {object.options.state&&<p className="hint">Objects in Compare {object.options.state} have their own selections, so two charts can show e.g. two branches side by side. In expressions, <code>Sum({'{'}{object.options.state}{'}'} sales)</code> uses these selections from any chart.</p>}
+    {object.kind==='pivot'&&<div className="bi-section"><div className="bi-section-title"><Table2 size={14}/>Totals</div>
+      <label className="bi-check"><input type="checkbox" checked={Boolean(object.options.totals)} onChange={event=>setOption({totals:event.target.checked})}/>Total row and column</label>
+      {object.dimensions.length>2&&<label className="bi-check"><input type="checkbox" checked={Boolean(object.options.subtotals)} onChange={event=>setOption({subtotals:event.target.checked})}/>Subtotals per {object.dimensions[0]?.label||object.dimensions[0]?.expr||'first dimension'} (click its values to collapse)</label>}
+      <p className="hint">Totals are calculated with the measure over all rows (like Qlik), so averages and distinct counts stay correct.</p></div>}
     {object.kind==='text'&&<label>Text<textarea rows={5} value={object.options.text||''} onChange={event=>setOption({text:event.target.value})}/></label>}
     {object.options.container&&isContained(object,sheet.objects)&&<p className="hint bi-in-container">Shown inside <button className="text-button" onClick={()=>onPick(object.options.container!)}>{sheet.objects.find(o=>o.id===object.options.container)?.title||KIND_INFO[sheet.objects.find(o=>o.id===object.options.container)!.kind].label}</button>.</p>}
     <ObjectSettings object={object} sheet={sheet} app={app} setOption={setOption} onObjects={onObjects} onPick={onPick}/>
@@ -381,6 +440,13 @@ function ItemList({title,kind,ctx,items,max,colors,onChange,onMove,onRemove}:{ti
         <input placeholder="Label (optional)" value={item.label||''} onChange={event=>onChange(items.map((x,j)=>j===i?{...x,label:event.target.value||undefined}:x))}/>
         <select aria-label="Number format" value={item.format||'auto'} onChange={event=>onChange(items.map((x,j)=>j===i?{...x,format:event.target.value as NumberFormat}:x))}>{FORMATS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
       </div>
+      {kind==='dimension'&&<details className="bi-colors" open={Boolean(item.drill?.length)}>
+        <summary><ListTree size={12}/>Drill-down{item.drill?.length?<small>{item.drill.length+1} levels</small>:null}</summary>
+        {(item.drill||[]).map((level,k)=><div key={k} className="bi-row"><ExpressionInput ctx={ctx} kind="dimension" label={`Drill level ${k+2}`} value={level} onChange={text=>onChange(items.map((x,j)=>j===i?{...x,drill:(x.drill||[]).map((d,m)=>m===k?text:d)}:x))}/>
+          <button className="icon-button" aria-label="Remove drill level" onClick={()=>onChange(items.map((x,j)=>j===i?{...x,drill:(x.drill||[]).filter((_,m)=>m!==k)}:x))}><Trash2 size={13}/></button></div>)}
+        <button className="text-button" onClick={()=>onChange(items.map((x,j)=>j===i?{...x,drill:[...(x.drill||[]),'']}:x))}><Plus size={12}/>Add a level below</button>
+        <p className="hint">Like a Qlik drill-down group: the chart shows this field until one value is selected, then the next level (e.g. category › group › item). Click the path above the chart to go back up.</p>
+      </details>}
       {colors&&<details className="bi-colors" open={Boolean(item.background||item.textColor)}>
         <summary><Palette size={12}/>Colours{(item.background||item.textColor)&&<small>on</small>}</summary>
         <label>Background colour<ExpressionInput ctx={ctx} kind="color" label={`${item.label||item.expr||kind} background colour`} value={item.background||''} onChange={background=>onChange(items.map((x,j)=>j===i?{...x,background:background||undefined}:x))}/></label>
@@ -485,6 +551,7 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   const [model,setModel]=useState<ModelTable[]>(app?.model||[])
   const [measures,setMeasures]=useState<MasterMeasure[]>(app?.measures||[])
   const [variables,setVariables]=useState<AppVariable[]>(app?.variables||[])
+  const [calcFields,setCalcFields]=useState<CalcField[]>(app?.calc_fields||[])
   const [diagram,setDiagram]=useState(false)
   const [access,setAccess]=useState<AccessEntry[]>(app?.access||[])
   const [catalogue,setCatalogue]=useState<DataTable[]>([])
@@ -497,9 +564,11 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
     loadPrincipals(supabase).then(setPrincipals).catch(error=>setError((error as Error).message))
   },[setError])
   // keep model columns in sync with the catalogue (new columns appear after a load)
-  const withColumns=useMemo(()=>model.map(table=>{const loaded=catalogue.find(item=>item.table_name===table.table_name);return loaded?{...table,columns:loaded.columns.filter(c=>c.name!=='_bi_loaded_at')}:table}),[model,catalogue])
+  const withColumns=useMemo(()=>model.map(table=>{const loaded=catalogue.find(item=>item.table_name===table.table_name);return loaded?{...table,columns:loaded.columns.filter(c=>c.name!=='_bi_loaded_at')}:{...table,columns:table.columns.filter(c=>c.type!=='calculated')}}),[model,catalogue])
+  const withCalc=useMemo(()=>withCalcFields(withColumns,calcFields),[withColumns,calcFields])
+  const calcProblems=calcFields.map(c=>calcFieldProblem(c,calcFields,withColumns))
   const problems=modelProblems(withColumns)
-  const measureCtx=useMemo<ExpressionContext>(()=>({appId:app?.id,model:withColumns,measures,variables:Object.fromEntries(variables.map(v=>[v.name,v.value]))}),[app?.id,withColumns,measures,variables])
+  const measureCtx=useMemo<ExpressionContext>(()=>({appId:app?.id,model:withCalc,measures,variables:Object.fromEntries(variables.map(v=>[v.name,v.value]))}),[app?.id,withCalc,measures,variables])
   const measureProblems=measures.map(m=>{if(!m.name.trim()||!m.expression.trim())return 'Needs a name and an expression'
     if(measures.filter(x=>x.name.trim().toLowerCase()===m.name.trim().toLowerCase()).length>1)return 'Two master measures have this name'
     return checkExpression(m.expression,'measure',measureCtx)?.message||''})
@@ -521,7 +590,7 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   async function save(){
     if(!supabase)return
     setSaving(true)
-    try{const id=await saveApp(supabase,{id:app?.id,name,description,model:withColumns,measures,variables,access});setNotice(app?'App saved.':'App created. Add a sheet to start building.');onSaved(id)}
+    try{const id=await saveApp(supabase,{id:app?.id,name,description,model:withColumns,measures,variables,access,calc_fields:calcFields});setNotice(app?'App saved.':'App created. Add a sheet to start building.');onSaved(id)}
     catch(error){setError((error as Error).message)}finally{setSaving(false)}
   }
   async function remove(){
@@ -539,14 +608,14 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
     <div className="sd-session-bar"><Settings2 size={18}/><span>{app?`${app.name}: data model & sharing`:'Create app'}</span>
       <div className="bi-app-actions">{app&&<button className="secondary danger" onClick={()=>void remove()}><Trash2 size={15}/>Delete app</button>}
         <button className="secondary" onClick={onClose} disabled={saving}>Cancel</button>
-        <button className="primary" disabled={saving||!name.trim()||problems.length>0||measureProblems.some(Boolean)||variableProblems.some(Boolean)} onClick={()=>void save()}><Save size={15}/>{saving?'Saving…':app?'Save':'Create app'}</button></div></div>
+        <button className="primary" disabled={saving||!name.trim()||problems.length>0||measureProblems.some(Boolean)||variableProblems.some(Boolean)||calcProblems.some(Boolean)} onClick={()=>void save()}><Save size={15}/>{saving?'Saving…':app?'Save':'Create app'}</button></div></div>
 
     <div className="bi-card"><h3>Details</h3><div className="bi-form-grid">
       <label>Name<input value={name} maxLength={120} placeholder="e.g. Sales" onChange={event=>setName(event.target.value)}/></label>
       <label>Description<input value={description} maxLength={500} placeholder="What this app is for" onChange={event=>setDescription(event.target.value)}/></label></div></div>
 
     <div className="bi-card"><h3><Link2 size={16}/>Data model<button className="text-button bi-dm-toggle" onClick={()=>setDiagram(!diagram)}><Network size={13}/>{diagram?'Hide diagram':'Show diagram'}</button></h3>
-      {diagram&&<ModelDiagram tables={withColumns.map(t=>({name:t.alias,columns:t.columns,rows:catalogue.find(c=>c.table_name===t.table_name)?.row_count??null,subtitle:t.alias!==t.table_name?`table ${t.table_name}`:undefined}))} links={modelLinks(withColumns)} emptyText="Add tables to see the diagram."/>}
+      {diagram&&<ModelDiagram tables={withCalc.map(t=>({name:t.alias,columns:t.columns,rows:catalogue.find(c=>c.table_name===t.table_name)?.row_count??null,subtitle:t.alias!==t.table_name?`table ${t.table_name}`:undefined}))} links={modelLinks(withColumns)} emptyText="Add tables to see the diagram."/>}
       <p className="hint">Choose the loaded tables this app uses and link them on matching key fields, like Qlik's associations. There is no main table: a chart uses only the tables it needs, and records without a match in a linked table are still shown (for example stock items that never sold). Fields with the same name are suggested.</p>
       <div className="bi-model">{ordered.map(table=>{const parent=withColumns.find(t=>t.alias===table.parent_alias);const suggestions=parent?suggestLinks(table.columns,parent.columns):[]
         const linkedFrom=withColumns.filter(t=>t.parent_alias===table.alias)
@@ -573,6 +642,20 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
         <option value="">Choose a loaded table…</option>
         {catalogue.map(table=><option key={table.table_name} value={table.table_name}>{table.table_name}{table.description?` — ${table.description}`:''}{model.some(m=>m.table_name===table.table_name)?' (in model)':''}</option>)}</select></label>
       {problems.length>0&&model.length>0&&<div className="bi-panel-errors">{problems.map(p=><p key={p}>{p}</p>)}</div>}
+    </div>
+
+    <div className="bi-card"><h3><Calculator size={16}/>Calculated fields</h3>
+      <p className="hint">Extra fields worked out per row from a table's own fields, used like any loaded field in dimensions, measures, filters and row access. Examples: <code>qty * unit_price</code> as <code>line_value</code>, <code>YearMonth(invoice_date)</code> as <code>month</code>, <code>If(qty_on_hand &lt;= reorder_level, 'Reorder', 'OK')</code>.</p>
+      {calcFields.map((field,i)=>{const table=withColumns.find(t=>t.alias===field.table)
+        const ctx:ExpressionContext={appId:undefined,model:table?[{...table,columns:table.columns}]:[],measures:[]}
+        return <div key={i} className="bi-calc-row">
+          <select aria-label="Table" value={field.table} onChange={event=>setCalcFields(calcFields.map((x,j)=>j===i?{...x,table:event.target.value}:x))}>{ordered.map(t=><option key={t.alias} value={t.alias}>{t.alias}</option>)}</select>
+          <input aria-label="Field name" placeholder="name, e.g. line_value" value={field.name} onChange={event=>setCalcFields(calcFields.map((x,j)=>j===i?{...x,name:event.target.value.toLowerCase().replace(/\s+/g,'_')}:x))}/>
+          <ExpressionInput ctx={ctx} kind="dimension" label={field.name||`Calculated field ${i+1}`} value={field.expression} onChange={expression=>setCalcFields(calcFields.map((x,j)=>j===i?{...x,expression}:x))}/>
+          <button className="icon-button" aria-label="Remove calculated field" onClick={()=>setCalcFields(calcFields.filter((_,j)=>j!==i))}><Trash2 size={14}/></button>
+          {calcProblems[i]&&<small className="bi-expr-error">{calcProblems[i]}</small>}
+        </div>})}
+      <button className="text-button" disabled={!ordered.length} onClick={()=>setCalcFields([...calcFields,{table:ordered[0]?.alias||'',name:'',expression:''}])}><Plus size={13}/>Add calculated field</button>
     </div>
 
     <div className="bi-card"><h3><Sigma size={16}/>Master measures</h3>

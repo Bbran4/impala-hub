@@ -1,10 +1,10 @@
 // The Reporting function catalogue: the single list of functions that expressions may use.
 // It drives the parser's checks, the suggestions in the expression editor, the in-app
 // Function reference page and docs/REPORTING_FUNCTIONS.md. The database whitelist in
-// bi.compile_expr (latest definition: migration 0066_bi_linked_tables.sql) implements the same list;
+// bi.compile_expr (latest definition: migration 0082_bi_calculations.sql) implements the same list;
 // supabase/tests/bi_functions.test.sql runs every function against real data.
 
-export type FunctionCategory='Aggregation'|'Text'|'Number'|'Date'|'Logic'|'Color'
+export type FunctionCategory='Aggregation'|'Chart'|'Text'|'Number'|'Date'|'Logic'|'Color'
 export type FunctionSpec={
   name:string                 // display name, e.g. "SubField"
   category:FunctionCategory
@@ -14,6 +14,7 @@ export type FunctionSpec={
   examples:{expr:string;result:string}[]
   aggregate?:boolean
   distinct?:boolean           // accepts DISTINCT, e.g. Count(DISTINCT x)
+  total?:boolean              // accepts TOTAL (chart functions: ignore the partition by the leading dimensions)
   aliases?:string[]
 }
 
@@ -48,6 +49,26 @@ export const FUNCTION_CATALOGUE:FunctionSpec[]=[
     description:'The value if every row has the same one, otherwise empty. Useful in KPIs that should show one item.',
     examples:[{expr:'Only(branch)',result:"'Centurion' when only Centurion is selected"}]},
 
+  {name:'Aggr',category:'Aggregation',args:[2,10],signature:'Aggr(measure, dimension1 [, dimension2 …])',
+    description:'Calculates the measure per value of the dimensions (a virtual table), to aggregate again: the average of per-customer totals, the number of items that sold more than 10. Use it inside Sum, Avg, Min, Max, Count, Median or StDev.',
+    examples:[{expr:'Avg(Aggr(Sum(qty * unit_price), customer_code))',result:'Average sales per customer'},{expr:'Count(Aggr(If(Sum(qty) > 10, 1), item_code))',result:'Items that sold more than 10'}]},
+
+  // ---------------------------------------------------------------- Chart (inter-record)
+  {name:'Above',category:'Chart',total:true,args:[1,3],signature:'Above([TOTAL] measure [, offset [, count]])',
+    description:'The measure in an earlier row of the chart (offset 1 = the row above). Rows follow the chart\'s sort order; with two or more dimensions it restarts for each value of the leading dimensions unless TOTAL is used. With a count, use it inside RangeSum/RangeAvg/RangeMin/RangeMax/RangeCount.',
+    examples:[{expr:'Sum(qty * unit_price) - Above(Sum(qty * unit_price))',result:'Change since the previous month'},{expr:'RangeSum(Above(Sum(qty * unit_price), 0, RowNo()))',result:'Running total'}]},
+  {name:'Below',category:'Chart',total:true,args:[1,3],signature:'Below([TOTAL] measure [, offset [, count]])',
+    description:'The measure in a later row of the chart (offset 1 = the row below). Works like Above() in the other direction.',
+    examples:[{expr:'Below(Sum(qty))',result:'Next month\'s quantity'}]},
+  {name:'RowNo',category:'Chart',total:true,args:[0,0],signature:'RowNo([TOTAL])',
+    description:'The row number in the chart (1, 2, 3, …), restarting for each value of the leading dimensions unless TOTAL is used.',examples:[{expr:'RowNo()',result:'Rank in a sorted table'}]},
+  {name:'NoOfRows',category:'Chart',total:true,args:[0,0],signature:'NoOfRows([TOTAL])',
+    description:'The number of rows in the chart (or in the current group of the leading dimensions).',examples:[{expr:'RowNo() / NoOfRows()',result:'Position as a share of all rows'}]},
+  {name:'Top',category:'Chart',total:true,args:[1,1],signature:'Top([TOTAL] measure)',
+    description:'The measure in the first row of the chart (or of the current group).',examples:[{expr:'Sum(qty) / Top(Sum(qty))',result:'Compared with the first month'}]},
+  {name:'Bottom',category:'Chart',total:true,args:[1,1],signature:'Bottom([TOTAL] measure)',
+    description:'The measure in the last row of the chart (or of the current group).',examples:[{expr:'Bottom(Sum(qty))',result:'The latest month\'s quantity'}]},
+
   // ---------------------------------------------------------------- Text
   {name:'Upper',category:'Text',args:[1,1],signature:'Upper(text)',description:'Text in capitals.',examples:[{expr:"Upper('brake pads')",result:"'BRAKE PADS'"}]},
   {name:'Lower',category:'Text',args:[1,1],signature:'Lower(text)',description:'Text in lower case.',examples:[{expr:"Lower('IT0001')",result:"'it0001'"}]},
@@ -79,9 +100,11 @@ export const FUNCTION_CATALOGUE:FunctionSpec[]=[
   {name:'Exp',category:'Number',args:[1,1],signature:'Exp(number)',description:'e raised to the number.',examples:[{expr:'Round(Exp(1), 4)',result:'2.7183'}]},
   {name:'Log',category:'Number',args:[1,1],signature:'Log(number)',description:'Natural logarithm (empty for 0 or less).',examples:[{expr:'Round(Log(10), 4)',result:'2.3026'}]},
   {name:'Log10',category:'Number',args:[1,1],signature:'Log10(number)',description:'Base-10 logarithm (empty for 0 or less).',examples:[{expr:'Log10(1000)',result:'3'}]},
-  {name:'RangeSum',category:'Number',args:[2,ANY],signature:'RangeSum(value1, value2, …)',description:'Adds values, treating empty ones as 0 (unlike +, where one empty value makes the result empty).',examples:[{expr:'RangeSum(qty, null, 2)',result:'qty + 2'}]},
-  {name:'RangeMax',category:'Number',args:[2,ANY],signature:'RangeMax(value1, value2, …)',description:'Largest of the values, ignoring empty ones.',examples:[{expr:'RangeMax(0, qty - 5)',result:'qty - 5, but never below 0'}]},
-  {name:'RangeMin',category:'Number',args:[2,ANY],signature:'RangeMin(value1, value2, …)',description:'Smallest of the values, ignoring empty ones.',examples:[{expr:'RangeMin(qty, 3)',result:'qty, capped at 3'}]},
+  {name:'RangeSum',category:'Number',args:[1,ANY],signature:'RangeSum(value1, value2, …)',description:'Adds values, treating empty ones as 0 (unlike +, where one empty value makes the result empty). With Above() it makes running totals: RangeSum(Above(Sum(sales), 0, RowNo())).',examples:[{expr:'RangeSum(qty, null, 2)',result:'qty + 2'},{expr:'RangeSum(Above(Sum(qty * unit_price), 0, RowNo()))',result:'Running total of sales'}]},
+  {name:'RangeMax',category:'Number',args:[1,ANY],signature:'RangeMax(value1, value2, …)',description:'Largest of the values, ignoring empty ones. With Above(): the largest of the last rows.',examples:[{expr:'RangeMax(0, qty - 5)',result:'qty - 5, but never below 0'}]},
+  {name:'RangeMin',category:'Number',args:[1,ANY],signature:'RangeMin(value1, value2, …)',description:'Smallest of the values, ignoring empty ones. With Above(): the smallest of the last rows.',examples:[{expr:'RangeMin(qty, 3)',result:'qty, capped at 3'}]},
+  {name:'RangeAvg',category:'Number',args:[1,ANY],signature:'RangeAvg(value1, value2, …)',description:'Average of the values, ignoring empty ones. With Above() it makes moving averages: RangeAvg(Above(Sum(sales), 0, 3)).',examples:[{expr:'RangeAvg(1, null, 3)',result:'2'},{expr:'RangeAvg(Above(Sum(qty * unit_price), 0, 3))',result:'3-month moving average in a chart by month'}]},
+  {name:'RangeCount',category:'Number',args:[1,ANY],signature:'RangeCount(value1, value2, …)',description:'How many of the values are not empty.',examples:[{expr:'RangeCount(1, null, 3)',result:'2'}]},
   {name:'Num',category:'Number',args:[1,1],signature:'Num(value)',description:'Turns text that contains a number into a number.',examples:[{expr:"Num('12.50') * 2",result:'25'}]},
 
   // ---------------------------------------------------------------- Date
@@ -142,7 +165,7 @@ for(const spec of FUNCTION_CATALOGUE){byName.set(spec.name.toLowerCase(),spec);f
 
 export function findFunction(name:string){return byName.get(name.toLowerCase())}
 export const AGGREGATION_NAMES=FUNCTION_CATALOGUE.filter(spec=>spec.aggregate).map(spec=>spec.name.toLowerCase())
-export const CATEGORIES:FunctionCategory[]=['Aggregation','Text','Number','Date','Logic','Color']
+export const CATEGORIES:FunctionCategory[]=['Aggregation','Chart','Text','Number','Date','Logic','Color']
 
 // Simple relevance search over names, signatures and descriptions.
 export function searchFunctions(query:string,specs:FunctionSpec[]=FUNCTION_CATALOGUE){
