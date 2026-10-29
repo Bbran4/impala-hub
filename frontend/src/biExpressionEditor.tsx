@@ -2,7 +2,7 @@ import {useEffect,useMemo,useRef,useState,type KeyboardEvent as ReactKeyboardEve
 import {BookOpen,Database,Maximize2,Play,Search,Sigma,X,FunctionSquare} from 'lucide-react'
 import {createPortal} from 'react-dom'
 import {supabase} from './supabase'
-import {checkFields,ExpressionError,hasAggregation,parseExpression,type MasterMeasure} from './biExpression'
+import {asMeasure,checkFields,ExpressionError,hasAggregation,parseExpression,type MasterMeasure} from './biExpression'
 import {CATEGORIES,FUNCTION_CATALOGUE,OPERATORS,searchFunctions,type FunctionCategory,type FunctionSpec} from './biFunctions'
 import {displayValue,orderedModel,runQuery,type ModelTable,type Selection} from './biApps'
 
@@ -20,8 +20,8 @@ export function checkExpression(text:string,kind:ExpressionKind,ctx:ExpressionCo
     const node=parseExpression(text,{measures:ctx.measures})
     const fieldProblem=checkFields(node,ctx.model)
     if(fieldProblem)return {message:fieldProblem,...locate(text,text.length)}
-    const agg=hasAggregation(node)
-    if(kind==='measure'&&!agg)return {message:'A measure needs an aggregation such as Sum(…), Count(…) or Avg(…)',...locate(text,0)}
+    const agg=hasAggregation(kind==='measure'?asMeasure(node):node)
+    if(kind==='measure'&&!agg)return {message:'A measure needs a field or an aggregation such as Sum(…), Count(…) or Avg(…)',...locate(text,0)}
     if(kind!=='measure'&&agg)return {message:kind==='dimension'?'Dimensions cannot use aggregations such as Sum(); put those in a measure':'Conditions filter rows and cannot use aggregations',...locate(text,0)}
     return null
   }catch(error){
@@ -174,7 +174,8 @@ export function ExpressionEditorModal({value,kind,ctx,title,onApply,onCancel}:{v
     if(!supabase||!ctx.appId||problem||!text.trim())return
     setTesting(true);setResult(null)
     try{
-      const node=parseExpression(text,{measures:ctx.measures})
+      const parsed=parseExpression(text,{measures:ctx.measures})
+      const node=kind==='measure'?asMeasure(parsed):parsed
       const selections=(ctx.selections||[]).map(item=>({expr:item.node,values:item.values}))
       if(kind==='measure'){
         const out=await runQuery(supabase,ctx.appId,{measures:[{expr:node}],selections,limit:1})
@@ -249,7 +250,7 @@ export function FunctionReference(){
       <div className="sd-view-tabs bi-ref-tabs">{(['All',...CATEGORIES] as const).map(item=><button key={item} className={category===item?'active':''} onClick={()=>setCategory(item)}>{item}</button>)}</div>
     </div>
     {!query&&category==='All'&&<div className="bi-card"><h3>Operators and syntax</h3><table className="bi-ref-ops"><tbody>{OPERATORS.map(o=><tr key={o.op}><td><code>{o.op}</code></td><td>{o.description}</td><td><code>{o.example}</code></td></tr>)}</tbody></table>
-      <p className="hint">Dimensions split the data and cannot aggregate. Measures must aggregate. Conditions filter rows before anything is calculated. Master measures are used as <code>[Name]</code>. Function names are not case-sensitive. Each aggregation counts every record of the tables it uses once, so <code>Sum(qty_on_hand)</code> adds each stock item once even when it is on many invoice lines.</p></div>}
+      <p className="hint">Dimensions split the data and cannot aggregate. Measures combine records with an aggregation; a field on its own in a measure means <code>Only(field)</code>, as in Qlik. Conditions filter rows before anything is calculated. Master measures are used as <code>[Name]</code>. Function names are not case-sensitive. Each aggregation counts every record of the tables it uses once, so <code>Sum(qty_on_hand)</code> adds each stock item once even when it is on many invoice lines.</p></div>}
     <div className="bi-ref-grid">{specs.map(spec=><article key={spec.name} className="bi-ref-card">
       <div className="bi-ref-head"><code>{spec.signature}</code><span className="sd-type">{spec.category}</span></div>
       <p>{spec.description}{spec.aliases?.length?<> Also written as {spec.aliases.join(', ')}().</>:null}</p>

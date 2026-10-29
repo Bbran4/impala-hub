@@ -54,7 +54,10 @@ Every object can have **conditions**: row filters that only apply to that object
 ## Expressions
 
 Dimensions are usually a field (`branch`, `[Cost Price]`, `invoices.branch` if two tables share the
-name) but can be calculated (`Year(invoice_date)`, `YearMonth(invoice_date)`). Measures must aggregate.
+name) but can be calculated (`Year(invoice_date)`, `YearMonth(invoice_date)`). Measures combine records with an
+aggregation; a field on its own in a measure means `Only(field)`, as in Qlik (its value when every record
+in the chart row has the same value, otherwise empty), so `reorder_level - qty_on_hand` works in a table
+per item.
 
 There are 71 functions (aggregation, text, number, date and logic) plus `&` to join text and `//` or
 `/* */` comments. The full list with examples is in [REPORTING_FUNCTIONS.md](REPORTING_FUNCTIONS.md) and in
