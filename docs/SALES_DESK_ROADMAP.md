@@ -62,6 +62,7 @@ The Daily Sales and RFQ Performance tables currently contain temporary test data
 | Export/reporting | Missing | Add CSV, XLSX, and print views |
 | DMS integration | Deferred | Reconcile with Qlik when real external data work resumes |
 | Personal consultant dashboard | Deferred | Requires live sales, GP, customer, and daily reporting data |
+| Cross Reference | Implemented: search (SKU, OE, cross ref, description; one link step), part details, administrator import (see `SALES_DESK_CROSS_REFERENCE.md`) | Add part photos; show stock and price once the ERP is connected |
 
 
 ## Search
