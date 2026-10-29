@@ -36,6 +36,7 @@ const emptyPost = (): Partial<Post> => ({
   status: 'draft', publish_at: '', media: [],
 })
 const NEEDS_ATTENTION = ['awaiting_approval', 'failed']
+const qrImageSource = (value: string) => value.startsWith('data:') ? value : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}`
 
 // Plain-English explanations for the reason codes the backend adds to the redirect after Facebook login.
 const OAUTH_REASONS: Record<string, string> = {
@@ -829,7 +830,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <label>Sales code<input value={profile.sales_code} placeholder="e.g. BB01" onChange={(e) => setProfile({ ...profile, sales_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></label>
                 <label>Email address<input value={profile.email} disabled /></label>
                 <div className="password-reset"><div><b>Password</b><p>Your password is changed through a secure email link.</p></div><button className="secondary" disabled={profileBusy} onClick={() => void sendPasswordReset()}>Send reset link</button></div>
-                <div className="mfa-settings"><div><b>Authenticator-app two-factor authentication</b><p>Scan the QR code with Google Authenticator, then enter its six-digit code.</p></div>{mfaSetupFactorId ? <div className="mfa-enrolment"><img className="mfa-qr" alt="Authenticator setup QR code" src={`data:image/svg+xml;utf8,${encodeURIComponent(mfaQr)}`} /><small>Manual setup key: <code>{mfaSecret}</code></small><div className="mfa-inline"><input inputMode="numeric" aria-label="Authenticator verification code" placeholder="Six-digit code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaCode.trim()} onClick={() => void verifyMfaEnrollment()}>Enable MFA</button></div></div> : <button className="secondary" disabled={profileBusy} onClick={() => void startMfaEnrollment()}>Set up MFA</button>}</div>
+                <div className="mfa-settings"><div><b>Authenticator-app two-factor authentication</b><p>Scan the QR code with Google Authenticator, then enter its six-digit code.</p></div>{mfaSetupFactorId ? <div className="mfa-enrolment"><img className="mfa-qr" alt="Authenticator setup QR code" src={qrImageSource(mfaQr)} /><small>Manual setup key: <code>{mfaSecret}</code></small><div className="mfa-inline"><input inputMode="numeric" aria-label="Authenticator verification code" placeholder="Six-digit code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaCode.trim()} onClick={() => void verifyMfaEnrollment()}>Enable MFA</button></div></div> : <button className="secondary" disabled={profileBusy} onClick={() => void startMfaEnrollment()}>Set up MFA</button>}</div>
                 <div className="account-actions"><button className="primary" disabled={profileBusy} onClick={() => void saveProfile()}>Save profile</button></div>
               </div>
             </div>
