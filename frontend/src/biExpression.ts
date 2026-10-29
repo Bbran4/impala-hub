@@ -172,6 +172,19 @@ export function hasAggregation(node:ExprNode):boolean{
   }
 }
 
+// Like Qlik, a field used in a measure outside any aggregation means Only(field): its value when
+// every record in the chart row has the same value, otherwise empty. So  qty_on_hand - reorder_level
+// in a table per item works without writing Sum().
+export function asMeasure(node:ExprNode):ExprNode{
+  switch(node.t){
+    case 'field':return {t:'fn',name:'only',args:[node]}
+    case 'fn':return AGGREGATIONS.includes(node.name)?node:{...node,args:node.args.map(asMeasure)}
+    case 'bin':return {...node,l:asMeasure(node.l),r:asMeasure(node.r)}
+    case 'neg':case 'not':return {...node,e:asMeasure(node.e)}
+    default:return node
+  }
+}
+
 // Fields an expression refers to (for validation against the data model).
 export function referencedFields(node:ExprNode,out:{table?:string;name:string}[]=[]){
   switch(node.t){
