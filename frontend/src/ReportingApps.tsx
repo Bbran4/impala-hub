@@ -16,6 +16,8 @@ import {
 } from './biApps'
 import {loadDataTables,ago,type DataTable} from './reportingData'
 import {ObjectBody,type SelectFn} from './biCharts'
+import {ModelDiagram} from './biModelViewer'
+import {modelLinks} from './biModelGraph'
 import {type AppRuntime} from './biChartKit'
 import './reportingApps.css'
 
@@ -474,6 +476,7 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   const [model,setModel]=useState<ModelTable[]>(app?.model||[])
   const [measures,setMeasures]=useState<MasterMeasure[]>(app?.measures||[])
   const [variables,setVariables]=useState<AppVariable[]>(app?.variables||[])
+  const [diagram,setDiagram]=useState(false)
   const [access,setAccess]=useState<AccessEntry[]>(app?.access||[])
   const [catalogue,setCatalogue]=useState<DataTable[]>([])
   const [principals,setPrincipals]=useState<Principals|null>(null)
@@ -533,7 +536,8 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
       <label>Name<input value={name} maxLength={120} placeholder="e.g. Sales" onChange={event=>setName(event.target.value)}/></label>
       <label>Description<input value={description} maxLength={500} placeholder="What this app is for" onChange={event=>setDescription(event.target.value)}/></label></div></div>
 
-    <div className="bi-card"><h3><Link2 size={16}/>Data model</h3>
+    <div className="bi-card"><h3><Link2 size={16}/>Data model<button className="text-button bi-dm-toggle" onClick={()=>setDiagram(!diagram)}><Network size={13}/>{diagram?'Hide diagram':'Show diagram'}</button></h3>
+      {diagram&&<ModelDiagram tables={withColumns.map(t=>({name:t.alias,columns:t.columns,rows:catalogue.find(c=>c.table_name===t.table_name)?.row_count??null,subtitle:t.alias!==t.table_name?`table ${t.table_name}`:undefined}))} links={modelLinks(withColumns)} emptyText="Add tables to see the diagram."/>}
       <p className="hint">Choose the loaded tables this app uses and link them on matching key fields, like Qlik's associations. There is no main table: a chart uses only the tables it needs, and records without a match in a linked table are still shown (for example stock items that never sold). Fields with the same name are suggested.</p>
       <div className="bi-model">{ordered.map(table=>{const parent=withColumns.find(t=>t.alias===table.parent_alias);const suggestions=parent?suggestLinks(table.columns,parent.columns):[]
         const linkedFrom=withColumns.filter(t=>t.parent_alias===table.alias)

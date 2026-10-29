@@ -6,8 +6,9 @@ Impala BI sync agent
 Runs on a machine inside your network that can reach your SQL sources over ODBC
 (the ERP, or any other SQL database) and loads data into Supabase.
 
-WHAT gets loaded is defined in tables.toml on this machine (like a Qlik load
-script). You publish changes to Supabase with --plan / --apply. The agent only
+WHAT gets loaded from the ERP is defined in tables.toml on this machine (like a Qlik
+load script). Web and folder connectors are created in the app, but only run within the
+limits of [connectors] in config.toml here (allowed hosts, folders and secrets). You publish changes to Supabase with --plan / --apply. The agent only
 ever runs queries that are in tables.toml here, so nobody can make it run a
 different query against your ERP by changing things in Supabase.
 
@@ -18,7 +19,7 @@ Commands:
   --check                 test the Supabase connection and every source
   --plan                  show what --apply would change in Supabase
   --apply [--yes]         publish tables.toml to Supabase (add / change / remove tables)
-  --run NAME              load one table or group now, then exit
+  --run NAME              load one table, group or connector now, then exit
   --once                  do all due work once, then exit
   (no command)            run continuously
 """
@@ -26,10 +27,13 @@ Commands:
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import decimal
+import fnmatch
 import getpass
 import hashlib
+import io
 import json
 import logging
 import os
@@ -39,6 +43,9 @@ import socket
 import sys
 import time
 import tomllib
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
@@ -52,7 +59,7 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 PLACEHOLDER = "{{watermark}}"
 DATA_SCHEMA = "bi_data"
 LOADED_AT_COLUMN = "_bi_loaded_at"
@@ -240,7 +247,36 @@ def load_config(path: str) -> dict:
         bad = [k for k in src["app_requests"] if k not in REQUEST_KINDS]
         if bad:
             raise AgentError(f"[sources.{name}] app_requests: unknown kind(s) {bad}; allowed: {list(REQUEST_KINDS)}")
+    cfg["connectors"] = parse_connector_config(cfg.get("connectors") or {})
     return cfg
+
+
+def parse_connector_config(raw: dict) -> dict:
+    """[connectors]: what web and folder connectors created in the app are allowed to do.
+    Nothing is allowed unless it is listed here."""
+    hosts = raw.get("allow_hosts") or []
+    if not isinstance(hosts, list) or not all(isinstance(h, str) and re.fullmatch(r"[a-z0-9.-]+(:\d+)?", h.lower()) for h in hosts):
+        raise AgentError("[connectors] allow_hosts must be a list of host names, e.g. [\"api.example.com\"]")
+    folders = raw.get("folders") or {}
+    if not isinstance(folders, dict):
+        raise AgentError("[connectors.folders] must map a name to a folder path")
+    for name, path in folders.items():
+        if not NAME_RE.match(name) or not isinstance(path, str) or not path:
+            raise AgentError(f"[connectors.folders] '{name}': names are lower case letters, digits and _; values are folder paths")
+    secrets = raw.get("secrets") or {}
+    if not isinstance(secrets, dict):
+        raise AgentError("[connectors.secrets] must map a .env name to the one host it may be sent to")
+    for name, host in secrets.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or not isinstance(host, str) or host.lower() not in [h.lower() for h in hosts]:
+            raise AgentError(f"[connectors.secrets] {name}: the host must be one of allow_hosts")
+    return {
+        "allow_hosts": sorted({h.lower() for h in hosts}),
+        "folders": {n: str(p) for n, p in folders.items()},
+        "secrets": {n: h.lower() for n, h in secrets.items()},
+        "max_bytes": int(raw.get("max_mb", 50)) * 1024 * 1024,
+        "max_rows": int(raw.get("max_rows", 1_000_000)),
+        "timeout_seconds": int(raw.get("timeout_seconds", 60)),
+    }
 
 
 # =============================================================================
@@ -732,6 +768,218 @@ class Warehouse:
 
 
 # =============================================================================
+# Connectors: web APIs and folders (data that does not come from the ERP)
+# =============================================================================
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def connector_url(url: str, ccfg: dict) -> urllib.parse.SplitResult:
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower() + (f":{parts.port}" if parts.port else "")
+    if parts.scheme not in ("http", "https"):
+        raise AgentError("Only http and https web addresses can be fetched")
+    if host not in ccfg["allow_hosts"] and (parts.hostname or "").lower() not in ccfg["allow_hosts"]:
+        raise AgentError(f"Host '{host}' is not in [connectors] allow_hosts in this agent's config.toml")
+    return parts
+
+
+def connector_headers(headers: list, host: str, ccfg: dict) -> dict:
+    out: dict[str, str] = {}
+    for h in headers or []:
+        name, value = str(h.get("name", "")), str(h.get("value", ""))
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", name):
+            raise AgentError(f"Invalid header name '{name}'")
+
+        def repl(m: re.Match) -> str:
+            key = m.group(1)
+            allowed = ccfg["secrets"].get(key)
+            if allowed is None:
+                raise AgentError(f"${{{key}}} is not in [connectors.secrets] in this agent's config.toml")
+            if allowed not in (host, host.split(":")[0]):
+                raise AgentError(f"${{{key}}} may only be sent to {allowed}, not {host}")
+            if key not in os.environ:
+                raise AgentError(f"${{{key}}} is not set in this agent's .env")
+            remember_secret(os.environ[key])
+            return os.environ[key]
+        out[name] = _ENV_RE.sub(repl, value)
+    return out
+
+
+def fetch_web(cfg_c: dict, ccfg: dict) -> bytes:
+    parts = connector_url(cfg_c.get("url", ""), ccfg)
+    host = (parts.hostname or "").lower() + (f":{parts.port}" if parts.port else "")
+    req = urllib.request.Request(urllib.parse.urlunsplit(parts), method="GET",
+                                 headers={"User-Agent": f"impala-bi-agent/{VERSION}", "Accept": "application/json, text/csv, */*",
+                                          **connector_headers(cfg_c.get("headers") or [], host, ccfg)})
+    opener = urllib.request.build_opener(_NoRedirect())
+    try:
+        with opener.open(req, timeout=ccfg["timeout_seconds"]) as resp:
+            data = resp.read(ccfg["max_bytes"] + 1)
+    except urllib.error.HTTPError as e:
+        if 300 <= e.code < 400:
+            raise AgentError(f"The web address redirects ({e.code}) to {e.headers.get('Location')}; use the final address "
+                             f"(redirects are not followed, so the agent never leaves the allowed hosts)") from None
+        raise AgentError(f"The web address answered {e.code} {e.reason}") from None
+    except urllib.error.URLError as e:
+        raise AgentError(f"Could not reach {host}: {e.reason}") from None
+    if len(data) > ccfg["max_bytes"]:
+        raise AgentError(f"The response is larger than {ccfg['max_bytes'] // (1024 * 1024)} MB ([connectors] max_mb)")
+    return data
+
+
+def json_records(data: Any, path: str) -> list[dict]:
+    for part in [p for p in (path or "").split(".") if p]:
+        if isinstance(data, dict) and part in data:
+            data = data[part]
+        elif isinstance(data, list) and part.isdigit() and int(part) < len(data):
+            data = data[int(part)]
+        else:
+            raise AgentError(f"The records path '{path}' was not found in the response (stopped at '{part}')")
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        raise AgentError("The records path must lead to a list of records")
+    out = []
+    for item in data:
+        if not isinstance(item, dict):
+            item = {"value": item}
+        flat: dict[str, Any] = {}
+        for k, v in item.items():
+            if isinstance(v, dict):
+                for k2, v2 in v.items():
+                    flat[f"{k}_{k2}"] = json.dumps(v2) if isinstance(v2, (dict, list)) else v2
+            elif isinstance(v, list):
+                flat[k] = json.dumps(v)
+            else:
+                flat[k] = v
+        out.append(flat)
+    return out
+
+
+def csv_records(raw: bytes) -> list[dict]:
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    sample = text[:4096]
+    delimiter = ";" if sample.count(";") > sample.count(",") else "\t" if sample.count("\t") > sample.count(",") else ","
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    rows = [r for r in reader if any(c.strip() for c in r)]
+    if not rows:
+        return []
+    header = rows[0]
+    return [{header[i] if i < len(header) else f"col_{i + 1}": (v if v != "" else None) for i, v in enumerate(r)} for r in rows[1:]]
+
+
+def xlsx_records(path: Path, sheet: str) -> list[dict]:
+    try:
+        import openpyxl  # optional: only needed for Excel files
+    except ImportError:
+        raise AgentError("Reading Excel files needs openpyxl: run  pip install openpyxl") from None
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        if sheet and sheet not in wb.sheetnames:
+            raise AgentError(f"Sheet '{sheet}' is not in {path.name} (sheets: {', '.join(wb.sheetnames)})")
+        ws = wb[sheet] if sheet else wb.worksheets[0]
+        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+    finally:
+        wb.close()
+    rows = [r for r in rows if any(v not in (None, "") for v in r)]
+    if not rows:
+        return []
+    header = [str(h) if h not in (None, "") else f"col_{i + 1}" for i, h in enumerate(rows[0])]
+    return [{header[i] if i < len(header) else f"col_{i + 1}": v for i, v in enumerate(r)} for r in rows[1:]]
+
+
+def folder_files(cfg_c: dict, ccfg: dict) -> list[Path]:
+    alias = cfg_c.get("folder", "")
+    if alias not in ccfg["folders"]:
+        raise AgentError(f"Folder '{alias}' is not in [connectors.folders] in this agent's config.toml")
+    pattern = str(cfg_c.get("pattern", ""))
+    if not re.fullmatch(r"[A-Za-z0-9 _.*?()-]{1,100}", pattern) or ".." in pattern:
+        raise AgentError("Invalid file pattern")
+    folder = Path(ccfg["folders"][alias])
+    if not folder.is_dir():
+        raise AgentError(f"Folder '{alias}' ({folder}) does not exist or cannot be read")
+    files = [p for p in folder.iterdir() if p.is_file() and fnmatch.fnmatch(p.name.lower(), pattern.lower())
+             and p.suffix.lower() in (".csv", ".txt", ".xlsx", ".xlsm") and not p.name.startswith("~$")]
+    if not files:
+        raise AgentError(f"No files match '{pattern}' in folder '{alias}'")
+    files.sort(key=lambda p: (p.stat().st_mtime, p.name))
+    return files if cfg_c.get("combine") == "all" else files[-1:]
+
+
+def read_folder(cfg_c: dict, ccfg: dict) -> list[dict]:
+    out: list[dict] = []
+    files = folder_files(cfg_c, ccfg)
+    for f in files:
+        if f.stat().st_size > ccfg["max_bytes"]:
+            raise AgentError(f"{f.name} is larger than {ccfg['max_bytes'] // (1024 * 1024)} MB ([connectors] max_mb)")
+        recs = xlsx_records(f, str(cfg_c.get("sheet") or "")) if f.suffix.lower() in (".xlsx", ".xlsm") else csv_records(f.read_bytes())
+        if len(files) > 1:
+            for r in recs:
+                r["source_file"] = f.name
+        out.extend(recs)
+    return out
+
+
+_INT_RE = re.compile(r"^-?\d{1,18}$")
+_NUM_RE = re.compile(r"^-?\d+([.,]\d+)?$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$")
+
+
+def infer_records(records: list[dict]) -> tuple[list[dict], list[list]]:
+    """Columns (name, pg type) and rows for records from JSON, CSV or Excel."""
+    raw_names: list[str] = []
+    for r in records:
+        for k in r:
+            if k not in raw_names:
+                raw_names.append(k)
+    names = unique_column_names([str(n) for n in raw_names])
+    types: list[str] = []
+    for key in raw_names:
+        vals = [r.get(key) for r in records if r.get(key) not in (None, "")]
+        def all_(pred):
+            return bool(vals) and all(pred(v) for v in vals)
+        if all_(lambda v: isinstance(v, bool)):
+            t = "boolean"
+        elif all_(lambda v: (isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, str) and _INT_RE.match(v.strip()))):
+            t = "bigint"
+        elif all_(lambda v: (isinstance(v, (int, float, decimal.Decimal)) and not isinstance(v, bool)) or (isinstance(v, str) and _NUM_RE.match(v.strip()))):
+            t = "numeric"
+        elif all_(lambda v: isinstance(v, dt.datetime) and v.time() == dt.time(0) and v.tzinfo is None):
+            t = "date"   # Excel stores dates as date-times at midnight
+        elif all_(lambda v: isinstance(v, dt.datetime) or (isinstance(v, str) and _TS_RE.match(v.strip()))):
+            t = "timestamp without time zone" if not any(isinstance(v, str) and re.search(r"(Z|[+-]\d{2}:?\d{2})$", v.strip()) for v in vals) else "timestamp with time zone"
+        elif all_(lambda v: (isinstance(v, dt.date) and not isinstance(v, dt.datetime)) or (isinstance(v, str) and _DATE_RE.match(v.strip()))):
+            t = "date"
+        else:
+            t = "text"
+        types.append(t)
+
+    def conv(v: Any, t: str) -> Any:
+        if v is None or v == "":
+            return None
+        if t == "text":
+            return v.isoformat() if isinstance(v, (dt.date, dt.time)) else str(v)
+        if t == "date" and isinstance(v, dt.datetime):
+            return v.date()
+        if t == "numeric" and isinstance(v, str):
+            return v.strip().replace(",", ".")
+        if isinstance(v, str):
+            return v.strip()
+        return v
+    rows = [[conv(r.get(k), t) for k, t in zip(raw_names, types)] for r in records]
+    return [{"name": n, "source_name": str(k), "type": t} for n, k, t in zip(names, raw_names, types)], rows
+
+
+# =============================================================================
 # Plan / apply
 # =============================================================================
 
@@ -987,15 +1235,18 @@ class Agent:
         if not force and time.monotonic() - self._last_heartbeat < self.cfg["agent"]["heartbeat_seconds"]:
             return
         allowed = {n: s.cfg["app_requests"] for n, s in self.sources.items()}
+        c = self.cfg["connectors"]
+        options = {"hosts": c["allow_hosts"], "folders": sorted(c["folders"]), "secrets": c["secrets"]}
         self.wh.main.execute(
             """
-            insert into bi.agents (name, sources, app_requests, version, hostname, started_at, last_seen_at)
-            values (%s, %s, %s, %s, %s, %s, now())
+            insert into bi.agents (name, sources, app_requests, version, hostname, started_at, last_seen_at, connector_options)
+            values (%s, %s, %s, %s, %s, %s, now(), %s)
             on conflict (name) do update set
               sources = excluded.sources, app_requests = excluded.app_requests, version = excluded.version,
-              hostname = excluded.hostname, started_at = excluded.started_at, last_seen_at = now()
+              hostname = excluded.hostname, started_at = excluded.started_at, last_seen_at = now(),
+              connector_options = excluded.connector_options
             """,
-            (self.name, sorted(self.sources), Jsonb(allowed), VERSION, socket.gethostname(), self.started_at),
+            (self.name, sorted(self.sources), Jsonb(allowed), VERSION, socket.gethostname(), self.started_at, Jsonb(options)),
         )
         self._last_heartbeat = time.monotonic()
 
@@ -1016,6 +1267,9 @@ class Agent:
             conn.execute(
                 "update bi.agent_requests set status = 'error', error = %s, completed_at = now() "
                 "where status = 'running' and agent_name = %s", (msg, self.name))
+            conn.execute(
+                "update bi.connectors set last_status = 'error', last_error = %s "
+                "where agent_name = %s and last_status = 'running'", (msg, self.name))
         if runs:
             log.warning("Marked %d interrupted run(s) as failed", len(runs))
 
@@ -1179,7 +1433,12 @@ class Agent:
             if job:
                 self._run_batch([job], "manual", None)
                 return True
-            raise AgentError(f"No table or group '{force}' for agent '{self.name}' in Supabase (did you run --apply?)")
+            con = conn.execute("select * from bi.connectors where name = %s and agent_name = %s and kind in ('web', 'folder')",
+                               (force, self.name)).fetchone()
+            if con:
+                self._run_connector(con, "manual")
+                return True
+            raise AgentError(f"No table, group or connector '{force}' for agent '{self.name}' in Supabase (did you run --apply?)")
 
         # A failed full reload stays requested, but is retried at most every RETRY_MINUTES.
         grp = conn.execute(
@@ -1218,7 +1477,98 @@ class Agent:
             trigger = "full_reload" if job["full_reload_requested"] else "manual" if job["reload_requested"] else "schedule"
             self._run_batch([job], trigger, None)
             return True
+
+        con = conn.execute(
+            f"""
+            select * from bi.connectors
+            where agent_name = %s and kind in ('web', 'folder') and coalesce(last_status, '') <> 'running'
+              and (reload_requested
+                   or (enabled and interval_minutes is not null
+                       and (last_run_at is null or last_run_at + make_interval(mins => interval_minutes) <= now())))
+              and (reload_requested or {RETRY_OK.format(t="bi.connectors")})
+            order by reload_requested desc, last_run_at nulls first, name
+            limit 1
+            """, mine).fetchone()
+        if con:
+            self._run_connector(con, "manual" if con["reload_requested"] else "schedule")
+            return True
         return False
+
+    # --- connectors: web APIs and folders ------------------------------------------------
+
+    def _run_connector(self, con: dict, trigger: str) -> None:
+        conn = self.wh.main
+        name = con["name"]
+        with conn.transaction():
+            run_id = conn.execute(
+                "insert into bi.sync_runs (batch_id, target_table, agent_name, trigger) values (%s, %s, %s, %s) returning id",
+                (uuid.uuid4(), name, self.name, trigger)).fetchone()["id"]
+            conn.execute("update bi.connectors set last_status = 'running', last_error = null, reload_requested = false "
+                         "where id = %s", (con["id"],))
+        log.info("Loading %s connector '%s' [%s]", con["kind"], name, trigger)
+        started = time.monotonic()
+        try:
+            if not NAME_RE.match(name):
+                raise AgentError("Invalid connector name")
+            if conn.execute("select 1 from bi.load_jobs where target_table = %s", (name,)).fetchone():
+                raise AgentError(f"'{name}' is also a table in tables.toml; rename the connector")
+            ccfg = self.cfg["connectors"]
+            c = con["config"] or {}
+            if con["kind"] == "web":
+                raw = fetch_web(c, ccfg)
+                if c.get("format", "json") == "csv":
+                    records = csv_records(raw)
+                else:
+                    try:
+                        records = json_records(json.loads(raw.decode("utf-8-sig")), str(c.get("records_path") or ""))
+                    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                        raise AgentError(f"The response is not valid JSON ({e})") from None
+            else:
+                records = read_folder(c, ccfg)
+            if len(records) > ccfg["max_rows"]:
+                raise AgentError(f"{len(records):,} rows is more than [connectors] max_rows ({ccfg['max_rows']:,})")
+            if not records:
+                raise AgentError("No rows were found")
+            cols, rows = infer_records(records)
+            target_types = self.wh.ensure_table(name, cols)
+            names = [x["name"] for x in cols]
+            target = sql.Identifier(DATA_SCHEMA, name)
+            with conn.transaction():
+                conn.execute(sql.SQL("truncate {}").format(target))
+                with conn.cursor() as pgcur:
+                    with pgcur.copy(sql.SQL("copy {} ({}) from stdin").format(
+                            target, sql.SQL(", ").join(map(sql.Identifier, names)))) as cp:
+                        for r in rows:
+                            cp.write_row(r)
+                final_cols = [{"name": n, "type": ty} for n, ty in self.wh.table_columns(name, conn).items()]
+                conn.execute(
+                    """
+                    insert into bi.data_tables (table_name, job_id, group_name, description, columns, row_count, last_loaded_at, last_run_id)
+                    values (%s, null, null, %s, %s, %s, now(), %s)
+                    on conflict (table_name) do update set job_id = null, group_name = null, description = excluded.description,
+                      columns = excluded.columns, row_count = excluded.row_count, last_loaded_at = excluded.last_loaded_at,
+                      last_run_id = excluded.last_run_id
+                    """, (name, con["description"] or f"{con['kind']} connector", Jsonb(final_cols), len(rows), run_id))
+                conn.execute("update bi.connectors set last_status = 'success', last_error = null, last_run_at = now(), "
+                             "last_row_count = %s where id = %s", (len(rows), con["id"]))
+                conn.execute("update bi.sync_runs set status = 'success', row_count = %s, finished_at = now() where id = %s",
+                             (len(rows), run_id))
+            del target_types
+            log.info("Loaded connector '%s': %s rows in %.1fs", name, f"{len(rows):,}", time.monotonic() - started)
+        except Exception as e:
+            err = short_error(e)
+            if isinstance(e, (AgentError, psycopg.errors.DataError, OSError, ValueError)):
+                log.error("Loading connector '%s' failed: %s", name, err)
+            else:
+                log.exception("Loading connector '%s' failed", name)
+            if isinstance(e, (psycopg.OperationalError, psycopg.InterfaceError)):
+                self.wh.close()
+                conn = self.wh.main
+            with conn.transaction():
+                conn.execute("update bi.connectors set last_status = 'error', last_error = %s, last_run_at = now() where id = %s",
+                             (err, con["id"]))
+                conn.execute("update bi.sync_runs set status = 'error', error = %s, finished_at = now() where id = %s",
+                             (err, run_id))
 
     def _run_group(self, grp: dict, trigger: str) -> None:
         conn = self.wh.main
@@ -1658,7 +2008,8 @@ def main(argv: list[str] | None = None) -> int:
             agent.run_due(force=args.run)
             c = agent.wh.main
             row = (c.execute("select last_status from bi.load_groups where name = %s", (args.run,)).fetchone()
-                   or c.execute("select last_status from bi.load_jobs where target_table = %s", (args.run,)).fetchone())
+                   or c.execute("select last_status from bi.load_jobs where target_table = %s", (args.run,)).fetchone()
+                   or c.execute("select last_status from bi.connectors where name = %s", (args.run,)).fetchone())
             return 0 if row and row["last_status"] == "success" else 1
         if args.once:
             agent.run_once()

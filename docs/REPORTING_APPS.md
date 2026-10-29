@@ -3,14 +3,15 @@
 Reporting replaces the parts of Qlik Sense that Impala uses: apps with a data model, dashboard sheets,
 charts and tables with calculations, and selections that filter everything at once.
 
-Data comes from the ERP through the Impala BI sync agent (see `bi-agent/README.md`). Apps only ever read
-those loaded tables.
+Data comes from the ERP through the Impala BI sync agent (see `bi-agent/README.md`), plus any **data
+connections** for data that is not in the ERP (Excel/CSV uploads, web APIs, files in a folder). Apps only
+ever read those loaded tables.
 
 ## Who can do what
 
 | Role | Can |
 |---|---|
-| `administrator` | Everything, including the data loader (Data Loads, Run History, Audit Log) |
+| `administrator` | Everything, including the data loader (Data Connections, Data Loads, Run History, Audit Log) |
 | `report_builder` | Create, edit and delete apps and sheets; choose who can open each app |
 | everyone else | Open the apps shared with one of their roles or with them by name, and use selections |
 
@@ -36,6 +37,41 @@ select id, 'report_builder' from public.profiles where email = 'someone@impalasp
   the app, on every sheet. Ctrl+click adds to a selection. The bar under the sheet tabs shows the current
   selections; clear them one by one or all at once. Filter panes keep showing all values of their own field
   so you can pick more.
+
+## Data model viewer
+
+**Reporting → Data Model** draws the loaded tables as boxes with their fields, like Qlik's data model
+viewer. With *All loaded tables*, a line joins fields with the same name in different tables (by default
+only key-like ones: `*_code`, `*_no`, `*_id`; untick to see every shared field), which shows what apps
+can link on. Choose *App: …* to see the links that app actually uses. Click a table's title for its fields
+and connections, hover a field to follow it to the other tables, and drag titles to rearrange. Each table
+shows where it comes from (ERP, upload, web, folder) and its row count.
+
+The same diagram is under an app's **Data model & sharing → Show diagram**.
+
+## Data connections (administrators)
+
+**Reporting → Data Connections** adds tables that do not come from the ERP. The ERP load itself is
+unchanged: it is defined in `tables.toml` on the agent machine and cannot be changed from the web.
+Connection tables cannot use the name of an ERP table.
+
+- **Upload Excel or CSV**: pick a `.xlsx`/`.csv` file, choose the sheet, check the column names and types
+  (guessed from the data: text, whole number, number, date, date and time, yes/no), and load. The file is
+  read in your browser and sent in chunks; nothing is stored except the table. Up to 1,000,000 rows and 300
+  columns. Use **Replace file** to load a new version (the old table is swapped out in one step).
+- **Web API**: a web address returning JSON or CSV that the agent fetches on a schedule. *Records path*
+  points at the list inside the JSON (e.g. `data.items`); nested objects become columns like `meta_zone`.
+  API keys are never typed into the hub: a header value like `Bearer ${COURIER_KEY}` is filled in by the
+  agent from its own `.env`, and only for the host its `config.toml` allows.
+- **Files from a folder**: Excel or CSV files in a folder the agent can read (e.g. a shared network folder
+  with branch targets). Folders are chosen by name from the agent's `config.toml`; a pattern like
+  `targets *.xlsx` picks the files. Use the newest matching file, or combine all of them (adds a
+  `source_file` column).
+
+Web and folder connections show their status (waiting, loading, loaded, failed with the error) and can be
+reloaded straight away. The agent's `config.toml` `[connectors]` section decides which hosts, folders and
+keys are allowed (see `bi-agent/README.md`); the page shows what each agent allows. Loaded connection
+tables appear in **Data** and **Data Model** and are added to apps like any other table.
 
 ## Objects
 
@@ -179,6 +215,10 @@ tests (`scripts/gen-function-tests.mjs`) or the generated docs (`scripts/gen-fun
 - Every query checks that the user may open that app (`bi.can_view_app`). Users can only reach the
   tables in the app's data model; the loaded data in `bi_data` is never readable directly.
 - Queries time out after 20 seconds and return at most 10,000 rows.
-- Creating, changing and deleting apps is recorded in the Reporting audit log.
+- Creating, changing and deleting apps is recorded in the Reporting audit log, as are uploads and
+  connection changes (without header values).
+- Data connections can only be managed by administrators. Uploaded values are checked against the
+  column types in the database; table and column names are checked against a fixed pattern. Web and
+  folder connections run on the agent, which only reaches the hosts and folders its own config allows.
 - Not yet available: row-level access within an app (Qlik section access, e.g. "own branch only").
   Until then, share apps only with people who may see all of their data.

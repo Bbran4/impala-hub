@@ -365,3 +365,58 @@ svg .dimmed{opacity:.3}
 .bi-write-input input:focus,.bi-write-input select:focus{border-color:#2a78d6;background:#fff;outline:0}
 .bi-write-ok{color:#1baf7a;flex:none}
 .bi-write-bad{color:#e34948;flex:none}
+/* data model viewer */
+.bi-dm{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px;min-height:420px}
+.bi-dm-canvas{position:relative;overflow:auto;background:#f7f9fa;background-image:radial-gradient(#dfe6eb 1px,transparent 1px);background-size:16px 16px;border:1px solid #e1e7ec;border-radius:12px;height:min(70vh,720px)}
+.bi-dm-lines{position:absolute;left:0;top:0;pointer-events:none}
+.bi-dm-link{fill:none;stroke:#9cb3c6;stroke-width:1.6}
+.bi-dm-link.shared{stroke-dasharray:5 4}
+.bi-dm-link.active{stroke:#2a78d6;stroke-width:2.6}
+.bi-dm-table{position:absolute;background:#fff;border:1px solid #d5dfe6;border-radius:10px;box-shadow:0 4px 14px #0b20300f;overflow:hidden}
+.bi-dm-table.picked{border-color:#e7b94f;box-shadow:0 0 0 2px #e7b94f55}
+.bi-dm-head{display:flex;align-items:center;gap:6px;padding:8px 10px;background:#17364d;color:#fff;cursor:grab;user-select:none;touch-action:none;height:38px}
+.bi-dm-head b{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bi-dm-head small{margin-left:auto;color:#b8c7d3;font-size:10px;white-space:nowrap}
+.bi-dm-source{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:1px 5px;border-radius:4px;background:#2a4a63;color:#cfe0ee}
+.bi-dm-source.upload{background:#e7b94f;color:#16324a}.bi-dm-source.web{background:#1baf7a;color:#fff}.bi-dm-source.folder{background:#6250d6;color:#fff}
+.bi-dm-sub{font-size:10px;color:#7a8794;padding:3px 10px;border-bottom:1px solid #eef2f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bi-dm-field{display:flex;align-items:center;gap:6px;height:20px;padding:0 10px;font-size:11.5px;color:#304456}
+.bi-dm-field span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bi-dm-field small{margin-left:auto;color:#9aa7b2;font-size:9.5px;white-space:nowrap}
+.bi-dm-field.key{font-weight:700;color:#1d4f7a}
+.bi-dm-field.key svg{color:#e7b94f;flex:none}
+.bi-dm-field.hover{background:#eaf2fb}
+.bi-dm-dot{width:5px;height:5px;border-radius:50%;background:#c9d3db;flex:none;margin:0 3px}
+.bi-dm-more{border:0;background:transparent;color:#315f83;font-size:11px;font-weight:700;padding:2px 10px 6px;cursor:pointer}
+.bi-dm-side{background:#fff;border:1px solid #e1e7ec;border-radius:12px;padding:14px;overflow:auto;max-height:70vh}
+.bi-dm-side h3{margin:0 0 4px}
+.bi-dm-linkline{font-size:12px;margin:4px 0}
+.bi-dm-linkline code{margin-left:4px;background:#f3f6f8;border-radius:4px;padding:1px 5px}
+.bi-dm-fieldlist{list-style:none;padding:0;margin:0;font-size:12px}
+.bi-dm-fieldlist li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid #f0f3f5}
+.bi-dm-fieldlist small{color:#8a969f}
+.bi-dm-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:4px}
+.bi-card h3{display:flex;align-items:center;gap:8px}
+@media (max-width:900px){.bi-dm{grid-template-columns:1fr}}
+/* data connections */
+.bi-conn-new{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.bi-conn-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;background:#fff;border:1px solid #e1e7ec;border-radius:12px;padding:16px;cursor:pointer;color:#304456}
+.bi-conn-card:hover{border-color:#9cc0e6;box-shadow:0 4px 14px #0b20300f}
+.bi-conn-card svg{color:#2a78d6}
+.bi-conn-card span{font-size:12px;color:#6b7c8a;line-height:1.4}
+.bi-conn-kind{display:inline-flex;align-items:center;gap:5px;font-size:12px;white-space:nowrap}
+.bi-conn-from code{font-size:11px;word-break:break-all}
+.bi-conn-error{color:#a34130!important;max-width:280px}
+.bi-conn-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end;white-space:nowrap}
+.bi-conn-agents p{font-size:12px;margin:4px 0}
+.bi-conn-header{margin-bottom:6px}
+.bi-conn-header input{flex:1}
+.bi-conn-problem{padding:0 4px}
+.bi-span2{grid-column:span 2}
+.bi-upload-preview th input,.bi-upload-preview th select{width:100%;min-width:110px;font-size:11px;padding:4px 6px;border:1px solid #d8e1e7;border-radius:5px;font-weight:400}
+.bi-upload-preview th .bi-check{font-size:11px;white-space:nowrap}
+.bi-dm-tools{align-items:center}
+.bi-dm-tools .bi-check{font-size:13px}
+.bi-dm-side p{font-size:12.5px}
+.bi-dm-side h3{font:800 16px Manrope,sans-serif;color:#1c2f41}
+.bi-dm-side .bi-section-title{margin-top:12px}

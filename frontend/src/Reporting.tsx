@@ -7,19 +7,23 @@ import {
   type AuditEntry,type DataTable,type LoadStatusSnapshot,type LoadUnit,type SyncRun,
 } from './reportingData'
 import ReportingApps from './ReportingApps'
+import DataConnections from './biConnections'
+import {DataModelPage} from './biModelViewer'
 import {FunctionReference} from './biExpressionEditor'
 import './reporting.css'
 
 type Props={page:string;isAdministrator:boolean;canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
 
-export const REPORTING_PAGES=['Dashboards','Data','Data Loads','Run History','Audit Log','Function Reference','Reporting Roadmap'] as const
-export const REPORTING_ADMIN_PAGES=['Data Loads','Run History','Audit Log']
+export const REPORTING_PAGES=['Dashboards','Data','Data Model','Data Connections','Data Loads','Run History','Audit Log','Function Reference','Reporting Roadmap'] as const
+export const REPORTING_ADMIN_PAGES=['Data Connections','Data Loads','Run History','Audit Log']
 
 const REPORTING_ROADMAP_ROWS=[
   ['Data loader','Qlik load script','On-premises sync agent: any ODBC source, full/upsert/append, incremental watermarks, grouped transactional loads','Implemented'],
   ['Load definitions','Qlik data load editor','tables.toml on the agent machine with validate, dry-run test, plan and apply; fingerprint-checked','Implemented'],
   ['Load monitoring','Qlik reload tasks','Agent heartbeat, load status, Reload now, Reload everything, pause/resume, run history and audit log','Implemented'],
-  ['Data catalogue','Qlik data model viewer','Loaded tables, columns, row counts and freshness for Reporting users','Implemented'],
+  ['Data model viewer','Qlik data model viewer','Diagram of all loaded tables (fields with the same name) or of an app\'s links; drag tables, follow a field','Implemented'],
+  ['Data connections','Qlik data connections (non-ERP)','Excel/CSV upload in the browser; web APIs and folder files fetched by the agent within its config.toml allowlists','Implemented'],
+  ['Data catalogue','Qlik data catalogue','Loaded tables, columns, row counts and freshness for Reporting users','Implemented'],
   ['Apps and data models','Qlik apps and associative model','Apps choose loaded tables and link them on matching fields; queries join only what each chart needs','Implemented'],
   ['Sheets and charts','Qlik sheets','Drag-and-resize sheets with 22 object types: bar, line, combo, pie, KPI, gauge, scatter, treemap, waterfall, funnel, bullet, radar, mekko, grid, histogram, box plot, distribution, word cloud, table, pivot, filter pane, text; drag to reorder dimensions, measures and table columns','Implemented'],
   ['Expressions','Qlik chart expressions','70+ functions (aggregation, text, number, date, logic), & concatenation, comments, master measures and row conditions; large editor with search and Test','Implemented'],
@@ -37,6 +41,7 @@ const REPORTING_ROADMAP_ROWS=[
   ['Smart Stock feed','ERP stock snapshots','Feed Smart Stock imports from the ERP through the sync agent','Planned'],
 ]
 
+const SOURCE_LABEL={erp:'ERP',upload:'Upload',web:'Web API',folder:'Folder',other:'—'}
 const STATUS_LABEL={success:'Loaded',error:'Failed',running:'Loading…'}
 const FRESHNESS_LABEL={fresh:'Up to date',stale:'Out of date',failed:'Last load failed',never:'Not loaded yet'}
 const count=(value:number|null|undefined)=>value==null?'—':Number(value).toLocaleString()
@@ -56,6 +61,8 @@ export default function Reporting({page,isAdministrator,canBuild,setNotice,setEr
   if(REPORTING_ADMIN_PAGES.includes(page)&&!isAdministrator)return <section className="rfq-workspace"><div className="rfq-empty-card"><ShieldCheck size={26}/><h3>Administrators only</h3><p>The data loader is managed by administrators.</p></div></section>
   if(!supabase)return <section className="rfq-workspace"><div className="rfq-empty-card"><Database size={26}/><h3>Supabase is not configured</h3><p>Reporting needs the Supabase connection.</p></div></section>
   if(page==='Dashboards')return <ReportingApps canBuild={canBuild} setNotice={setNotice} setError={setError}/>
+  if(page==='Data Model')return <DataModelPage setError={setError}/>
+  if(page==='Data Connections')return <DataConnections setNotice={setNotice} setError={setError}/>
   if(page==='Data Loads')return <DataLoads setNotice={setNotice} setError={setError}/>
   if(page==='Run History')return <RunHistory setError={setError}/>
   if(page==='Audit Log')return <AuditLog setError={setError}/>
@@ -87,7 +94,7 @@ function DataCatalogue({setError}:{setError:(message:string)=>void}){
       <div className="sd-metric"><span>Last load</span><strong className="rp-metric-text">{ago(latest,now)}</strong></div>
     </div>
     <div className="rp-toolbar"><label className="rp-search"><Search size={15}/><input placeholder="Search tables, descriptions or columns" value={search} onChange={event=>setSearch(event.target.value)}/></label><button className="secondary" disabled={busy} onClick={()=>{setBusy(true);void load()}}><RefreshCw size={15}/>{busy?'Loading…':'Refresh'}</button></div>
-    <div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th/><th>Table</th><th>Status</th><th>Rows</th><th>Last loaded</th><th>Schedule</th><th>Group</th></tr></thead><tbody>
+    <div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th/><th>Table</th><th>Status</th><th>Rows</th><th>Last loaded</th><th>Schedule</th><th>From</th></tr></thead><tbody>
       {visible.map(table=>{const state=freshness(table,now);const expanded=open===table.table_name;return <Fragment key={table.table_name}>
         <tr className="rfq-data-row rp-click" onClick={()=>setOpen(expanded?null:table.table_name)}>
           <td className="rp-chevron">{expanded?<ChevronDown size={15}/>:<ChevronRight size={15}/>}</td>
@@ -96,7 +103,7 @@ function DataCatalogue({setError}:{setError:(message:string)=>void}){
           <td>{count(table.row_count)}</td>
           <td title={when(table.last_loaded_at)}>{ago(table.last_loaded_at,now)}</td>
           <td>{scheduleLabel(table.interval_minutes)}</td>
-          <td>{table.group_name||'—'}</td>
+          <td>{SOURCE_LABEL[table.source||'other']}{table.group_name&&<small className="rp-sub">group {table.group_name}</small>}</td>
         </tr>
         {expanded&&<tr className="rp-detail-row"><td colSpan={7}><div className="rp-columns">{table.columns.map(column=><span key={column.name}><b>{column.name}</b><small>{column.type}</small></span>)}</div></td></tr>}
       </Fragment>})}
