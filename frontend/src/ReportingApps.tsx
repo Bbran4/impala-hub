@@ -4,7 +4,8 @@ import {
   Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,
 } from 'lucide-react'
 import {supabase} from './supabase'
-import {checkFields,FUNCTIONS,parseExpression,type MasterMeasure} from './biExpression'
+import {type MasterMeasure} from './biExpression'
+import {checkExpression,ExpressionInput,type ExpressionContext} from './biExpressionEditor'
 import {
   GRID_COLS,KIND_INFO,ROW_HEIGHT,compileObject,deleteApp,deleteSheet,displayValue,freeSpot,loadApp,loadApps,loadPrincipals,
   modelProblems,newId,normalizeObject,orderedModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
@@ -228,6 +229,7 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
   const compiled=compileObject(object,app)
   const set=(changes:Partial<SheetObject>)=>onObject({...object,...changes})
   const setOption=(changes:Partial<SheetObject['options']>)=>set({options:{...object.options,...changes}})
+  const ctx:ExpressionContext={appId:app.id,model:app.model,measures:app.measures}
   const columns=[...object.dimensions.map((d,i)=>d.label||d.expr||`Dimension ${i+1}`),...object.measures.map((m,i)=>m.label||m.expr||`Measure ${i+1}`)]
   return <aside className="bi-panel">
     <div className="bi-panel-head"><h3>{info.label}</h3><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16}/></button></div>
@@ -238,14 +240,14 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
     <label>Title<input value={object.title} maxLength={120} onChange={event=>set({title:event.target.value})}/></label>
     {object.kind==='text'&&<label>Text<textarea rows={5} value={object.options.text||''} onChange={event=>setOption({text:event.target.value})}/></label>}
 
-    {info.dims[1]>0&&<ItemList title="Dimensions" kind="dimension" app={app} items={object.dimensions} max={info.dims[1]} onChange={dimensions=>set({dimensions})}/>}
-    {info.measures[1]>0&&<ItemList title="Measures" kind="measure" app={app} items={object.measures} max={info.measures[1]} onChange={measures=>set({measures})}/>}
+    {info.dims[1]>0&&<ItemList title="Dimensions" kind="dimension" ctx={ctx} items={object.dimensions} max={info.dims[1]} onChange={dimensions=>set({dimensions})}/>}
+    {info.measures[1]>0&&<ItemList title="Measures" kind="measure" ctx={ctx} items={object.measures} max={info.measures[1]} onChange={measures=>set({measures})}/>}
 
     {object.kind!=='text'&&<details className="bi-section" open={Boolean(object.options.conditions?.length)}>
       <summary>Conditions</summary>
       <p className="hint">Only rows matching every condition are used, for example <code>invoice_date = Today()-1</code>.</p>
       {(object.options.conditions||[]).map((condition,i)=><div key={i} className="bi-row">
-        <ExpressionInput app={app} value={condition} kind="condition" onChange={value=>setOption({conditions:(object.options.conditions||[]).map((c,j)=>j===i?value:c)})}/>
+        <ExpressionInput ctx={ctx} label={`Condition ${i+1}`} value={condition} kind="condition" onChange={value=>setOption({conditions:(object.options.conditions||[]).map((c,j)=>j===i?value:c)})}/>
         <button className="icon-button" aria-label="Remove condition" onClick={()=>setOption({conditions:(object.options.conditions||[]).filter((_,j)=>j!==i)})}><Trash2 size={14}/></button></div>)}
       <button className="text-button" onClick={()=>setOption({conditions:[...(object.options.conditions||[]),'']})}><Plus size={13}/>Add condition</button>
     </details>}
@@ -266,10 +268,10 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
   </aside>
 }
 
-function ItemList({title,kind,app,items,max,onChange}:{title:string;kind:'dimension'|'measure';app:AppDetail;items:SheetObject['dimensions'];max:number;onChange:(items:SheetObject['dimensions'])=>void}){
+function ItemList({title,kind,ctx,items,max,onChange}:{title:string;kind:'dimension'|'measure';ctx:ExpressionContext;items:SheetObject['dimensions'];max:number;onChange:(items:SheetObject['dimensions'])=>void}){
   return <div className="bi-section"><div className="bi-section-title">{kind==='measure'?<Sigma size={14}/>:<Database size={14}/>}{title}<small>{items.length}/{max}</small></div>
     {items.map((item,i)=><div key={i} className="bi-item">
-      <div className="bi-row"><ExpressionInput app={app} value={item.expr} kind={kind} onChange={expr=>onChange(items.map((x,j)=>j===i?{...x,expr}:x))}/>
+      <div className="bi-row"><ExpressionInput ctx={ctx} label={item.label||`${kind==='measure'?'Measure':'Dimension'} ${i+1}`} value={item.expr} kind={kind} onChange={expr=>onChange(items.map((x,j)=>j===i?{...x,expr}:x))}/>
         <button className="icon-button" aria-label={`Remove ${kind}`} onClick={()=>onChange(items.filter((_,j)=>j!==i))}><Trash2 size={14}/></button></div>
       <div className="bi-row bi-sub">
         <input placeholder="Label (optional)" value={item.label||''} onChange={event=>onChange(items.map((x,j)=>j===i?{...x,label:event.target.value||undefined}:x))}/>
@@ -278,33 +280,6 @@ function ItemList({title,kind,app,items,max,onChange}:{title:string;kind:'dimens
     </div>)}
     {items.length<max&&<button className="text-button" onClick={()=>onChange([...items,{expr:''}])}><Plus size={13}/>Add {kind}</button>}
   </div>
-}
-
-// Expression box with field / function / master-measure suggestions and live checking.
-function ExpressionInput({app,value,kind,onChange}:{app:AppDetail;value:string;kind:'dimension'|'measure'|'condition';onChange:(value:string)=>void}){
-  const [open,setOpen]=useState(false)
-  const fields=useMemo(()=>orderedModel(app.model).flatMap(table=>table.columns.map(column=>({table:table.alias,name:column.name,type:column.type}))),[app.model])
-  const problem=useMemo(()=>{
-    if(!value.trim())return ''
-    try{const node=parseExpression(value,{measures:app.measures});return checkFields(node,app.model)||''}catch(error){return (error as Error).message}
-  },[value,app])
-  const insert=(text:string)=>{onChange(value&&kind!=='dimension'?`${value}${/[\s(,]$/.test(value)?'':' '}${text}`:text);setOpen(false)}
-  const placeholder=kind==='measure'?'e.g. Sum(qty * unit_price)':kind==='condition'?'e.g. invoice_date = Today()-1':'Field, e.g. branch'
-  return <div className="bi-expr">
-    <div className="bi-expr-box"><input value={value} placeholder={placeholder} className={problem?'invalid':''} spellCheck={false} onChange={event=>onChange(event.target.value)} onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),150)}/></div>
-    {problem&&<small className="bi-expr-error">{problem}</small>}
-    {open&&<div className="bi-expr-menu" onMouseDown={event=>event.preventDefault()}>
-      {kind==='measure'&&app.measures.length>0&&<><span>Master measures</span>{app.measures.map(m=><button key={m.name} onClick={()=>onChange(`[${m.name}]`)}><Sigma size={12}/>{m.name}<small>{m.expression}</small></button>)}</>}
-      {kind==='measure'&&<><span>Quick measures</span>{fields.filter(f=>/numeric|int|double|real|bigint/.test(f.type)).slice(0,12).map(f=><button key={`s-${f.table}.${f.name}`} onClick={()=>onChange(`Sum(${fieldRef(f,fields)})`)}>Sum({fieldRef(f,fields)})</button>)}
-        <button onClick={()=>onChange('Count(*)')}>Count(*)</button></>}
-      <span>Fields</span>{fields.map(f=><button key={`${f.table}.${f.name}`} onClick={()=>insert(fieldRef(f,fields))}>{fieldRef(f,fields)}<small>{f.table} · {f.type}</small></button>)}
-      {kind!=='dimension'&&<><span>Functions</span>{Object.values(FUNCTIONS).map(sig=><button key={sig} onClick={()=>insert(sig.split(',')[0].replace(/\(.*$/,'('))}>{sig}</button>)}</>}
-    </div>}
-  </div>
-}
-function fieldRef(field:{table:string;name:string},fields:{table:string;name:string}[]){
-  const shared=fields.filter(f=>f.name===field.name).length>1
-  return shared&&fields.find(f=>f.name===field.name)?.table!==field.table?`${field.table}.${field.name}`:field.name
 }
 
 function FieldList({app}:{app:AppDetail}){
@@ -335,8 +310,10 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   // keep model columns in sync with the catalogue (new columns appear after a load)
   const withColumns=useMemo(()=>model.map(table=>{const loaded=catalogue.find(item=>item.table_name===table.table_name);return loaded?{...table,columns:loaded.columns.filter(c=>c.name!=='_bi_loaded_at')}:table}),[model,catalogue])
   const problems=modelProblems(withColumns)
+  const measureCtx=useMemo<ExpressionContext>(()=>({appId:app?.id,model:withColumns,measures}),[app?.id,withColumns,measures])
   const measureProblems=measures.map(m=>{if(!m.name.trim()||!m.expression.trim())return 'Needs a name and an expression'
-    try{const node=parseExpression(m.expression,{measures});return checkFields(node,withColumns)||''}catch(error){return (error as Error).message}})
+    if(measures.filter(x=>x.name.trim().toLowerCase()===m.name.trim().toLowerCase()).length>1)return 'Two master measures have this name'
+    return checkExpression(m.expression,'measure',measureCtx)?.message||''})
 
   function addTable(tableName:string){
     const loaded=catalogue.find(item=>item.table_name===tableName);if(!loaded)return
@@ -419,10 +396,10 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
       <p className="hint">Reusable calculations every sheet can use as <code>[Name]</code>, so "Sales" means the same thing everywhere. Measures can use other measures, e.g. <code>([Sales]-[Cost])/[Sales]</code>.</p>
       {measures.map((m,i)=><div key={i} className="bi-measure-row">
         <input placeholder="Name" value={m.name} onChange={event=>setMeasures(measures.map((x,j)=>j===i?{...x,name:event.target.value}:x))}/>
-        <input placeholder="Sum(qty * unit_price)" className={measureProblems[i]?'invalid':''} spellCheck={false} value={m.expression} onChange={event=>setMeasures(measures.map((x,j)=>j===i?{...x,expression:event.target.value}:x))}/>
+        <ExpressionInput ctx={measureCtx} kind="measure" label={m.name||`Master measure ${i+1}`} value={m.expression} onChange={expression=>setMeasures(measures.map((x,j)=>j===i?{...x,expression}:x))}/>
         <select value={m.format||'auto'} onChange={event=>setMeasures(measures.map((x,j)=>j===i?{...x,format:event.target.value}:x))}>{FORMATS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
         <button className="icon-button" aria-label="Remove measure" onClick={()=>setMeasures(measures.filter((_,j)=>j!==i))}><Trash2 size={14}/></button>
-        {measureProblems[i]&&<small className="bi-expr-error">{measureProblems[i]}</small>}
+        {(measureProblems[i].startsWith('Needs')||measureProblems[i].startsWith('Two'))&&<small className="bi-expr-error">{measureProblems[i]}</small>}
       </div>)}
       <button className="text-button" onClick={()=>setMeasures([...measures,{name:'',expression:''}])}><Plus size={13}/>Add master measure</button>
     </div>

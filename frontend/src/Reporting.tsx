@@ -7,11 +7,12 @@ import {
   type AuditEntry,type DataTable,type LoadStatusSnapshot,type LoadUnit,type SyncRun,
 } from './reportingData'
 import ReportingApps from './ReportingApps'
+import {FunctionReference} from './biExpressionEditor'
 import './reporting.css'
 
 type Props={page:string;isAdministrator:boolean;canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
 
-export const REPORTING_PAGES=['Dashboards','Data','Data Loads','Run History','Audit Log','Reporting Roadmap'] as const
+export const REPORTING_PAGES=['Dashboards','Data','Data Loads','Run History','Audit Log','Function Reference','Reporting Roadmap'] as const
 export const REPORTING_ADMIN_PAGES=['Data Loads','Run History','Audit Log']
 
 const REPORTING_ROADMAP_ROWS=[
@@ -21,8 +22,9 @@ const REPORTING_ROADMAP_ROWS=[
   ['Data catalogue','Qlik data model viewer','Loaded tables, columns, row counts and freshness for Reporting users','Implemented'],
   ['Apps and data models','Qlik apps and associative model','Apps choose loaded tables and link them on matching fields; queries join only what each chart needs','Implemented'],
   ['Sheets and charts','Qlik sheets','Drag-and-resize sheets with KPI, bar, line, pie, table, pivot, filter pane and text objects','Implemented'],
-  ['Expressions','Qlik chart expressions','Sum/Count/Avg/Min/Max/Median, Count(DISTINCT), If, Alt, date functions, master measures, row conditions','Implemented'],
+  ['Expressions','Qlik chart expressions','70+ functions (aggregation, text, number, date, logic), & concatenation, comments, master measures and row conditions; large editor with search and Test','Implemented'],
   ['Selections','Qlik associative selections','Click any value to filter every object in the app; Ctrl+click to add; selections bar','Implemented'],
+  ['Function reference','Qlik help: chart functions','Searchable in-app reference and docs/REPORTING_FUNCTIONS.md, generated from the same list the editor and database use','Implemented'],
   ['App access','Qlik spaces','Apps shared with roles or named people; builders are administrators and report builders','Implemented'],
   ['Row-level access','Qlik section access','Limit rows per user within an app (e.g. own branch only)','Planned'],
   ['Scheduled emails','Qlik NPrinting','Daily report emails filtered by each recipient’s access','Planned'],
@@ -51,6 +53,7 @@ export default function Reporting({page,isAdministrator,canBuild,setNotice,setEr
   if(page==='Data Loads')return <DataLoads setNotice={setNotice} setError={setError}/>
   if(page==='Run History')return <RunHistory setError={setError}/>
   if(page==='Audit Log')return <AuditLog setError={setError}/>
+  if(page==='Function Reference')return <FunctionReference/>
   if(page==='Reporting Roadmap')return <ReportingRoadmap/>
   return <DataCatalogue setError={setError}/>
 }

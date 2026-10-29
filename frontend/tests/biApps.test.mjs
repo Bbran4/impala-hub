@@ -42,7 +42,7 @@ test('objects compile with master measures, labels, formats and selection keys',
 
 test('object validation catches the common mistakes',()=>{
   assert.match(compileObject(object({measures:[{expr:'qty'}]}),app).errors[0],/use an aggregation such as Sum\(qty\)/)
-  assert.match(compileObject(object({dimensions:[{expr:'Sum(qty)'}]}),app).errors[0],/dimensions cannot use/)
+  assert.match(compileObject(object({dimensions:[{expr:'Sum(qty)'}]}),app).errors[0],/dimensions cannot use aggregations/)
   assert.match(compileObject(object({dimensions:[{expr:'salary'}]}),app).errors[0],/Unknown field "salary"/)
   assert.match(compileObject(object({kind:'pie',measures:[{expr:'[Sales]'},{expr:'Count(*)'}]}),app).errors[0],/Pie chart needs 1 measure/)
   assert.match(compileObject(object({kind:'kpi',dimensions:[{expr:'branch'}]}),app).errors[0],/KPI needs 0 dimensions/)

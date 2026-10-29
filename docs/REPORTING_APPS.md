@@ -56,16 +56,22 @@ Every object can have **conditions**: row filters that only apply to that object
 Dimensions are usually a field (`branch`, `[Cost Price]`, `invoices.branch` if two tables share the
 name) but can be calculated (`Year(invoice_date)`, `YearMonth(invoice_date)`). Measures must aggregate.
 
+There are 71 functions (aggregation, text, number, date and logic) plus `&` to join text and `//` or
+`/* */` comments. The full list with examples is in [REPORTING_FUNCTIONS.md](REPORTING_FUNCTIONS.md) and in
+the app under **Reporting → Function Reference**. A few common ones:
+
 | | |
 |---|---|
-| Aggregations | `Sum(x)` `Avg(x)` `Min(x)` `Max(x)` `Median(x)` `Count(x)` `Count(DISTINCT x)` `Count(*)` |
-| Arithmetic | `+ - * /` (dividing by zero gives an empty value), `&` joins text |
-| Comparisons | `= <> < <= > >=` with `and`, `or`, `not` |
-| Logic | `If(condition, then, else)`, `Alt(value, fallback)` |
-| Numbers | `Round(x, decimals)`, `Abs(x)`, `Num(x)` |
-| Text | `Upper` `Lower` `Trim` `Len` `Left(x, n)` `Right(x, n)` `Text(x)` |
-| Dates | `Today()` `Now()` `Date(x)` `Year` `Quarter` `Month` `Week` `Day` `WeekDay` `MonthStart` `WeekStart` `YearStart` `YearMonth` |
-| Literals | numbers `12.5`, text `'Centurion'` (double a quote to include one: `'it''s'`), `null` |
+| Aggregations | `Sum(x)` `Avg(x)` `Count(DISTINCT x)` `Count(*)` `Concat(DISTINCT x, ', ')` `Only(x)` |
+| Text | `branch & ' - ' & item_code` `Upper` `Left(x, n)` `Mid(x, start, n)` `Replace(x, from, to)` `SubField(x, '-', 2)` |
+| Numbers | `Round(x, 2)` `Floor` `Ceil` `Mod` `RangeSum(a, b)` |
+| Dates | `Today()` `YearMonth(d)` `MonthStart(d)` `AddMonths(d, n)` `DaysBetween(a, b)` |
+| Logic | `If(condition, then, else)` `Alt(value, fallback)` `Match(x, 'a', 'b')` `WildMatch(x, 'BOSCH*')` `Pick(n, a, b)` |
+
+**Writing expressions.** Every expression box suggests master measures, fields and functions as you
+type (↑ ↓ and Enter insert at the cursor). The expand button opens a large editor with line numbers,
+errors by line and column, a searchable function list with examples, and **Test**, which runs the
+expression against the app's data. Ctrl+Enter applies it.
 
 **Master measures** are defined once per app (Data model & sharing) and used as `[Name]`, for example:
 
@@ -77,8 +83,12 @@ name) but can be calculated (`Year(invoice_date)`, `YearMonth(invoice_date)`). M
 | Margin % | `([Sales] - [Cost]) / [Sales]` | Percent |
 | Invoices | `Count(DISTINCT invoices.invoice_no)` | Whole number |
 
-Expressions are checked as you type: unknown fields, missing brackets and measures without an
-aggregation are reported before anything runs.
+Expressions are checked as you type: unknown functions, wrong numbers of arguments, unknown fields,
+missing brackets and measures without an aggregation are reported before anything runs.
+
+New functions are added in one place, `frontend/src/biFunctions.ts`, plus the SQL in a migration
+(`bi.compile_expr`). `npm test` fails if a function is missing from the migration, the generated database
+tests (`scripts/gen-function-tests.mjs`) or the generated docs (`scripts/gen-function-docs.mjs`).
 
 ## Security
 
