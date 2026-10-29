@@ -115,7 +115,8 @@ export default function App() {
   const [mfaCode, setMfaCode] = useState('')
   const [mfaFactorId, setMfaFactorId] = useState('')
   const [mfaChallengeId, setMfaChallengeId] = useState('')
-  const [mfaPhone, setMfaPhone] = useState('')
+  const [mfaQr, setMfaQr] = useState('')
+  const [mfaSecret, setMfaSecret] = useState('')
   const [mfaSetupFactorId, setMfaSetupFactorId] = useState('')
   const [mfaSetupChallengeId, setMfaSetupChallengeId] = useState('')
   const [page, setPage] = useState('Apps')
@@ -240,24 +241,25 @@ export default function App() {
   }
 
   async function startMfaEnrollment() {
-    if (!supabase || !mfaPhone.trim()) return
+    if (!supabase) return
     setProfileBusy(true); setError('')
     try {
-      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: 'phone', phone: mfaPhone.trim() })
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Impala Hub' })
       if (enrollError) throw new Error(enrollError.message)
-      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: data.id })
-      if (challengeError) throw new Error(challengeError.message)
-      setMfaSetupFactorId(data.id); setMfaSetupChallengeId(challenge.id); setNotice('A verification code was sent to your phone.')
+      setMfaSetupFactorId(data.id); setMfaQr(data.totp?.qr_code || ''); setMfaSecret(data.totp?.secret || ''); setNotice('Scan the QR code with Google Authenticator, then enter the six-digit code.')
     } catch (e) { handleError(e) } finally { setProfileBusy(false) }
   }
 
   async function verifyMfaEnrollment() {
-    if (!supabase || !mfaSetupFactorId || !mfaSetupChallengeId) return
+    if (!supabase || !mfaSetupFactorId) return
     setProfileBusy(true); setError('')
     try {
-      const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: mfaSetupFactorId, challengeId: mfaSetupChallengeId, code: mfaCode.trim() })
+      const challenge = await supabase.auth.mfa.challenge({ factorId: mfaSetupFactorId })
+      if (challenge.error) throw new Error(challenge.error.message)
+      setMfaSetupChallengeId(challenge.data.id)
+      const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: mfaSetupFactorId, challengeId: challenge.data.id, code: mfaCode.trim() })
       if (verifyError) throw new Error(verifyError.message)
-      setMfaCode(''); setMfaPhone(''); setMfaSetupFactorId(''); setMfaSetupChallengeId(''); setNotice('Phone verification is enabled for your account.')
+      setMfaCode(''); setMfaQr(''); setMfaSecret(''); setMfaSetupFactorId(''); setMfaSetupChallengeId(''); setNotice('Authenticator-app MFA is enabled for your account.')
     } catch (e) { handleError(e) } finally { setProfileBusy(false) }
   }
 
@@ -362,11 +364,11 @@ export default function App() {
       const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
       if (assurance.data?.currentLevel === 'aal1' && assurance.data?.nextLevel === 'aal2') {
         const factors = await supabase.auth.mfa.listFactors()
-        const factor = factors.data?.all?.find((item) => item.factor_type === 'phone' && item.status === 'verified')
-        if (!factor) { await supabase.auth.signOut(); setError('Your account requires MFA, but no verified phone factor is available. Contact an administrator.'); return }
+        const factor = factors.data?.all?.find((item) => item.factor_type === 'totp' && item.status === 'verified')
+        if (!factor) { await supabase.auth.signOut(); setError('Your account requires MFA, but no verified authenticator factor is available. Contact an administrator.'); return }
         const challenge = await supabase.auth.mfa.challenge({ factorId: factor.id })
         if (challenge.error) { await supabase.auth.signOut(); setError(challenge.error.message); return }
-        setMfaFactorId(factor.id); setMfaChallengeId(challenge.data.id); setNotice('Enter the verification code sent to your phone.'); return
+        setMfaFactorId(factor.id); setMfaChallengeId(challenge.data.id); setNotice('Enter the six-digit code from Google Authenticator.'); return
       }
       sessionStorage.setItem(KEY_STORAGE, data.session.access_token)
       setKey(data.session.access_token)
@@ -804,7 +806,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <section className="key-panel">
             <h2>Sign in to Impala Hub</h2>
             <p>Use your employee account to open the App Dashboard. Sessions persist securely across refreshes until they expire or you log out.</p>
-            {mfaChallengeId ? <div className="mfa-form"><p className="hint">Enter the verification code sent to your phone to finish signing in.</p><input inputMode="numeric" autoFocus aria-label="MFA verification code" placeholder="Verification code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void verifyMfaLogin() }} /><button className="primary" disabled={!mfaCode.trim()} onClick={() => void verifyMfaLogin()}>Verify code</button></div> : <div className="inline-form">
+            {mfaChallengeId ? <div className="mfa-form"><p className="hint">Enter the six-digit code from Google Authenticator to finish signing in.</p><input inputMode="numeric" autoFocus aria-label="MFA verification code" placeholder="Verification code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void verifyMfaLogin() }} /><button className="primary" disabled={!mfaCode.trim()} onClick={() => void verifyMfaLogin()}>Verify code</button></div> : <div className="inline-form">
               <input aria-label="Email" type={supabaseConfigured ? 'email' : 'text'} placeholder={supabaseConfigured ? 'Email address' : 'Username'} value={username} onChange={(e) => setUsername(e.target.value)} />
               <input type="password" aria-label="Password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void signIn() }} />
               <button className="primary" onClick={() => void signIn()}>Sign in</button>
@@ -827,7 +829,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <label>Sales code<input value={profile.sales_code} placeholder="e.g. BB01" onChange={(e) => setProfile({ ...profile, sales_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></label>
                 <label>Email address<input value={profile.email} disabled /></label>
                 <div className="password-reset"><div><b>Password</b><p>Your password is changed through a secure email link.</p></div><button className="secondary" disabled={profileBusy} onClick={() => void sendPasswordReset()}>Send reset link</button></div>
-                <div className="mfa-settings"><div><b>Phone two-factor authentication</b><p>Require a verification code after your password when signing in.</p></div>{mfaSetupChallengeId ? <div className="mfa-inline"><input inputMode="numeric" aria-label="Phone verification code" placeholder="Verification code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaCode.trim()} onClick={() => void verifyMfaEnrollment()}>Verify phone</button></div> : <div className="mfa-inline"><input type="tel" aria-label="Phone number" placeholder="+27 82 123 4567" value={mfaPhone} onChange={(e) => setMfaPhone(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaPhone.trim()} onClick={() => void startMfaEnrollment()}>Send code</button></div>}</div>
+                <div className="mfa-settings"><div><b>Authenticator-app two-factor authentication</b><p>Scan the QR code with Google Authenticator, then enter its six-digit code.</p></div>{mfaSetupFactorId ? <div className="mfa-enrolment"><img className="mfa-qr" alt="Authenticator setup QR code" src={`data:image/svg+xml;utf8,${encodeURIComponent(mfaQr)}`} /><small>Manual setup key: <code>{mfaSecret}</code></small><div className="mfa-inline"><input inputMode="numeric" aria-label="Authenticator verification code" placeholder="Six-digit code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaCode.trim()} onClick={() => void verifyMfaEnrollment()}>Enable MFA</button></div></div> : <button className="secondary" disabled={profileBusy} onClick={() => void startMfaEnrollment()}>Set up MFA</button>}</div>
                 <div className="account-actions"><button className="primary" disabled={profileBusy} onClick={() => void saveProfile()}>Save profile</button></div>
               </div>
             </div>
