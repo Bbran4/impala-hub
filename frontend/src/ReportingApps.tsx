@@ -2,30 +2,36 @@ import {useCallback,useEffect,useMemo,useRef,useState,type PointerEvent as React
 import {
   ArrowLeft,BarChart3,Palette,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
   Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,Hash,ChartColumnIncreasing,ScatterChart,Target,ListFilter,ChartNoAxesColumn,LayoutDashboard,
-  BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,
+  BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,Variable,SlidersHorizontal,CalendarDays,MousePointerClick,Menu,PanelTop,Columns2,Grid2x2,
+  Image as ImageIcon,Newspaper,Minus,Video,
 } from 'lucide-react'
 import {supabase} from './supabase'
-import {type MasterMeasure} from './biExpression'
+import {expandVariables,type AppVariable,type MasterMeasure} from './biExpression'
 import {checkExpression,ExpressionInput,type ExpressionContext} from './biExpressionEditor'
 import {
   GRID_COLS,KIND_INFO,ROW_HEIGHT,compileObject,deleteApp,deleteSheet,displayValue,freeSpot,loadApp,loadApps,loadPrincipals,
-  columnOrder,fitOptions,modelProblems,moveColumn,newId,normalizeObject,orderedModel,relinkModel,removeFromModel,rerootModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
+  CONTAINER_KINDS,NO_DATA_KINDS,columnOrder,fitOptions,isContained,modelProblems,moveColumn,newId,removeObject,setContainer,normalizeObject,orderedModel,relinkModel,removeFromModel,rerootModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
   type AccessEntry,type AppDetail,type AppSummary,type ModelTable,type NumberFormat,type ObjectKind,
   type Principals,type Selection,type Sheet,type SheetObject,
 } from './biApps'
 import {loadDataTables,ago,type DataTable} from './reportingData'
 import {ObjectBody,type SelectFn} from './biCharts'
+import {type AppRuntime} from './biChartKit'
 import './reportingApps.css'
 
 type Props={canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
 
 const KIND_ICONS:Record<ObjectKind,typeof BarChart3>={kpi:Hash,bar:BarChart3,line:LineChart,pie:PieChart,table:Table2,pivot:Grid3x3,filter:Filter,text:Type,
   combo:ChartColumnIncreasing,scatter:ScatterChart,gauge:Gauge,bullet:Target,funnel:ListFilter,waterfall:ChartNoAxesColumn,treemap:LayoutDashboard,histogram:BarChartBig,
-  boxplot:ChartCandlestick,distribution:Grip,radar:Radar,mekko:Columns3,grid:LayoutGrid,wordcloud:Cloud}
+  boxplot:ChartCandlestick,distribution:Grip,radar:Radar,mekko:Columns3,grid:LayoutGrid,wordcloud:Cloud,
+  variable:Variable,slider:SlidersHorizontal,datepicker:CalendarDays,button:MousePointerClick,navigation:Menu,tabs:PanelTop,layout:Columns2,trellis:Grid2x2,
+  image:ImageIcon,textimage:Newspaper,divider:Minus,video:Video}
 const PALETTE:{title:string;kinds:ObjectKind[]}[]=[
   {title:'Charts',kinds:['bar','line','combo','pie','kpi','gauge','scatter','treemap','waterfall','funnel','bullet','radar','mekko','grid','histogram','boxplot','distribution','wordcloud']},
   {title:'Tables',kinds:['table','pivot']},
-  {title:'Filters & text',kinds:['filter','text']},
+  {title:'Filters & controls',kinds:['filter','datepicker','variable','slider','button','navigation']},
+  {title:'Containers',kinds:['tabs','layout','trellis']},
+  {title:'Text & media',kinds:['text','textimage','image','video','divider']},
 ]
 const FORMATS:[NumberFormat,string][]=[['auto','Automatic'],['number','Number'],['integer','Whole number'],['money','Rand (R)'],['percent','Percent']]
 
@@ -81,6 +87,19 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
 
   const sheet=editing||app?.sheets.find(item=>item.id===sheetId)||null
   const onSelect:SelectFn=(dimension,value,additive)=>{if(!editing)setSelections(current=>toggleSelection(current,dimension,value,additive))}
+  // variables: each viewer's current values, starting from the app's saved defaults
+  const [variableValues,setVariableValues]=useState<Record<string,string>>({})
+  const defaults=useMemo(()=>Object.fromEntries((app?.variables||[]).map(v=>[v.name,v.value])),[app?.variables])
+  const values=useMemo(()=>({...defaults,...Object.fromEntries(Object.entries(variableValues).filter(([name])=>name in defaults))}),[defaults,variableValues])
+  const viewApp=useMemo(()=>app?{...app,variableValues:values}:null,[app,values])
+  const runtime=useMemo<AppRuntime|undefined>(()=>app&&sheet?{
+    objects:sheet.objects,sheets:app.sheets.map(item=>({id:item.id,title:item.title})),sheetId:sheet.id,editing:Boolean(editing),
+    variables:app.variables,values,
+    goToSheet:id=>{if(!editing&&app.sheets.some(item=>item.id===id))setSheetId(id)},
+    setVariable:(name,value)=>setVariableValues(current=>({...current,[name]:value})),
+    clearSelections:()=>setSelections([]),
+    setSelection:(dimension,list)=>setSelections(current=>list.length?[...current.filter(item=>item.key!==dimension.key),{...dimension,values:list}]:current.filter(item=>item.key!==dimension.key)),
+  }:undefined,[app,sheet,editing,values])
 
   async function addSheet(){
     if(!app)return
@@ -137,15 +156,18 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
     {!sheet&&<div className="rfq-empty-card"><LayoutGrid size={26}/><h3>No sheets yet</h3><p>{canBuild?'Add a sheet, then add charts, tables and filters to it.':'This app has no sheets yet.'}</p></div>}
     {sheet&&<div className={`bi-workarea ${editing?'editing':''}`}>
       {editing&&<ObjectPalette onAdd={kind=>{const info=KIND_INFO[kind];const spot=freeSpot(editing.objects,info.w,info.h)
-        const object=normalizeObject({id:newId(),kind,title:'',...spot,w:info.w,h:info.h,dimensions:kind==='kpi'||kind==='text'?[]:[{expr:''}],measures:kind==='filter'||kind==='text'?[]:[{expr:''}],options:kind==='text'?{text:''}:{}})
+        const object=normalizeObject({id:newId(),kind,title:'',...spot,w:info.w,h:info.h,
+          dimensions:info.dims[0]>0||kind==='table'?[{expr:''}]:[],measures:info.measures[0]>0||kind==='table'?[{expr:''}]:[],
+          options:kind==='text'||kind==='textimage'?{text:''}:kind==='button'?{action:'clear',text:'Clear selections'}:{}})
         setEditing({...editing,objects:[...editing.objects,object]});setSelectedObject(object.id)}}/>}
-      <SheetCanvas sheet={sheet} app={app} editing={Boolean(editing)} selections={selections} onSelect={onSelect} version={version}
+      <SheetCanvas sheet={sheet} app={viewApp||app} runtime={runtime} editing={Boolean(editing)} selections={selections} onSelect={onSelect} version={version}
         selectedObject={selectedObject} onPick={setSelectedObject}
         onChange={objects=>editing&&setEditing({...editing,objects})}/>
-      {editing&&<SidePanel app={app} sheet={editing} objectId={selectedObject}
+      {editing&&<SidePanel app={viewApp||app} sheet={editing} objectId={selectedObject} onPick={setSelectedObject}
         onSheet={title=>setEditing({...editing,title})}
         onObject={object=>setEditing({...editing,objects:editing.objects.map(item=>item.id===object.id?object:item)})}
-        onDelete={id=>{setEditing({...editing,objects:resolveLayout(editing.objects.filter(item=>item.id!==id))});setSelectedObject(null)}}
+        onObjects={objects=>setEditing({...editing,objects})}
+        onDelete={id=>{setEditing({...editing,objects:resolveLayout(removeObject(editing.objects,id))});setSelectedObject(null)}}
         onClose={()=>setSelectedObject(null)}/>}
     </div>}
   </section>
@@ -173,8 +195,8 @@ function ObjectPalette({onAdd}:{onAdd:(kind:ObjectKind)=>void}){
 // ---------------------------------------------------------------------------
 // Sheet canvas (24-column grid; drag the header to move, the corner to resize)
 // ---------------------------------------------------------------------------
-function SheetCanvas({sheet,app,editing,selections,onSelect,version,selectedObject,onPick,onChange}:{
-  sheet:Sheet;app:AppDetail;editing:boolean;selections:Selection[];onSelect:SelectFn;version:string
+function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange}:{
+  sheet:Sheet;app:AppDetail;runtime?:AppRuntime;editing:boolean;selections:Selection[];onSelect:SelectFn;version:string
   selectedObject:string|null;onPick:(id:string|null)=>void;onChange:(objects:SheetObject[])=>void
 }){
   const ref=useRef<HTMLDivElement>(null)
@@ -183,7 +205,8 @@ function SheetCanvas({sheet,app,editing,selections,onSelect,version,selectedObje
   useEffect(()=>{if(!ref.current)return;const observer=new ResizeObserver(([entry])=>setWidth(entry.contentRect.width));observer.observe(ref.current);return()=>observer.disconnect()},[])
   const narrow=width<720&&!editing
   const col=width/GRID_COLS
-  const objects=sheet.objects.map(object=>drag&&object.id===drag.id?drag.current:object)
+  const hidden=sheet.objects.filter(object=>isContained(object,sheet.objects))
+  const objects=sheet.objects.filter(object=>!hidden.includes(object)).map(object=>drag&&object.id===drag.id?drag.current:object)
   const height=Math.max(8,...objects.map(object=>object.y+object.h))*ROW_HEIGHT+(editing?ROW_HEIGHT*4:0)
 
   function start(event:ReactPointerEvent,object:SheetObject,mode:'move'|'resize'){
@@ -203,7 +226,7 @@ function SheetCanvas({sheet,app,editing,selections,onSelect,version,selectedObje
   }
   function end(){
     if(!drag)return
-    onChange(resolveLayout(sheet.objects.map(object=>object.id===drag.id?drag.current:object),drag.id))
+    onChange([...resolveLayout(sheet.objects.filter(object=>!hidden.includes(object)).map(object=>object.id===drag.id?drag.current:object),drag.id),...hidden])
     setDrag(null)
   }
 
@@ -216,9 +239,9 @@ function SheetCanvas({sheet,app,editing,selections,onSelect,version,selectedObje
         onClick={()=>editing&&onPick(object.id)}>
         <div className="bi-object-inner">
           {(object.title||editing)&&<div className={`bi-object-head ${editing?'handle':''}`} onPointerDown={event=>start(event,object,'move')}>
-            {editing&&<GripVertical size={14}/>}<span>{object.title||(editing?<i className="bi-muted"><Icon size={13}/> {KIND_INFO[object.kind].label}</i>:'')}</span>
+            {editing&&<GripVertical size={14}/>}<span>{object.title?(editing?object.title:titleText(object.title,runtime?.values)):(editing?<i className="bi-muted"><Icon size={13}/> {KIND_INFO[object.kind].label}</i>:'')}</span>
           </div>}
-          <div className="bi-object-body"><ObjectBody object={object} app={app} selections={editing?[]:selections} onSelect={onSelect} dataVersion={version}/></div>
+          <div className="bi-object-body"><ObjectBody object={object} app={app} runtime={runtime} selections={editing?[]:selections} onSelect={onSelect} dataVersion={version}/></div>
         </div>
         {editing&&<div className="bi-resize" onPointerDown={event=>start(event,object,'resize')} title="Drag to resize"/>}
       </div>})}
@@ -229,8 +252,9 @@ function SheetCanvas({sheet,app,editing,selections,onSelect,version,selectedObje
 // ---------------------------------------------------------------------------
 // Side panel: sheet title and object properties
 // ---------------------------------------------------------------------------
-function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
-  app:AppDetail;sheet:Sheet;objectId:string|null;onSheet:(title:string)=>void;onObject:(object:SheetObject)=>void;onDelete:(id:string)=>void;onClose:()=>void
+function SidePanel({app,sheet,objectId,onPick,onSheet,onObject,onObjects,onDelete,onClose}:{
+  app:AppDetail;sheet:Sheet;objectId:string|null;onPick:(id:string|null)=>void;onSheet:(title:string)=>void;onObject:(object:SheetObject)=>void
+  onObjects:(objects:SheetObject[])=>void;onDelete:(id:string)=>void;onClose:()=>void
 }){
   const object=sheet.objects.find(item=>item.id===objectId)
   if(!object)return <aside className="bi-panel">
@@ -243,7 +267,7 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
   const compiled=compileObject(object,app)
   const set=(changes:Partial<SheetObject>)=>onObject({...object,...changes})
   const setOption=(changes:Partial<SheetObject['options']>)=>set({options:{...object.options,...changes}})
-  const ctx:ExpressionContext={appId:app.id,model:app.model,measures:app.measures}
+  const ctx:ExpressionContext={appId:app.id,model:app.model,measures:app.measures,variables:app.variableValues}
   const columns=[...object.dimensions.map((d,i)=>d.label||d.expr||`Dimension ${i+1}`),...object.measures.map((m,i)=>m.label||m.expr||`Measure ${i+1}`)]
   return <aside className="bi-panel">
     <div className="bi-panel-head"><h3>{info.label}</h3><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16}/></button></div>
@@ -254,8 +278,10 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
     <p className="hint">{info.hint}</p>
     <label>Title<input value={object.title} maxLength={120} onChange={event=>set({title:event.target.value})}/></label>
     {object.kind==='text'&&<label>Text<textarea rows={5} value={object.options.text||''} onChange={event=>setOption({text:event.target.value})}/></label>}
+    {object.options.container&&isContained(object,sheet.objects)&&<p className="hint bi-in-container">Shown inside <button className="text-button" onClick={()=>onPick(object.options.container!)}>{sheet.objects.find(o=>o.id===object.options.container)?.title||KIND_INFO[sheet.objects.find(o=>o.id===object.options.container)!.kind].label}</button>.</p>}
+    <ObjectSettings object={object} sheet={sheet} app={app} setOption={setOption} onObjects={onObjects} onPick={onPick}/>
 
-    {info.dims[1]>0&&<ItemList title="Dimensions" kind="dimension" ctx={ctx} items={object.dimensions} max={info.dims[1]} colors={object.kind==='table'} onChange={dimensions=>set({dimensions,options:fitOptions(object,dimensions.length,object.measures.length)})}
+    {info.dims[1]>0&&<ItemList title={object.kind==='button'?'Field to select (for "Select values")':object.kind==='datepicker'?'Date field':object.kind==='trellis'?'Repeat for each value of':'Dimensions'} kind="dimension" ctx={ctx} items={object.dimensions} max={info.dims[1]} colors={object.kind==='table'||object.kind==='pivot'} onChange={dimensions=>set({dimensions,options:fitOptions(object,dimensions.length,object.measures.length)})}
       onMove={(from,to)=>set(moveColumn(object,'dimension',from,to))}
       onRemove={i=>{const dimensions=object.dimensions.filter((_,j)=>j!==i);set({dimensions,options:fitOptions(object,dimensions.length,object.measures.length,{kind:'dimension',index:i})})}}/>}
     {info.measures[1]>0&&<ItemList title="Measures" kind="measure" ctx={ctx} items={object.measures} max={info.measures[1]} colors={object.kind==='table'||object.kind==='pivot'} onChange={measures=>set({measures,options:fitOptions(object,object.dimensions.length,measures.length)})}
@@ -267,7 +293,7 @@ function SidePanel({app,sheet,objectId,onSheet,onObject,onDelete,onClose}:{
         label={i=>columns[columnOrder(object)[i]]} render={i=>{const c=columnOrder(object)[i];return <div className="bi-column-chip">{c<object.dimensions.length?<Database size={12}/>:<Sigma size={12}/>}<span>{columns[c]}</span></div>}}/>
     </div>}
 
-    {object.kind!=='text'&&<details className="bi-section" open={Boolean(object.options.conditions?.length)}>
+    {!NO_DATA_KINDS.includes(object.kind)&&<details className="bi-section" open={Boolean(object.options.conditions?.length)}>
       <summary>Conditions</summary>
       <p className="hint">Only rows matching every condition are used, for example <code>invoice_date = Today()-1</code>.</p>
       {(object.options.conditions||[]).map((condition,i)=><div key={i} className="bi-row">
@@ -328,6 +354,8 @@ function SortableList({count,onMove,label,render}:{count:number;onMove:(from:num
       <div className="bi-sortable-body">{render(i)}</div>
     </div>)}</div>
 }
+// Titles can show variables: "Sales in $(vBranch)".
+function titleText(title:string,values?:Record<string,string>){try{return expandVariables(title,values)}catch{return title}}
 export function moveIndex<T>(items:T[],from:number,to:number){const next=[...items];const [item]=next.splice(from,1);next.splice(to,0,item);return next}
 
 function ItemList({title,kind,ctx,items,max,colors,onChange,onMove,onRemove}:{title:string;kind:'dimension'|'measure';ctx:ExpressionContext;items:SheetObject['dimensions'];max:number;colors?:boolean;onChange:(items:SheetObject['dimensions'])=>void;onMove:(from:number,to:number)=>void;onRemove:(index:number)=>void}){
@@ -351,6 +379,63 @@ function ItemList({title,kind,ctx,items,max,colors,onChange,onMove,onRemove}:{ti
   </div>
 }
 
+// Settings for controls, containers and media objects.
+function ObjectSettings({object,sheet,app,setOption,onObjects,onPick}:{object:SheetObject;sheet:Sheet;app:AppDetail;setOption:(changes:Partial<SheetObject['options']>)=>void;onObjects:(objects:SheetObject[])=>void;onPick:(id:string|null)=>void}){
+  const o=object.options
+  const variables=app.variables||[]
+  const num=(value:string)=>value===''?undefined:Number(value)
+  const variablePicker=<label>Variable<select value={o.variable||''} onChange={event=>setOption({variable:event.target.value||undefined})}>
+    <option value="">Choose a variable…</option>{variables.map(v=><option key={v.name} value={v.name}>{v.name}</option>)}</select>
+    {!variables.length&&<small className="bi-muted">Add variables under Data model &amp; sharing first.</small>}</label>
+  const label=(item:SheetObject)=>item.title||KIND_INFO[item.kind].label
+  switch(object.kind){
+    case 'variable':return <div className="bi-section">{variablePicker}
+      <label>Show as<select value={o.inputStyle||'input'} onChange={event=>setOption({inputStyle:event.target.value as 'input'})}><option value="input">Text box</option><option value="dropdown">Dropdown</option><option value="buttons">Buttons</option></select></label>
+      {(o.inputStyle==='dropdown'||o.inputStyle==='buttons')&&<label>Choices (comma separated)<input value={o.choices||''} placeholder="e.g. 10, 20, 50" onChange={event=>setOption({choices:event.target.value})}/></label>}
+      <p className="hint">Use the variable in expressions as <code>$({o.variable||'vName'})</code>, e.g. <code>Sum(qty) &gt; $({o.variable||'vName'})</code> or <code>branch = '$({o.variable||'vName'})'</code>.</p></div>
+    case 'slider':return <div className="bi-section">{variablePicker}
+      <div className="bi-row"><label>Minimum<input type="number" value={o.min??''} placeholder="0" onChange={event=>setOption({min:num(event.target.value)})}/></label>
+        <label>Maximum<input type="number" value={o.max??''} placeholder="100" onChange={event=>setOption({max:num(event.target.value)})}/></label>
+        <label>Step<input type="number" value={o.step??''} placeholder="1" onChange={event=>setOption({step:num(event.target.value)})}/></label></div></div>
+    case 'button':return <div className="bi-section">
+      <label>Button text<input value={o.text||''} maxLength={60} onChange={event=>setOption({text:event.target.value})}/></label>
+      <label>When clicked<select value={o.action||'clear'} onChange={event=>setOption({action:event.target.value as 'clear',actionTarget:undefined,actionValue:undefined})}>
+        <option value="clear">Clear all selections</option><option value="select">Select values in a field</option><option value="variable">Set a variable</option><option value="sheet">Go to a sheet</option><option value="url">Open a web page</option></select></label>
+      {o.action==='select'&&<label>Values to select (comma separated)<input value={o.actionValue||''} placeholder="e.g. Centurion, Pretoria" onChange={event=>setOption({actionValue:event.target.value})}/><small className="bi-muted">Choose the field under "Field to select" below.</small></label>}
+      {o.action==='variable'&&<><label>Variable<select value={o.actionTarget||''} onChange={event=>setOption({actionTarget:event.target.value||undefined})}><option value="">Choose…</option>{variables.map(v=><option key={v.name}>{v.name}</option>)}</select></label>
+        <label>Value<input value={o.actionValue||''} onChange={event=>setOption({actionValue:event.target.value})}/></label></>}
+      {o.action==='sheet'&&<label>Sheet<select value={o.actionTarget||''} onChange={event=>setOption({actionTarget:event.target.value||undefined})}><option value="">Choose…</option>{app.sheets.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}
+      {o.action==='url'&&<label>Web address<input value={o.actionTarget||''} placeholder="https://…" onChange={event=>setOption({actionTarget:event.target.value})}/></label>}
+      <label>Colour (optional)<input value={o.color||''} placeholder="#2a78d6 or a colour name" onChange={event=>setOption({color:event.target.value||undefined})}/></label></div>
+    case 'navigation':return <div className="bi-section"><label className="bi-check"><input type="checkbox" checked={o.vertical===false} onChange={event=>setOption({vertical:event.target.checked?false:undefined})}/>Side by side (instead of a list)</label></div>
+    case 'tabs':case 'layout':case 'trellis':{
+      const kids=object.kind==='trellis'?(o.child?[o.child]:[]):(o.children||[])
+      const free=sheet.objects.filter(item=>item.id!==object.id&&!isContained(item,sheet.objects)&&!CONTAINER_KINDS.includes(item.kind))
+      return <div className="bi-section"><div className="bi-section-title"><LayoutGrid size={14}/>{object.kind==='trellis'?'Object to repeat':'Objects in this container'}</div>
+        {object.kind==='layout'&&<label className="bi-check"><input type="checkbox" checked={Boolean(o.vertical)} onChange={event=>setOption({vertical:event.target.checked||undefined})}/>Stack them (instead of side by side)</label>}
+        {object.kind==='trellis'&&<div className="bi-row"><label>Columns<input type="number" min={1} max={6} value={o.columns??''} placeholder="Automatic" onChange={event=>setOption({columns:num(event.target.value)})}/></label>
+          <label>Most panels<input type="number" min={1} max={24} value={o.limit??''} placeholder="12" onChange={event=>setOption({limit:num(event.target.value)})}/></label></div>}
+        {kids.map(id=>sheet.objects.find(item=>item.id===id)).filter((item):item is SheetObject=>Boolean(item)).map(item=>{const Icon=KIND_ICONS[item.kind]
+          return <div key={item.id} className="bi-column-chip"><Icon size={12}/><span>{label(item)}</span>
+            <button className="text-button" onClick={()=>onPick(item.id)}>Edit</button>
+            <button className="icon-button" aria-label={`Take ${label(item)} out`} title="Put it back on the sheet" onClick={()=>onObjects(setContainer(sheet.objects,item.id,null))}><X size={13}/></button></div>})}
+        {(object.kind!=='trellis'||!kids.length)&&<label>{object.kind==='trellis'?'Choose an object':'Add an object from this sheet'}<select value="" onChange={event=>event.target.value&&onObjects(setContainer(sheet.objects,event.target.value,object.id))}>
+          <option value="">{free.length?'Choose…':'Add charts to the sheet first'}</option>{free.map(item=><option key={item.id} value={item.id}>{label(item)}</option>)}</select></label>}
+        <p className="hint">{object.kind==='trellis'?'The object is drawn once per value of the dimension below, each filtered to that value.':'Objects in a container are hidden from the sheet and shown here instead. Give them titles: the titles become the tab names.'}</p></div>}
+    case 'image':case 'textimage':case 'video':return <div className="bi-section">
+      {object.kind==='textimage'&&<label>Text<textarea rows={4} value={o.text||''} onChange={event=>setOption({text:event.target.value})}/></label>}
+      <label>{object.kind==='video'?'Video link':'Picture address'}<input value={o.url||''} placeholder={object.kind==='video'?'https://www.youtube.com/watch?v=… or https://…/video.mp4':'https://…/picture.png'} onChange={event=>setOption({url:event.target.value})}/></label>
+      {object.kind!=='video'&&<label>Fit<select value={o.fit||(object.kind==='image'?'contain':'cover')} onChange={event=>setOption({fit:event.target.value as 'contain'})}><option value="contain">Show the whole picture</option><option value="cover">Fill the space (crop)</option></select></label>}
+      {object.kind==='textimage'&&<label>Picture on the<select value={o.imageSide||'left'} onChange={event=>setOption({imageSide:event.target.value as 'left'})}><option value="left">Left</option><option value="right">Right</option><option value="top">Top</option></select></label>}
+      <p className="hint">Use a public https address. {object.kind==='video'?'YouTube and Vimeo links are embedded without tracking cookies.':''}</p></div>
+    case 'divider':return <div className="bi-section">
+      <label className="bi-check"><input type="checkbox" checked={Boolean(o.vertical)} onChange={event=>setOption({vertical:event.target.checked||undefined})}/>Vertical</label>
+      <div className="bi-row"><label>Colour<input value={o.color||''} placeholder="#c9d3db" onChange={event=>setOption({color:event.target.value||undefined})}/></label>
+        <label>Thickness<input type="number" min={1} max={12} value={o.thickness??''} placeholder="2" onChange={event=>setOption({thickness:num(event.target.value)})}/></label></div></div>
+    default:return null
+  }
+}
+
 function FieldList({app}:{app:AppDetail}){
   return <div className="bi-section"><div className="bi-section-title"><Database size={14}/>Fields in this app</div>
     {orderedModel(app.model).map(table=><details key={table.alias} className="bi-fields"><summary>{table.alias}<small>{table.columns.length} fields</small></summary>
@@ -366,6 +451,7 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   const [description,setDescription]=useState(app?.description||'')
   const [model,setModel]=useState<ModelTable[]>(app?.model||[])
   const [measures,setMeasures]=useState<MasterMeasure[]>(app?.measures||[])
+  const [variables,setVariables]=useState<AppVariable[]>(app?.variables||[])
   const [access,setAccess]=useState<AccessEntry[]>(app?.access||[])
   const [catalogue,setCatalogue]=useState<DataTable[]>([])
   const [principals,setPrincipals]=useState<Principals|null>(null)
@@ -379,7 +465,7 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   // keep model columns in sync with the catalogue (new columns appear after a load)
   const withColumns=useMemo(()=>model.map(table=>{const loaded=catalogue.find(item=>item.table_name===table.table_name);return loaded?{...table,columns:loaded.columns.filter(c=>c.name!=='_bi_loaded_at')}:table}),[model,catalogue])
   const problems=modelProblems(withColumns)
-  const measureCtx=useMemo<ExpressionContext>(()=>({appId:app?.id,model:withColumns,measures}),[app?.id,withColumns,measures])
+  const measureCtx=useMemo<ExpressionContext>(()=>({appId:app?.id,model:withColumns,measures,variables:Object.fromEntries(variables.map(v=>[v.name,v.value]))}),[app?.id,withColumns,measures,variables])
   const measureProblems=measures.map(m=>{if(!m.name.trim()||!m.expression.trim())return 'Needs a name and an expression'
     if(measures.filter(x=>x.name.trim().toLowerCase()===m.name.trim().toLowerCase()).length>1)return 'Two master measures have this name'
     return checkExpression(m.expression,'measure',measureCtx)?.message||''})
@@ -401,13 +487,15 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
   async function save(){
     if(!supabase)return
     setSaving(true)
-    try{const id=await saveApp(supabase,{id:app?.id,name,description,model:withColumns,measures,access});setNotice(app?'App saved.':'App created. Add a sheet to start building.');onSaved(id)}
+    try{const id=await saveApp(supabase,{id:app?.id,name,description,model:withColumns,measures,variables,access});setNotice(app?'App saved.':'App created. Add a sheet to start building.');onSaved(id)}
     catch(error){setError((error as Error).message)}finally{setSaving(false)}
   }
   async function remove(){
     if(!app||!supabase||!confirm(`Delete the app "${app.name}" and all its sheets? The loaded data is not affected.`))return
     try{await deleteApp(supabase,app.id);setNotice('App deleted.');onDeleted?.()}catch(error){setError((error as Error).message)}
   }
+  const variableProblems=variables.map((v,i)=>!/^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(v.name)?'Start with a letter; use letters, digits and _ only'
+    :variables.findIndex(x=>x.name.toLowerCase()===v.name.toLowerCase())!==i?'Two variables have this name':'')
   const users=(principals?.users||[]).filter(u=>{const needle=userSearch.trim().toLowerCase();return !needle||u.name.toLowerCase().includes(needle)||(u.email||'').toLowerCase().includes(needle)})
   const hasAccess=(type:'role'|'user',principal:string)=>access.some(a=>a.type===type&&a.principal===principal)
   const toggleAccess=(type:'role'|'user',principal:string)=>setAccess(hasAccess(type,principal)?access.filter(a=>!(a.type===type&&a.principal===principal)):[...access,{type,principal}])
@@ -417,7 +505,7 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
     <div className="sd-session-bar"><Settings2 size={18}/><span>{app?`${app.name}: data model & sharing`:'Create app'}</span>
       <div className="bi-app-actions">{app&&<button className="secondary danger" onClick={()=>void remove()}><Trash2 size={15}/>Delete app</button>}
         <button className="secondary" onClick={onClose} disabled={saving}>Cancel</button>
-        <button className="primary" disabled={saving||!name.trim()||problems.length>0||measureProblems.some(Boolean)} onClick={()=>void save()}><Save size={15}/>{saving?'Saving…':app?'Save':'Create app'}</button></div></div>
+        <button className="primary" disabled={saving||!name.trim()||problems.length>0||measureProblems.some(Boolean)||variableProblems.some(Boolean)} onClick={()=>void save()}><Save size={15}/>{saving?'Saving…':app?'Save':'Create app'}</button></div></div>
 
     <div className="bi-card"><h3>Details</h3><div className="bi-form-grid">
       <label>Name<input value={name} maxLength={120} placeholder="e.g. Sales" onChange={event=>setName(event.target.value)}/></label>
@@ -462,6 +550,18 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
         {(measureProblems[i].startsWith('Needs')||measureProblems[i].startsWith('Two'))&&<small className="bi-expr-error">{measureProblems[i]}</small>}
       </div>)}
       <button className="text-button" onClick={()=>setMeasures([...measures,{name:'',expression:''}])}><Plus size={13}/>Add master measure</button>
+    </div>
+
+    <div className="bi-card"><h3><Variable size={16}/>Variables</h3>
+      <p className="hint">Values people can change while looking at the app (with a variable input, slider or button), used in expressions as <code>$(name)</code>. The value here is where everyone starts. Example: <code>vMinQty</code> = <code>10</code>, then the condition <code>qty_on_hand &lt; $(vMinQty)</code>.</p>
+      {variables.map((v,i)=><div key={i} className="bi-variable-row">
+        <input placeholder="Name, e.g. vMinQty" value={v.name} className={variableProblems[i]?'invalid':''} onChange={event=>setVariables(variables.map((x,j)=>j===i?{...x,name:event.target.value.trim()}:x))}/>
+        <input placeholder="Starting value" value={v.value} onChange={event=>setVariables(variables.map((x,j)=>j===i?{...x,value:event.target.value}:x))}/>
+        <input placeholder="Description (optional)" value={v.description||''} onChange={event=>setVariables(variables.map((x,j)=>j===i?{...x,description:event.target.value||undefined}:x))}/>
+        <button className="icon-button" aria-label="Remove variable" onClick={()=>setVariables(variables.filter((_,j)=>j!==i))}><Trash2 size={14}/></button>
+        {variableProblems[i]&&<small className="bi-expr-error">{variableProblems[i]}</small>}
+      </div>)}
+      <button className="text-button" onClick={()=>setVariables([...variables,{name:`v${variables.length+1}`,value:''}])}><Plus size={13}/>Add variable</button>
     </div>
 
     <div className="bi-card"><h3><Users size={16}/>Who can open this app</h3>

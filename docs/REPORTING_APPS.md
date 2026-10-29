@@ -62,7 +62,19 @@ select id, 'report_builder' from public.profiles where email = 'someone@impalasp
 | Table | 0–10 | 0–20 | Click headers to sort, totals row, loads 200 rows at a time, CSV export (up to 10,000 rows); column order and cell colours |
 | Pivot table | 2–4 | 1–4 | The last dimension becomes the columns; cell colours per measure |
 | Filter pane | 1 | – | Searchable list of values |
+| Date picker | 1 (a date field) | – | Select a date range, or Today / Yesterday / This week / Last 7 days / This month / Last month / This year |
+| Variable input | – | – | Change a variable with a text box, a dropdown or buttons |
+| Slider | – | – | Change a number variable (minimum, maximum, step) |
+| Button | 0–1 | – | Clear selections, select values in a field, set a variable, go to a sheet or open a web page |
+| Navigation menu | – | – | A button per sheet |
+| Tab container | – | – | Objects from the sheet shown one per tab (their titles are the tab names) |
+| Layout container | – | – | Objects from the sheet side by side or stacked in one frame |
+| Trellis container | 1 | – | Repeats one object for each value of the dimension (up to 24 panels) |
 | Text | – | – | Headings and notes |
+| Text & image | – | – | A note with a picture on the left, right or top |
+| Image | – | – | A picture from an https address |
+| Line | – | – | A horizontal or vertical divider (colour, thickness) |
+| Video player | – | – | YouTube or Vimeo (embedded without tracking cookies) or an https video file |
 
 Straight table = Table, pivot table = Pivot table. Every chart supports click-to-select. The object list in
 edit mode has a search box.
@@ -71,11 +83,24 @@ edit mode has a search box.
 Alt+↑/↓. The first dimension is the chart's axis and the order of measures is the order of bars, lines and
 columns. In a table, **Column order** can put any column first, including a measure before the dimensions.
 
-**Cell colours.** In tables (every column) and pivot tables (measures), open **Colours** under a column and
+**Cell colours.** In tables and pivot tables (every dimension and measure), open **Colours** under a column and
 write a background and/or text colour expression. It is calculated per row like a measure, e.g.
 `If(Sum(qty_on_hand) < 30, '#fbe3dd')`, `If(qty_on_hand < 30, 'red', 'green')`, `RGB(27, 175, 122)` or
 `ColorMix1(Sum(qty) / 1000, '#ffffff', '#2a78d6')`. Results that are not a colour (a name, `#rrggbb` or
 `rgb(…)`) are ignored; text on a coloured background is made dark or white automatically.
+
+In a pivot table, a dimension's colour colours its header cells: row headers per row, column headers per
+column.
+
+**Variables.** Define them under Data model & sharing → Variables (name, starting value, description) and
+use them in any expression or object title as `$(name)`, like Qlik's dollar expansion: the text of the
+variable is put in before the expression is read, e.g. `qty_on_hand < $(vMinStock)`,
+`branch = '$(vBranch)'` (quotes for text) or a whole expression such as `$(vSalesExpr)`. Variable inputs,
+sliders and buttons change the value for the person looking at the app; everyone starts from the saved
+value. The expression box suggests variables as you type.
+
+**Containers.** Add the objects to the sheet first, then pick them in the container's settings; they are
+hidden from the sheet and shown in the container ("Edit" opens their settings, × puts them back).
 
 Rows where every measure is empty are left out (like Qlik), e.g. a branch value that only exists because a
 stock item never sold.

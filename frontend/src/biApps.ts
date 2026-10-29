@@ -1,5 +1,5 @@
 import type {SupabaseClient} from '@supabase/supabase-js'
-import {asColorMeasure,asMeasure,checkFields,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
+import {asColorMeasure,asMeasure,checkFields,type AppVariable,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
 
 // Reporting apps: data model, sheets and objects. All data access goes through the
 // role-checked public.bi_* functions (migrations 0046 and 0047).
@@ -15,17 +15,25 @@ export type NumberFormat='auto'|'number'|'integer'|'money'|'percent'
 export type ObjectItem={expr:string;label?:string;format?:NumberFormat;background?:string;textColor?:string}
 export type ObjectKind='kpi'|'bar'|'line'|'pie'|'table'|'pivot'|'filter'|'text'
   |'combo'|'scatter'|'gauge'|'bullet'|'funnel'|'waterfall'|'treemap'|'histogram'|'boxplot'|'distribution'|'radar'|'mekko'|'grid'|'wordcloud'
+  |'variable'|'slider'|'datepicker'|'button'|'navigation'|'tabs'|'layout'|'trellis'|'image'|'textimage'|'divider'|'video'
 export type ObjectOptions={
   conditions?:string[];sortBy?:number;sortDesc?:boolean;limit?:number
   horizontal?:boolean;stacked?:boolean;text?:string;totals?:boolean
   columnOrder?:number[]   // tables: display order of the query columns (dimensions first, then measures)
   comboBars?:number;secondaryAxis?:boolean   // combo: how many measures are bars; lines on a second axis
   gaugeMin?:number;gaugeMax?:number;bins?:number
+  // controls
+  variable?:string;inputStyle?:'input'|'dropdown'|'buttons';choices?:string;min?:number;max?:number;step?:number
+  action?:'clear'|'select'|'variable'|'sheet'|'url';actionTarget?:string;actionValue?:string;vertical?:boolean
+  // containers: the container lists its objects; each contained object points back at it
+  children?:string[];child?:string;container?:string;columns?:number
+  // media
+  url?:string;fit?:'contain'|'cover';color?:string;thickness?:number;imageSide?:'left'|'right'|'top'
 }
 export type SheetObject={id:string;kind:ObjectKind;title:string;x:number;y:number;w:number;h:number;dimensions:ObjectItem[];measures:ObjectItem[];options:ObjectOptions}
 export type Sheet={id:string;title:string;position:number;objects:SheetObject[];updated_at?:string}
 export type AppSummary={id:string;name:string;description:string;updated_at:string;can_edit:boolean;tables:string[];sheets:{id:string;title:string}[];last_loaded_at:string|null}
-export type AppDetail={id:string;name:string;description:string;measures:MasterMeasure[];updated_at:string;can_edit:boolean;model:ModelTable[];sheets:Sheet[];access:AccessEntry[]|null}
+export type AppDetail={id:string;name:string;description:string;measures:MasterMeasure[];variables:AppVariable[];variableValues?:Record<string,string>;updated_at:string;can_edit:boolean;model:ModelTable[];sheets:Sheet[];access:AccessEntry[]|null}
 export type MyAccess={admin:boolean;builder:boolean;catalogue:boolean;apps:number}
 export type Principals={roles:{id:string;label:string}[];users:{id:string;name:string;email:string}[]}
 export type Selection={key:string;label:string;node:ExprNode;values:FieldValue[]}
@@ -58,7 +66,23 @@ export const KIND_INFO:Record<ObjectKind,{label:string;dims:[number,number];meas
   mekko:{label:'Mekko chart',dims:[2,2],measures:[1,1],w:12,h:8,hint:'Column width is the total per first dimension; segments show the share of the second.'},
   grid:{label:'Grid chart',dims:[2,2],measures:[1,1],w:12,h:8,hint:'A heat map: first dimension down, second across, colour by value.'},
   wordcloud:{label:'Word cloud',dims:[1,1],measures:[1,1],w:8,h:6,hint:'Values sized by the measure.'},
+  variable:{label:'Variable input',dims:[0,0],measures:[0,0],w:6,h:3,hint:'Lets people change an app variable: a text box, a dropdown or buttons.'},
+  slider:{label:'Slider',dims:[0,0],measures:[0,0],w:6,h:3,hint:'Sets a number variable by dragging, e.g. a minimum quantity used in a condition.'},
+  datepicker:{label:'Date picker',dims:[1,1],measures:[0,0],w:8,h:3,hint:'Select a date or a date range on a date field, with quick ranges such as This month.'},
+  button:{label:'Button',dims:[0,1],measures:[0,0],w:4,h:2,hint:'Clears selections, selects values, sets a variable, goes to a sheet or opens a link.'},
+  navigation:{label:'Navigation menu',dims:[0,0],measures:[0,0],w:6,h:5,hint:'Buttons for every sheet in the app.'},
+  tabs:{label:'Tab container',dims:[0,0],measures:[0,0],w:12,h:8,hint:'Several objects in one place, one tab each.'},
+  layout:{label:'Layout container',dims:[0,0],measures:[0,0],w:12,h:8,hint:'Several objects side by side (or stacked) inside one frame.'},
+  trellis:{label:'Trellis container',dims:[1,1],measures:[0,0],w:24,h:10,hint:'Repeats one object for every value of a dimension, e.g. the same chart per branch.'},
+  image:{label:'Image',dims:[0,0],measures:[0,0],w:6,h:5,hint:'A picture from a web address (https).'},
+  textimage:{label:'Text & image',dims:[0,0],measures:[0,0],w:12,h:5,hint:'A note with a picture next to it.'},
+  divider:{label:'Line',dims:[0,0],measures:[0,0],w:24,h:2,hint:'A horizontal or vertical line to separate parts of a sheet.'},
+  video:{label:'Video player',dims:[0,0],measures:[0,0],w:12,h:7,hint:'A YouTube or Vimeo video, or a video file (https).'},
 }
+
+export const CONTAINER_KINDS:ObjectKind[]=['tabs','layout','trellis']
+// Objects that never query data and have no dimensions or measures to fill in.
+export const NO_DATA_KINDS:ObjectKind[]=['text','variable','slider','button','navigation','tabs','layout','image','textimage','divider','video']
 
 // ---------------------------------------------------------------------------
 // RPC
@@ -67,7 +91,7 @@ function fail(error:{message:string}|null){if(error)throw new Error(error.messag
 export async function loadMyAccess(client:SupabaseClient){const {data,error}=await client.rpc('bi_my_access');fail(error);return data as MyAccess}
 export async function loadApps(client:SupabaseClient){const {data,error}=await client.rpc('bi_list_apps');fail(error);return (data||[]) as AppSummary[]}
 export async function loadApp(client:SupabaseClient,id:string){const {data,error}=await client.rpc('bi_get_app',{p_app:id});fail(error);return normalizeApp(data as AppDetail)}
-export async function saveApp(client:SupabaseClient,app:{id?:string;name:string;description:string;model:ModelTable[];measures:MasterMeasure[];access?:AccessEntry[]}){
+export async function saveApp(client:SupabaseClient,app:{id?:string;name:string;description:string;model:ModelTable[];measures:MasterMeasure[];variables?:AppVariable[];access?:AccessEntry[]}){
   const payload={...app,model:app.model.map(({alias,table_name,parent_alias,join_type,join_pairs})=>({alias,table_name,parent_alias,join_type,join_pairs}))}
   const {data,error}=await client.rpc('bi_save_app',{p:payload});fail(error);return data as string
 }
@@ -80,7 +104,7 @@ export async function loadPrincipals(client:SupabaseClient){const {data,error}=a
 export async function runQuery(client:SupabaseClient,appId:string,spec:unknown){const {data,error}=await client.rpc('bi_query',{p_app:appId,p_spec:spec});fail(error);return data as QueryResult}
 
 export function normalizeApp(app:AppDetail):AppDetail{
-  return {...app,measures:app.measures||[],model:(app.model||[]).map(table=>({...table,join_pairs:table.join_pairs||[],columns:table.columns||[]})),
+  return {...app,measures:app.measures||[],variables:app.variables||[],model:(app.model||[]).map(table=>({...table,join_pairs:table.join_pairs||[],columns:table.columns||[]})),
     sheets:(app.sheets||[]).map(sheet=>({...sheet,objects:(sheet.objects||[]).map(normalizeObject)}))}
 }
 export function normalizeObject(object:Partial<SheetObject>):SheetObject{
@@ -249,12 +273,12 @@ export type CompiledObject={
   errors:string[]
 }
 
-export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'measures'>):CompiledObject{
+export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'measures'>&{variableValues?:Record<string,string>},extraConditions:ExprNode[]=[]):CompiledObject{
   const errors:string[]=[]
   const info=KIND_INFO[object.kind]
   const parse=(text:string,where:string)=>{
     try{
-      const node=parseExpression(text,{measures:app.measures})
+      const node=parseExpression(text,{measures:app.measures,variables:app.variableValues})
       const problem=checkFields(node,app.model)
       if(problem){errors.push(`${where}: ${problem}`);return null}
       return node
@@ -274,7 +298,7 @@ export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'mea
     const master=app.measures.find(measure=>`[${measure.name}]`.toLowerCase()===item.expr.trim().toLowerCase())
     measures.push({node,label:item.label||master?.name||item.expr,format:item.format||(master?.format as NumberFormat|undefined)})
   })
-  const conditions:ExprNode[]=[]
+  const conditions:ExprNode[]=[...extraConditions]
   ;(object.options.conditions||[]).filter(text=>text.trim()).forEach((text,i)=>{
     const node=parse(text,`Condition ${i+1}`);if(!node)return
     if(hasAggregation(node))errors.push(`Condition ${i+1}: conditions filter rows and cannot aggregate`)
@@ -285,12 +309,11 @@ export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'mea
     const items=[...object.dimensions.map((item,i)=>({item,column:i,where:`Dimension ${i+1}`})),...object.measures.map((item,i)=>({item,column:object.dimensions.length+i,where:`Measure ${i+1}`}))]
     for(const {item,column,where} of items)for(const [kind,text] of [['background',item.background],['color',item.textColor]] as const){
       if(!text?.trim())continue
-      if(object.kind==='pivot'&&column<object.dimensions.length)continue
       const parsed=parse(text,`${where} ${kind==='background'?'background':'text'} colour`);if(!parsed)continue
       styles.push({column,kind,node:asColorMeasure(parsed)})
     }
   }
-  if(object.kind!=='text'){
+  if(!NO_DATA_KINDS.includes(object.kind)){
     if(object.dimensions.length<info.dims[0]||object.dimensions.length>info.dims[1])errors.push(info.dims[0]===info.dims[1]?`${info.label} needs ${info.dims[0]} dimension${info.dims[0]===1?'':'s'}.`:`${info.label} needs ${info.dims[0]} to ${info.dims[1]} dimensions.`)
     if(object.measures.length<info.measures[0]||object.measures.length>info.measures[1])errors.push(info.measures[0]===info.measures[1]?`${info.label} needs ${info.measures[0]} measure${info.measures[0]===1?'':'s'}.`:`${info.label} needs ${info.measures[0]} to ${info.measures[1]} measures.`)
     if(object.kind==='table'&&!object.dimensions.length&&!object.measures.length)errors.push('Add a dimension or a measure.')
@@ -465,6 +488,30 @@ export function toCsv(headers:string[],rows:FieldValue[][]){
 function overlaps(a:SheetObject,b:SheetObject){return a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h}
 
 // Keeps objects inside the grid and pushes anything overlapping the anchored object downwards.
+// Objects shown inside a container are not placed on the sheet grid themselves.
+export function isContained(object:SheetObject,objects:SheetObject[]){
+  const owner=object.options.container&&objects.find(item=>item.id===object.options.container)
+  return Boolean(owner&&((owner.options.children||[]).includes(object.id)||owner.options.child===object.id))
+}
+// Put `child` into `container` (or take it out with container=null), keeping both sides in step.
+export function setContainer(objects:SheetObject[],childId:string,containerId:string|null){
+  return objects.map(item=>{
+    if(item.id===childId)return {...item,options:{...item.options,container:containerId||undefined}}
+    const children=(item.options.children||[]).filter(id=>id!==childId)
+    const child=item.options.child===childId?undefined:item.options.child
+    if(item.id===containerId){
+      return item.kind==='trellis'?{...item,options:{...item.options,child:childId}}:{...item,options:{...item.options,children:[...children,childId]}}
+    }
+    return children.length!==(item.options.children||[]).length||child!==item.options.child?{...item,options:{...item.options,children,child}}:item
+  })
+}
+// Removing an object also removes it from its container, and frees the objects inside it.
+export function removeObject(objects:SheetObject[],id:string){
+  const removed=objects.find(item=>item.id===id)
+  const inside=new Set([...(removed?.options.children||[]),...(removed?.options.child?[removed.options.child]:[])])
+  return setContainer(objects,id,null).filter(item=>item.id!==id).map(item=>inside.has(item.id)?{...item,options:{...item.options,container:undefined}}:item)
+}
+
 export function resolveLayout(objects:SheetObject[],anchorId?:string){
   const placed:SheetObject[]=[]
   const fixed=objects.map(object=>({...object,w:Math.min(object.w,GRID_COLS),x:Math.max(0,Math.min(object.x,GRID_COLS-Math.min(object.w,GRID_COLS))),y:Math.max(0,object.y)}))

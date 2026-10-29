@@ -76,7 +76,22 @@ function tokenize(src:string):Token[]{
 
 const BINARY:Record<string,number>={or:1,and:2,'=':3,'<>':3,'<':3,'<=':3,'>':3,'>=':3,'&':4,'+':5,'-':5,'*':6,'/':6}
 
-export function parseExpression(src:string,options:{measures?:MasterMeasure[];stack?:string[]}={}):ExprNode{
+export type AppVariable={name:string;value:string;description?:string}
+
+// Qlik dollar expansion: $(vName) is replaced by the variable's text before parsing, so a variable
+// can hold a number (Sum(qty) > $(vMin)), a text in quotes ('$(vBranch)') or part of an expression.
+export function expandVariables(src:string,variables:Record<string,string>|undefined,depth=0):string{
+  if(!src.includes('$('))return src
+  if(depth>5)throw new ExpressionError('Variables refer to each other too deeply',0)
+  const lookup=new Map(Object.entries(variables||{}).map(([name,value])=>[name.toLowerCase(),value]))
+  return src.replace(/\$\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g,(_,name:string,offset:number)=>{
+    if(!lookup.has(name.toLowerCase()))throw new ExpressionError(`Unknown variable "${name}"`,offset)
+    return expandVariables(lookup.get(name.toLowerCase())??'',variables,depth+1)
+  })
+}
+
+export function parseExpression(src:string,options:{measures?:MasterMeasure[];stack?:string[];variables?:Record<string,string>}={}):ExprNode{
+  src=expandVariables(src,options.variables)
   if(!src.trim())throw new ExpressionError('The expression is empty',0)
   const tokens=tokenize(src);let pos=0
   const measures=new Map((options.measures||[]).map(m=>[m.name.trim().toLowerCase(),m]))
@@ -111,7 +126,7 @@ export function parseExpression(src:string,options:{measures?:MasterMeasure[];st
     const measure=measures.get(name.trim().toLowerCase())
     if(measure&&bracketed){
       if(stack.includes(measure.name))throw new ExpressionError(`Master measure "${measure.name}" refers to itself`,p)
-      try{return parseExpression(measure.expression,{measures:options.measures,stack:[...stack,measure.name]})}
+      try{return parseExpression(measure.expression,{measures:options.measures,stack:[...stack,measure.name],variables:options.variables})}
       catch(error){
         const message=(error as Error).message
         throw new ExpressionError(message.startsWith('In master measure')||message.includes('refers to itself')?message:`In master measure "${measure.name}": ${message}`,p)

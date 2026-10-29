@@ -63,6 +63,12 @@ select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"
 select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"a","table_name":"t_lines"},{"alias":"b","table_name":"t_items","parent_alias":"a","join_pairs":[["nope","item_code"]]}]}'::jsonb)$sql$,'42703',null,'link fields must exist');
 select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"a","table_name":"no_such_table"}]}'::jsonb)$sql$,'42P01',null,'model tables must be loaded tables');
 select throws_ok($sql$select public.bi_save_app('{"name":"X","model":[{"alias":"a; drop table x","table_name":"t_lines"}]}'::jsonb)$sql$,'22023',null,'table names in the model are validated');
+select lives_ok($sql$select public.bi_save_app(jsonb_build_object('id',(select id from ids where name='sales'),'name','Sales','model',(select jsonb_agg(jsonb_build_object('alias',m->>'alias','table_name',m->>'table_name','parent_alias',m->>'parent_alias','join_pairs',m->'join_pairs')) from jsonb_array_elements(public.bi_get_app((select id from ids where name='sales'))->'model') m),'measures','[{"name":"Sales","expression":"Sum(qty*unit_price)"}]'::jsonb,'variables','[{"name":"vMinQty","value":"2","description":"Smallest quantity"}]'::jsonb))$sql$,'apps can store variables');
+select is(public.bi_get_app((select id from ids where name='sales'))->'variables','[{"name":"vMinQty","value":"2","description":"Smallest quantity"}]'::jsonb,'variables come back with the app');
+select throws_ok($sql$select public.bi_save_app(jsonb_build_object('name','Bad vars','model','[{"alias":"lines","table_name":"t_lines"}]'::jsonb,'variables','[{"name":"1 bad; drop","value":"x"}]'::jsonb))$sql$,'22023',null,'variable names are validated');
+select throws_ok($sql$select public.bi_save_app(jsonb_build_object('name','Dup vars','model','[{"alias":"lines","table_name":"t_lines"}]'::jsonb,'variables','[{"name":"vA","value":"1"},{"name":"va","value":"2"}]'::jsonb))$sql$,'22023','Two variables have the same name','variable names are unique');
+select lives_ok($sql$select public.bi_save_app(jsonb_build_object('id',(select id from ids where name='sales'),'name','Sales','model',(select jsonb_agg(jsonb_build_object('alias',m->>'alias','table_name',m->>'table_name','parent_alias',m->>'parent_alias','join_pairs',m->'join_pairs')) from jsonb_array_elements(public.bi_get_app((select id from ids where name='sales'))->'model') m),'measures','[{"name":"Sales","expression":"Sum(qty*unit_price)"}]'::jsonb))$sql$,'saving without variables');
+select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'variables'),1,'keeps the variables');
 select lives_ok($sql$insert into ids select 'sheet', public.bi_save_sheet(jsonb_build_object('app_id',(select id from ids where name='sales'),'title','Overview','objects','[{"id":"o1","kind":"bar"}]'::jsonb))$sql$,'builder saves a sheet');
 select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'sheets'),1,'the app has its sheet');
 select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'access'),2,'builders see the access list');
@@ -166,7 +172,7 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000001","role":"authenticated"}';
 select lives_ok($sql$select public.bi_delete_app((select id from ids where name='sales'))$sql$,'administrator deletes the app');
-select is((select count(*) from public.bi_audit_log() where object_type='app'),3::bigint,'app create, change and delete are audited');
+select is((select count(*) from public.bi_audit_log() where object_type='app'),5::bigint,'app create, changes (incl. variables) and delete are audited');
 reset role;
 select is((select count(*) from bi.sheets),0::bigint,'deleting an app deletes its sheets');
 
