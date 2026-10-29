@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   BarChart3, ClipboardList, Megaphone, PackageCheck, Search, Settings,
   ShieldCheck, ShoppingCart, Tags, Truck, Users,
@@ -29,6 +29,7 @@ type AccessRow = {
 type CampaignDropTarget = { type: string; edge: 'before' | 'after' }
 
 type Props = {
+  salesDeskConfiguration: ReactNode
   integrations: any[]
   facebookPages: Array<{ id: string; name: string }>
   selectedFacebookPage: string
@@ -231,6 +232,11 @@ export default function AdminSettings(props: Props) {
             </section>
 
           </>}
+
+          {selectedAppId === 'sales_desk' && <section className="admin-settings-panel">
+            <div className="section-head"><div><h2>Sales Desk configuration</h2><p>Manage RFQ platforms, statuses, analytics categories, sales codes and dashboard milestones.</p></div></div>
+            {props.salesDeskConfiguration}
+          </section>}
 
           <section className="admin-settings-panel app-access-panel">
             <div className="section-head"><div><h2>Who can open this app</h2><p>Grant application access to active employee accounts. Administrators and platform-wide roles are inherited.</p></div><ShieldCheck size={20} /></div>

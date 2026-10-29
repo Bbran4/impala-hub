@@ -35,6 +35,7 @@ function describeDetail(detail: unknown, status: number): string {
 type Req = (path: string, init?: RequestInit) => Promise<any>
 type Props = {
   page: string
+  embedded?: boolean
   token: string
   setNotice: (m: string) => void
   setError: (m: string) => void
@@ -414,7 +415,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
 }
 
 // ---------------------------------------------------------------------------------------------
-export default function SalesDesk({ page, token, setNotice, setError, openRfqId, onOpenRfqHandled }: Props) {
+export default function SalesDesk({ page, embedded = false, token, setNotice, setError, openRfqId, onOpenRfqHandled }: Props) {
   const [user, setUser] = useState<any>(null)
   const [busy, setBusy] = useState(false)
   const [rfqs, setRfqs] = useState<any[]>([])
@@ -538,13 +539,13 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
   const canConvert = (r: any) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
 
   return (
-    <section className="rfq-workspace">
+    <section className={`rfq-workspace${embedded ? ' sales-desk-settings' : ''}`}>
       <>
-          <div className="sd-session-bar">
+          {!embedded && <div className="sd-session-bar">
             {page === 'RFQs' && view === 'rfqs' && isAdmin && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
             {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button><button className={view === 'cross-reference' ? 'active' : ''} onClick={() => setView('cross-reference')}>Cross Reference</button></div>}
-          </div>
+          </div>}
 
           {page === 'RFQs' && view === 'cross-reference' ? (
             <CrossReference setNotice={setNotice} setError={setError} />

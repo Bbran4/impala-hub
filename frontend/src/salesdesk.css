@@ -110,3 +110,6 @@
 .sd-gp-percent-text.pink{color:#d45a91}
 .sd-gp-percent-text.navy{color:#142b40}
 .sd-gp-percent-text.brown{color:#8a5a3b}
+
+/* Configuration shares the application settings content column. */
+.sales-desk-settings .sd-config-layout{grid-template-columns:minmax(0,1fr)}

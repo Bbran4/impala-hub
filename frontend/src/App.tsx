@@ -355,10 +355,10 @@ export default function App() {
 
   useEffect(() => {
     const marketingPages = ['Feed', 'Posts', 'Post', 'Campaigns', 'Marketing Accounts', 'Roadmap']
-    const salesPages = ['RFQs', 'RFQ Configuration', 'RFQ Roadmap']
+    const salesPages = ['RFQs', 'RFQ Roadmap']
     const stockPages = ['Parts Query', 'Stock Booking', 'Stock Reordering', 'Stock Data Import', 'Stock Control Configuration', 'Stock Control Roadmap']
     const returnsPages = ['Returns & Claims', 'Returns & Claims Roadmap']
-    const adminPages = ['Admin Settings', 'Configuration', 'RFQ Configuration', 'Stock Data Import', 'Stock Control Configuration']
+    const adminPages = ['Admin Settings', 'Configuration', 'Stock Data Import', 'Stock Control Configuration']
     if (profileLoaded && page === 'Configuration' && isAdministrator) { setPage('Admin Settings'); return }
     const marketingPageDenied = (page === 'Feed' && !canMarketing('feed.view'))
       || ((page === 'Posts' || page === 'Post') && !canMarketing('posts.view'))
@@ -737,7 +737,7 @@ export default function App() {
   const RETURNS_ROADMAP_ROWS = [['Record workflow','Editable side-panel records','Create, update and delete claims with RC date/sequence references','Implemented'],['Customer and invoice search','Record investigation','Substring search across claim fields, including customer and invoice','Implemented'],['Outcome handling','Unknown until decided','Validated status transitions, rejection/reopen reasons and receipt checks','Implemented'],['Attachments','Evidence files','New-tab images, PDF previews, downloads and audited permanent deletion','Implemented'],['Supplier outcomes','Credit and replacement tracking','Supplier response, dated credit/replacement receipts and pickup/drop-off tracking','Implemented'],['Ageing and SLA','Claim ageing reports','7-day calendar SLA, 2-day warning, date-range/overdue filters and closure age','Implemented'],['Exports and audit','Traceable reporting','Filtered CSV/XLSX reports, summary breakdowns and named audit history','Implemented'],['Wildcard syntax','Advanced search','Literal substring search exists; * and ? pattern semantics are not implemented','Planned'],['Hosted verification','Production readiness','Signed URL, preview, concurrency and role smoke tests','Planned']]
 const STOCK_ROADMAP_ROWS = [['Parts Query','Multi-supplier records','Supabase CRUD, atomic supplier replacement, archival and named history','Implemented'],['Supplier comparison','Cost and MSRP','Cheapest unit-cost comparison','Implemented'],['Sales-code mapping','Sales ownership','Active Sales Desk codes','Implemented'],['Stock Booking','Branch stock transfers','Active Supabase snapshot, persisted transfers and Evolve export','Implemented'],['Stock Reordering','Inventory planning','Active Supabase snapshot, shared mover rules, supply metrics and filters','Implemented'],['Shared configuration','Locations, thresholds and statuses','Supabase-backed settings with audited administrator controls','Implemented'],['Versioned imports','Safe snapshot replacement','Chunked staging, validation, audit and transactional activation','Implemented'],['Supply calculation','Inventory rules','Max - QOH - On Picking Slip with ER/PT sorting','Implemented'],['Picking-list export','Evolve transfer format','Franchise, locations, bins, quantity, comments and timestamped filename','Implemented'],['CSV/XLSX import','Administrator upload','Mapping, preview validation, hashing, staging and activation','Implemented'],['Google Sheets ingestion','Private inventory feed','Removed from the deployed application; database history retained but disabled','Retired'],['Qlik/ODBC adapter','ERP inventory feed','Real external stock data is intentionally postponed','Deferred'],['Historical SQLite reconciliation','Legacy data','Reconcile legacy records only when production data work resumes','Deferred'],['Supplier response workflow','Quote lifecycle','Track quote requests and responses','Planned'],['Approval workflow','Quote approval','Approve supplier selections','Planned'],['Supplier history','Supplier intelligence','Reuse supplier performance and pricing history','Planned'],['Reorder recommendations','Inventory action','Turn approved queries into stock actions','Planned'],['Search','Parts and suppliers','Substring search across parts, descriptions, suppliers, alternatives and sales codes','Implemented']]
 
-const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page === 'RFQ Roadmap'
+const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
   const isStockControlPage = page === 'Parts Query' || page === 'Stock Booking' || page === 'Stock Reordering' || page === 'Stock Data Import' || page === 'Stock Control Configuration' || page === 'Stock Control Roadmap'
   const isReturnsClaimsPage = page === 'Returns & Claims' || page === 'Returns & Claims Roadmap'
   const isReportingPage = (REPORTING_PAGES as readonly string[]).includes(page)
@@ -765,7 +765,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <>
             <div className="nav-label">WORKSPACE</div>
             {(isSalesDeskPage
-              ? ([['RFQs', ClipboardList], ...(isAdministrator ? [['RFQ Configuration', Settings] as const] : []), ['RFQ Roadmap', Map]] as const)
+              ? ([['RFQs', ClipboardList], ['RFQ Roadmap', Map]] as const)
               : isStockControlPage
               ? ([['Stock Booking', PackageCheck], ['Stock Reordering', PackageCheck], ['Parts Query', ClipboardList], ...(isAdministrator ? [['Stock Data Import', Upload] as const, ['Stock Control Configuration', Settings] as const] : []), ['Stock Control Roadmap', Map]] as const)
                 : isReturnsClaimsPage
@@ -799,7 +799,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
 
       <main className="main">
         <header className="topbar">
-          <div><div className="eyebrow">{page === 'Account' || isAdminSettingsPage ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : isReportingPage ? 'REPORTING' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isAdminSettingsPage ? 'Settings' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : isReportingPage ? 'Reporting' : page}</h1>{isAdminSettingsPage && <p className="topbar-subtitle">Manage application access and shared configuration.</p>}{isSalesDeskPage && <p className="topbar-subtitle">{page === 'RFQ Configuration' ? 'Manage media platforms, statuses, sales codes and team accounts.' : 'Review incoming enquiries, claim RFQs, and track sales follow-ups.'}</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
+          <div><div className="eyebrow">{page === 'Account' || isAdminSettingsPage ? 'IMPALA HUB' : `IMPALA SPARES / ${page === 'Apps' ? 'BUSINESS PLATFORM' : isSalesDeskPage ? 'SALES DESK' : isStockControlPage ? 'SMART STOCK CONTROL' : isReturnsClaimsPage ? 'RETURNS & CLAIMS' : isReportingPage ? 'REPORTING' : 'MARKETING'}`}</div><h1>{page === 'Post' ? 'Post details' : page === 'Apps' ? 'Apps Dashboard' : isAdminSettingsPage ? 'Settings' : isStockControlPage ? 'Smart Stock Control' : isReturnsClaimsPage ? 'Returns & Claims' : isReportingPage ? 'Reporting' : page}</h1>{isAdminSettingsPage && <p className="topbar-subtitle">Manage application access and shared configuration.</p>}{isSalesDeskPage && <p className="topbar-subtitle">Review incoming enquiries, claim RFQs, and track sales follow-ups.</p>}{page === 'Stock Booking' && <p className="topbar-subtitle">Compare branch stock and prepare Evolve location transfers.</p>}{page === 'Parts Query' && <p className="topbar-subtitle">Manage parts queries and supplier quotes.</p>}</div>
           {!isSalesDeskPage && !isStockControlPage && !isReturnsClaimsPage && !isReportingPage && !isAdminSettingsPage && page !== 'Apps' && page !== 'Account' && page !== 'Marketing Accounts' && page !== 'Campaigns' && page !== 'Roadmap' && ((page === 'Feed' && canMarketing('feed.create')) || ((page === 'Posts' || page === 'Post') && canMarketing('posts.create'))) && <button className="primary" onClick={() => { setEditor(emptyPost()); setError('') }}>
             <Plus size={17} /> Create post
           </button>}
@@ -909,6 +909,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
 
         {key && isAdminSettingsPage && isAdministrator && (
           <AdminSettings
+            salesDeskConfiguration={<SalesDesk page="App Settings" embedded token={key} setNotice={setNotice} setError={setError} />}
             integrations={integrations}
             facebookPages={facebookPages}
             selectedFacebookPage={selectedFacebookPage}
