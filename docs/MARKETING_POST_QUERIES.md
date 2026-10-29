@@ -11,3 +11,5 @@ Migration `0097_marketing_history_queries.sql` adds atomic audit history and per
 - The unused Vercel `/api/marketing/posts` endpoint is removed. The browser's `/api/posts` adapter uses Supabase RPCs directly, while Facebook publishing and sync remain server functions.
 
 Database tests cover over 1,000 posts, paging, full-result pivot totals, literal campaign-aware search, date boundaries, compact previews, complete detail, immutable audit records, named actors, deletion history and access restrictions. Client/server tests cover query parameters, safe names, durable storage, caching, redirect restrictions, oversized downloads and compiled server startup.
+
+Migration `0101_marketing_sync_timestamp.sql` adds a distinct `last_synced_at` timestamp. The Feed and Posts refresh controls show this successful-sync time in Johannesburg time, including seconds. It survives reloads and does not change on connection checks or failed syncs. Older refreshes cannot be reconstructed; the label reads Not recorded yet until the next successful sync.

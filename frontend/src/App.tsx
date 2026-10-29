@@ -465,6 +465,7 @@ export default function App() {
       const r = await api('/api/integrations/sync', { method: 'POST' })
       const fb = r.facebook?.status === 'error' ? `Facebook error: ${r.facebook.detail || 'unknown error'}` : r.facebook?.status === 'not_connected' ? 'Facebook not connected' : `Facebook synced (${r.facebook.items || 0} new, ${r.facebook.fetched || 0} checked${r.facebook.metricsUnavailable ? `; metrics unavailable for ${r.facebook.metricsUnavailable}${r.facebook.metricsErrors?.[0] ? `: ${r.facebook.metricsErrors[0]}` : ''}` : ''})`
       const ig = r.instagram?.status === 'synced' ? `Instagram synced (${r.instagram.items} items)` : r.instagram?.status === 'not_connected' ? 'Instagram not connected' : `Instagram error: ${r.instagram?.detail || 'unknown error'}`
+      if (r.facebook?.syncedAt) setIntegrations(items => items.map(item => item.provider === 'facebook' ? { ...item, last_synced_at: r.facebook.syncedAt } : item))
       setNotice(`${fb}; ${ig}.${r.facebook?.mediaUnavailable ? ` ${r.facebook.mediaUnavailable} image previews could not be copied; temporary image URLs were not saved.` : ''}`)
       if (r.facebook?.audience != null) setIntegrations((items) => items.map((item) => item.provider === 'facebook' ? { ...item, followers_count: r.facebook.audience } : item))
       if (r.facebook?.status === 'synced') setMonth(null)
@@ -693,6 +694,8 @@ export default function App() {
   }, [page, detailId])
 
   const selected = selectedPost
+  const lastMarketingUpdate = integrations.find(item => item.provider === 'facebook')?.last_synced_at
+  const marketingRefresh = <div className="marketing-refresh"><button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button><span className="marketing-last-update" title="Last successful Facebook refresh, in Johannesburg time">Last update: {lastMarketingUpdate ? <time dateTime={lastMarketingUpdate}>{new Intl.DateTimeFormat('en-ZA', { timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(lastMarketingUpdate))} SAST</time> : 'Not recorded yet'}</span></div>
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
 
@@ -987,7 +990,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
             <div className="feed-head">
               <div><h2>Connected social accounts</h2><p>Review Facebook and Instagram activity, engagement and provider health in one feed.</p></div>
               <div className="feed-actions">
-                <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
+                {marketingRefresh}
                 {canMarketing('feed.manage_accounts') && <button className="primary" onClick={() => setPage(isAdministrator ? 'Admin Settings' : 'Marketing Accounts')}><Settings size={16} /> Manage accounts</button>}
               </div>
             </div>
@@ -1055,9 +1058,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
                 <option value="all">All campaigns</option><option value="none">No campaign</option>
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              {integrations.some((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected') && (
-                <button className="secondary" disabled={busy} onClick={() => void syncAll()}>Refresh</button>
-              )}
+              {integrations.some((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected') && marketingRefresh}
               {canMarketing('posts.create') && <button className="primary" onClick={() => setEditor(emptyPost())}><Plus size={16} /> New post</button>}
             </div>
             <MonthNav
@@ -1066,7 +1067,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
               onChange={(value) => { setPostPage(0); setMonth(value) }}
               count={postTotal}
             />
-            <div className="section-head" aria-live="polite"><span>{postsLoading ? 'Loading posts…' : view === 'pivot' ? `${postTotal} matching posts` : `${postTotal ? postPage*POST_PAGE_SIZE+1 : 0}–${Math.min(postPage*POST_PAGE_SIZE+posts.length,postTotal)} of ${postTotal} posts`}{view === 'board' || view === 'calendar' ? ' · This view shows the current page.' : ''}</span>{view !== 'pivot' && <div className="row-actions"><button className="secondary" disabled={postsLoading || postPage===0} onClick={() => setPostPage(p=>p-1)}>Previous</button><button className="secondary" disabled={postsLoading || (postPage+1)*POST_PAGE_SIZE>=postTotal} onClick={() => setPostPage(p=>p+1)}>Next</button></div>}</div>
+            <div className="section-head" aria-live="polite"><span>{postsLoading ? 'Loading posts...' : view === 'pivot' ? `${postTotal} matching posts` : `Showing ${postTotal ? postPage*POST_PAGE_SIZE+1 : 0} to ${Math.min(postPage*POST_PAGE_SIZE+posts.length,postTotal)} of ${postTotal} posts`}</span>{view !== 'pivot' && <div className="row-actions"><button className="secondary" disabled={postsLoading || postPage===0} onClick={() => setPostPage(p=>p-1)}>Previous</button><button className="secondary" disabled={postsLoading || (postPage+1)*POST_PAGE_SIZE>=postTotal} onClick={() => setPostPage(p=>p+1)}>Next</button></div>}</div>
             {view === 'list' && (
               <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} canEdit={canMarketing('posts.edit')} canDelete={canMarketing('posts.delete')} />
             )}

@@ -90,6 +90,9 @@ export default async function handler(req: any, res: any) {
       if (!existing) imported += 1
 
     }
-    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors, audience, mediaUnavailable })
+    const syncedAt = new Date().toISOString()
+    const completed = await admin.from('provider_connections').update({ last_synced_at: syncedAt }).eq('id', connection.id).select('id').maybeSingle()
+    if (completed.error || !completed.data) return res.status(500).json({ detail: 'Facebook posts were refreshed, but the last-update time could not be saved. Please refresh again.' })
+    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors, audience, mediaUnavailable, syncedAt })
   } catch { return res.status(502).json({ detail: 'Facebook sync failed.' }) }
 }

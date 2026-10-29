@@ -14,7 +14,7 @@ export default async function handler(req: any, res: any) {
   const { data: canAccess } = await supabase.rpc('can_access_workspace', { workspace_name: 'marketing' })
   if (!canAccess) return res.status(403).json({ detail: 'Marketing access required.' })
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
-  const { data: connections, error: connectionError } = await admin.from('provider_connections').select('provider,status,account_name,page_id,page_name,followers_count,last_checked_at,last_success_at,last_error').eq('is_workspace_connection', true)
+  const { data: connections, error: connectionError } = await admin.from('provider_connections').select('provider,status,account_name,page_id,page_name,followers_count,last_checked_at,last_success_at,last_synced_at,last_error').eq('is_workspace_connection', true)
   if (connectionError) return res.status(500).json({ detail: 'Could not load shared provider connections.' })
   const connected = new Map((connections || []).map((connection: any) => [connection.provider, connection]))
   return res.status(200).json({
