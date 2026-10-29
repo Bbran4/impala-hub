@@ -3,7 +3,7 @@ import {
   ArrowLeft,BarChart3,Palette,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
   Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,Hash,ChartColumnIncreasing,ScatterChart,Target,ListFilter,ChartNoAxesColumn,LayoutDashboard,
   BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,Variable,SlidersHorizontal,CalendarDays,MousePointerClick,Menu,PanelTop,Columns2,Grid2x2,
-  Image as ImageIcon,Newspaper,Minus,Video,
+  Image as ImageIcon,Newspaper,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
 } from 'lucide-react'
 import {supabase} from './supabase'
 import {expandVariables,type AppVariable,type MasterMeasure} from './biExpression'
@@ -25,10 +25,12 @@ const KIND_ICONS:Record<ObjectKind,typeof BarChart3>={kpi:Hash,bar:BarChart3,lin
   combo:ChartColumnIncreasing,scatter:ScatterChart,gauge:Gauge,bullet:Target,funnel:ListFilter,waterfall:ChartNoAxesColumn,treemap:LayoutDashboard,histogram:BarChartBig,
   boxplot:ChartCandlestick,distribution:Grip,radar:Radar,mekko:Columns3,grid:LayoutGrid,wordcloud:Cloud,
   variable:Variable,slider:SlidersHorizontal,datepicker:CalendarDays,button:MousePointerClick,navigation:Menu,tabs:PanelTop,layout:Columns2,trellis:Grid2x2,
-  image:ImageIcon,textimage:Newspaper,divider:Minus,video:Video}
+  image:ImageIcon,textimage:Newspaper,divider:Minus,video:Video,
+  pnl:FileSpreadsheet,variance:ChartNoAxesCombined,sankey:Shuffle,network:Network,orgchart:Workflow,map:MapPin,animator:Clapperboard,insights:Sparkles,writetable:PencilLine}
 const PALETTE:{title:string;kinds:ObjectKind[]}[]=[
-  {title:'Charts',kinds:['bar','line','combo','pie','kpi','gauge','scatter','treemap','waterfall','funnel','bullet','radar','mekko','grid','histogram','boxplot','distribution','wordcloud']},
-  {title:'Tables',kinds:['table','pivot']},
+  {title:'Charts',kinds:['bar','line','combo','pie','kpi','gauge','scatter','treemap','waterfall','variance','funnel','bullet','radar','mekko','grid','histogram','boxplot','distribution','wordcloud','sankey','network','orgchart','map']},
+  {title:'Tables',kinds:['table','pivot','pnl','writetable']},
+  {title:'Insights',kinds:['insights','animator']},
   {title:'Filters & controls',kinds:['filter','datepicker','variable','slider','button','navigation']},
   {title:'Containers',kinds:['tabs','layout','trellis']},
   {title:'Text & media',kinds:['text','textimage','image','video','divider']},
@@ -428,6 +430,26 @@ function ObjectSettings({object,sheet,app,setOption,onObjects,onPick}:{object:Sh
       {object.kind!=='video'&&<label>Fit<select value={o.fit||(object.kind==='image'?'contain':'cover')} onChange={event=>setOption({fit:event.target.value as 'contain'})}><option value="contain">Show the whole picture</option><option value="cover">Fill the space (crop)</option></select></label>}
       {object.kind==='textimage'&&<label>Picture on the<select value={o.imageSide||'left'} onChange={event=>setOption({imageSide:event.target.value as 'left'})}><option value="left">Left</option><option value="right">Right</option><option value="top">Top</option></select></label>}
       <p className="hint">Use a public https address. {object.kind==='video'?'YouTube and Vimeo links are embedded without tracking cookies.':''}</p></div>
+    case 'pnl':return <div className="bi-section">
+      <label>Row order and styles<textarea rows={6} value={o.rowStyles||''} placeholder={'One row per line, in the order to show them:\nSales: bold\nCost of sales: indent\nGross profit: bold, line\nExpenses: header\nNet profit: bold, highlight, line'} onChange={event=>setOption({rowStyles:event.target.value})}/></label>
+      <p className="hint">Write the values of the first dimension in the order you want, each with optional styles after a colon: <code>bold</code>, <code>italic</code>, <code>header</code>, <code>highlight</code>, <code>line</code> (line above), <code>indent</code>, <code>hidden</code>. Values not listed follow in data order.</p></div>
+    case 'map':return <div className="bi-section"><label className="bi-check"><input type="checkbox" checked={o.tiles!==false} onChange={event=>setOption({tiles:event.target.checked?undefined:false})}/>Show the OpenStreetMap background</label>
+      <p className="hint">Measures: latitude, longitude and (optional) bubble size. With one row per place, write them as fields, e.g. <code>lat</code> and <code>lon</code>; the map tiles load from openstreetmap.org.</p></div>
+    case 'animator':return <div className="bi-section"><div className="bi-row">
+      <label>Seconds per step<input type="number" min={0.3} max={30} step={0.1} value={o.interval?o.interval/1000:''} placeholder="1.2" onChange={event=>setOption({interval:event.target.value?Math.round(Number(event.target.value)*1000):undefined})}/></label></div>
+      <label className="bi-check"><input type="checkbox" checked={Boolean(o.loop)} onChange={event=>setOption({loop:event.target.checked||undefined})}/>Start again at the end</label>
+      <p className="hint">Each step selects one value of the dimension, so every other object on the sheet follows along.</p></div>
+    case 'writetable':{const cols=o.writeColumns||[];const setCols=(next:typeof cols)=>setOption({writeColumns:next})
+      return <div className="bi-section"><div className="bi-section-title"><PencilLine size={14}/>Editable columns</div>
+        {cols.map((c,i)=><div key={i} className="bi-item">
+          <div className="bi-row"><input placeholder="Column name, e.g. Order qty" value={c.name} maxLength={100} onChange={event=>setCols(cols.map((x,j)=>j===i?{...x,name:event.target.value}:x))}/>
+            <button className="icon-button" aria-label="Remove column" onClick={()=>setCols(cols.filter((_,j)=>j!==i))}><Trash2 size={14}/></button></div>
+          <div className="bi-row bi-sub"><select value={c.type} onChange={event=>setCols(cols.map((x,j)=>j===i?{...x,type:event.target.value as 'text'}:x))}><option value="text">Text</option><option value="number">Number</option><option value="choice">Choice</option></select>
+            {c.type==='choice'&&<input placeholder="Choices, comma separated" value={c.choices||''} onChange={event=>setCols(cols.map((x,j)=>j===i?{...x,choices:event.target.value}:x))}/>}</div>
+        </div>)}
+        <button className="text-button" onClick={()=>setCols([...cols,{name:'',type:'text'}])}><Plus size={13}/>Add editable column</button>
+        <label>Who can type in it<select value={o.writeEditors||'everyone'} onChange={event=>setOption({writeEditors:event.target.value==='builders'?'builders':undefined})}><option value="everyone">Everyone who can open the app</option><option value="builders">Only administrators and report builders</option></select></label>
+        <p className="hint">Values are saved per row (by the row's dimension values) for everyone, after the sheet is saved. The ERP data is not changed. Renaming a column starts it empty.</p></div>}
     case 'divider':return <div className="bi-section">
       <label className="bi-check"><input type="checkbox" checked={Boolean(o.vertical)} onChange={event=>setOption({vertical:event.target.checked||undefined})}/>Vertical</label>
       <div className="bi-row"><label>Colour<input value={o.color||''} placeholder="#c9d3db" onChange={event=>setOption({color:event.target.value||undefined})}/></label>

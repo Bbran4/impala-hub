@@ -70,6 +70,15 @@ select id, 'report_builder' from public.profiles where email = 'someone@impalasp
 | Tab container | – | – | Objects from the sheet shown one per tab (their titles are the tab names) |
 | Layout container | – | – | Objects from the sheet side by side or stacked in one frame |
 | Trellis container | 1 | – | Repeats one object for each value of the dimension (up to 24 panels) |
+| P&L pivot | 1–2 | 1–4 | Rows in your order with styles (bold, header, line, indent, highlight, hidden); a second dimension becomes columns plus a Total |
+| Variance waterfall | 1 | 2 | From the second measure's total (budget, last year) to the first's (actual), one step per value |
+| Sankey chart | 2–4 | 1 | Flows from one dimension to the next |
+| Network chart | 2 | 0–1 | Links between two dimensions (from → to); a measure sets the weight |
+| Org chart | 2–3 | 0–1 | A tree from a node and its parent; parents that are not rows (e.g. a top level) are added |
+| Map | 1 | 2–3 | Points by latitude and longitude, optional bubble size; OpenStreetMap background (can be switched off) |
+| Animator | 1 | – | Plays through the values of a dimension (selects each in turn) |
+| Insights | 1 | 1 | Written findings: total, highest and lowest, share, above average, latest and biggest change (calculated, no AI service) |
+| Write table | 1–6 | 0–10 | A table with editable columns (text, number, choice) saved per row for everyone; optionally builders only |
 | Text | – | – | Headings and notes |
 | Text & image | – | – | A note with a picture on the left, right or top |
 | Image | – | – | A picture from an https address |
@@ -98,6 +107,11 @@ variable is put in before the expression is read, e.g. `qty_on_hand < $(vMinStoc
 `branch = '$(vBranch)'` (quotes for text) or a whole expression such as `$(vSalesExpr)`. Variable inputs,
 sliders and buttons change the value for the person looking at the app; everyone starts from the saved
 value. The expression box suggests variables as you type.
+
+**Write tables.** Values typed into a write table are stored in Reporting (`bi.write_cells`, per app, object,
+row and column), never in the loaded ERP data. A row is identified by its dimension values, so keep the
+dimensions stable (renaming a column or changing the dimensions starts those cells empty). The CSV export
+includes the typed columns. Saving the sheet is needed before people can type in a new write table.
 
 **Containers.** Add the objects to the sheet first, then pick them in the container's settings; they are
 hidden from the sheet and shown in the container ("Edit" opens their settings, × puts them back).
