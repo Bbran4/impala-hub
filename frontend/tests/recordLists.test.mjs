@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadMarketingCampaigns, loadMarketingPosts, loadRfqList } from '../src/recordLists.ts'
+import { loadMarketingCampaigns, loadRfqList } from '../src/recordLists.ts'
 import { loadStockBookingWorkspace, loadStockBookingTransfer } from '../src/stockBookingData.ts'
 
 // Model the API's count, filtering, ordering and row cap, rather than returning
@@ -50,16 +50,13 @@ test('RFQs include the newest record and every permitted unarchived record beyon
   assert.equal(new Set(result.data.map(row => row.id)).size, 1205)
 })
 
-test('Marketing loads all posts/campaigns, preserves tied sort values and server-side owner scoping', async () => {
+test('Marketing loads all campaign options and preserves tied sort values', async () => {
   const db = database({ posts: records, campaigns: records })
-  for (const result of [await loadMarketingPosts(db), await loadMarketingCampaigns(db)]) {
+  for (const result of [await loadMarketingCampaigns(db)]) {
     assert.equal(result.count, 1205)
     assert.equal(new Set(result.data.map(row => row.id)).size, 1205)
     assert.deepEqual(result.data.slice(0, 3).map(row => row.id), ['01203', '01204', '01200'])
   }
-  const owned = await loadMarketingPosts(db, 'me')
-  assert.equal(owned.count, 603)
-  assert.ok(owned.data.every(row => row.created_by === 'me'))
 })
 
 test('Stock Booking and downloaded transfers include all rows beyond the response cap', async () => {

@@ -29,6 +29,8 @@ function describeEntry(h: HistoryEntry): string {
 export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedule, onDelete, onSaveCampaign, onError, canEdit, canDelete, canAssignCampaign }: Props) {
   const [campaignId, setCampaignId] = useState(post.campaign_id || '')
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
+  const [moreHistory, setMoreHistory] = useState(false)
+  const [historyBusy, setHistoryBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
 
@@ -53,9 +55,16 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
 
   useEffect(() => {
     let live = true
-    api(`/api/posts/${post.id}/history`).then((h) => { if (live) setHistory(h) }).catch(onError)
+    setHistory(null)
+    api(`/api/posts/${post.id}/history`).then((h) => { if (live) { setHistory(h); setMoreHistory(h.length === 50) } }).catch(onError)
     return () => { live = false }
   }, [post.id, post.updated_at])
+
+  async function earlierHistory() {
+    if (!history?.length || historyBusy) return
+    setHistoryBusy(true)
+    try { const rows = await api(`/api/posts/${post.id}/history?before=${history[history.length-1].id}`); setHistory(current => [...(current || []), ...rows]); setMoreHistory(rows.length===50) } catch(e) { onError(e) } finally { setHistoryBusy(false) }
+  }
 
   async function saveCampaign() {
     setSaving(true)
@@ -160,9 +169,10 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
         {history?.length === 0 && <p className="hint">No history recorded.</p>}
         <ul className="history-list">
           {history?.map((h) => (
-            <li key={h.id}><span>{describeEntry(h)}</span><small>{fmt(h.created_at, '')}</small></li>
+            <li key={h.id}><span>{describeEntry(h)}</span><small>{h.details.actor_name || 'System'} - {fmt(h.created_at, '')}</small></li>
           ))}
         </ul>
+        {moreHistory && <button className="secondary" disabled={historyBusy} onClick={() => void earlierHistory()}>Load earlier history</button>}
       </div>
       {lightboxIndex !== null && post.media[lightboxIndex] && (
         <div className="overlay feed-image-viewer" role="dialog" aria-modal="true" aria-label="Full-size post image" onMouseDown={(e) => { if (e.target === e.currentTarget) setLightboxIndex(null) }}>

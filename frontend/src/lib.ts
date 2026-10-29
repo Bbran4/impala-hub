@@ -13,6 +13,7 @@ export type Post = {
   publish_at?: string | null
   published_at?: string | null
   media: Media[]
+  media_count?: number
   last_error?: string | null
   provider_ids?: Record<string, string>
   clicks?: number | null
@@ -32,7 +33,7 @@ export type HistoryEntry = {
   id: number
   action: string
   created_at: string
-  details: { status?: string; channels?: string[]; changed?: string[] }
+  details: { actor_name?: string; status?: string; channels?: string[]; changed?: string[] }
 }
 
 // Only these statuses can be fully edited. Scheduled and published posts only allow a campaign change.
@@ -40,8 +41,9 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
+import { loadPostPage, safeMarketingFilename } from './marketingPosts.ts'
 import { readMarketingResponse } from './marketingResponse.ts'
-import { loadMarketingCampaigns, loadMarketingPosts, loadRfqList } from './recordLists.ts'
+import { loadMarketingCampaigns, loadRfqList } from './recordLists.ts'
 import { AuthError, readSupabaseToken } from './sessionToken.ts'
 export { AuthError } from './sessionToken.ts'
 import { claimFileType } from './returnsAttachments'
@@ -147,7 +149,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     if (!file || typeof (file as File).arrayBuffer !== 'function') throw new Error('Select a media file first.')
     const user = (await client.auth.getUser()).data.user
     const uploadFile = file as File
-    const objectPath = `${user?.id || 'unknown'}/${crypto.randomUUID()}-${uploadFile.name}`
+    const objectPath = `${user?.id || 'unknown'}/${crypto.randomUUID()}-${safeMarketingFilename(uploadFile.name)}`
     const { error } = await client.storage.from('marketing-media').upload(objectPath, uploadFile, { contentType: uploadFile.type || undefined, upsert: false })
     if (error) throw new Error(error.message)
     const { data } = client.storage.from('marketing-media').getPublicUrl(objectPath)
@@ -238,7 +240,7 @@ async function supabaseApi(path: string, options: RequestInit) {
       if (!file || typeof (file as File).arrayBuffer !== 'function') throw new Error('Select a file first.')
       const uploadFile = file as File
       if (uploadFile.size > 15 * 1024 * 1024) throw new Error('Maximum attachment size is 15 MB.')
-      const pathName = `${user.id}/${attachmentUpload[1]}/${crypto.randomUUID()}-${uploadFile.name}`
+      const pathName = `${user.id}/${attachmentUpload[1]}/${crypto.randomUUID()}-${safeMarketingFilename(uploadFile.name)}`
       const upload = await client.storage.from('sales-desk-attachments').upload(pathName, uploadFile, { contentType: uploadFile.type || 'application/octet-stream', upsert: false })
       if (upload.error) throw new Error(upload.error.message)
       const row = await client.from('sales_desk_rfq_attachments').insert({ rfq_id: attachmentUpload[1], original_name: uploadFile.name, storage_path: pathName, content_type: uploadFile.type || 'application/octet-stream', size: uploadFile.size, uploaded_by: user.id }).select().single()
@@ -481,16 +483,24 @@ async function supabaseApi(path: string, options: RequestInit) {
     }
   }
   const postMatch = path.match(/^\/api\/posts\/([^/]+)$/)
-  const postHistoryMatch = path.match(/^\/api\/posts\/([^/]+)\/history$/)
+  const postHistoryMatch = path.match(/^\/api\/posts\/([^/?]+)\/history(?:\?.*)?$/)
   if (postHistoryMatch && method === 'GET') {
-    const { data, error } = await client.from('audit_log').select('id,action,details,created_at').eq('entity_type', 'post').eq('entity_id', postHistoryMatch[1]).order('id', { ascending: false })
+    const before = new URLSearchParams(path.split('?')[1] || '').get('before')
+    let query = client.from('audit_log').select('id,action,details,created_at').eq('entity_type', 'post').eq('entity_id', postHistoryMatch[1]).order('id', { ascending: false }).limit(50)
+    if (before) query = query.lt('id', before)
+    const { data, error } = await query
     if (error) throw new Error(error.message)
     return (data || []).map((entry: any) => ({ id: entry.id, action: entry.action, details: entry.details || {}, created_at: entry.created_at }))
   }
-  if (path === '/api/posts' || postMatch) {
+  if (path === '/api/posts' || path.startsWith('/api/posts?') || postMatch) {
     if (method === 'GET') {
-      const { data } = await loadMarketingPosts(client)
-      return data || []
+      if (postMatch) {
+        const { data, error } = await client.from('posts').select('*').eq('id', postMatch[1]).single()
+        if (error) throw new Error(error.message)
+        return data
+      }
+      const params = new URLSearchParams(path.split('?')[1] || '')
+      return loadPostPage(client, { month: params.get('month'), campaign: params.get('campaign') || 'all', search: params.get('search') || '', status: params.get('status') || 'all', channel: params.get('channel') || undefined, offset: Number(params.get('offset') || 0), preview: params.get('preview') === 'true', summary: params.get('summary') === 'true' })
     }
     if (method === 'POST') {
       const { data, error } = await client.rpc('save_marketing_post', { p_id: null, p_values: body }).single()

@@ -1,5 +1,6 @@
+import { loadPostPage, POST_PAGE_SIZE } from './marketingPosts.ts'
 import { loadAllRows } from './pagedRows.ts'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map, PackageCheck,
@@ -126,6 +127,13 @@ export default function App() {
   const [roadmapFilter, setRoadmapFilter] = useState('all')
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
+  const [postTotal, setPostTotal] = useState(0)
+  const [postPage, setPostPage] = useState(0)
+  const [postSummary, setPostSummary] = useState<any[]>([])
+  const [postsLoading, setPostsLoading] = useState(false)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const postLoadSequence = useRef(0)
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [campaignPostCounts, setCampaignPostCounts] = useState<Record<string, number>>({})
   const [integrations, setIntegrations] = useState<any[]>([])
@@ -287,19 +295,35 @@ export default function App() {
 
   async function load() {
     if (!getKey()) return
+    const sequence = ++postLoadSequence.current
+    setPostsLoading(true)
     try {
       const canReadPosts = canMarketing('feed.view') || canMarketing('posts.view')
       const canReadCampaigns = canMarketing('campaigns.view')
       const canUseCampaignOptions = canReadPosts || canMarketing('feed.assign_campaign') || canMarketing('posts.assign_campaign') || canMarketing('campaigns.assign_campaign')
       const [p, c, counts, i, ct] = await Promise.all([
-        canReadPosts ? api('/api/posts') : Promise.resolve([]),
+        canReadPosts && page === 'Feed' && supabase ? Promise.all(['facebook','instagram'].map(channel => loadPostPage(supabase!, { channel, limit: 25, preview: true }))).then(pages => ({ items: [...new globalThis.Map<string,Post>(pages.flatMap(p => p.items).map(p => [p.id,p] as [string,Post])).values()], total: pages.reduce((sum,p) => sum+p.items.length,0), summary: [] }))
+          : canReadPosts && page === 'Posts' ? api('/api/posts?' + new URLSearchParams({ month: (view === 'calendar' ? month ?? startOfMonth() : month) ? `${(month ?? startOfMonth()).getFullYear()}-${String((month ?? startOfMonth()).getMonth()+1).padStart(2,'0')}-01` : '', campaign: campaignFilter, search: debouncedSearch, status: view === 'list' ? filter : 'all', offset: String(postPage*POST_PAGE_SIZE), summary: String(view === 'pivot'), preview: String(view === 'list' || view === 'board') })) : Promise.resolve({ items: [], total: 0, summary: [] }),
         canReadCampaigns ? api('/api/campaigns') : canUseCampaignOptions && supabase ? loadAllRows((from, to) => supabase!.rpc('my_marketing_campaign_options', {}, { count: 'exact' }).order('id').range(from, to)).then(({ data }) => data) : Promise.resolve([]),
         canReadCampaigns && supabase ? loadAllRows((from, to) => supabase!.rpc('my_marketing_campaign_post_counts', {}, { count: 'exact' }).order('campaign_id').range(from, to)).then(({ data }) => data) : Promise.resolve([]),
         api('/api/integrations'), api('/api/campaign-types'),
       ])
-      setPosts(p); setCampaigns(c as Campaign[]); setCampaignPostCounts(Object.fromEntries((counts as Array<{ campaign_id: string; post_count: number }>).map((row) => [row.campaign_id, row.post_count]))); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')
-    } catch (e) { handleError(e) }
+      if (sequence !== postLoadSequence.current) return
+      const result = Array.isArray(p) ? { items: p, total: p.length, summary: [] } : p
+      if (page === 'Posts' && postPage > 0 && postPage*POST_PAGE_SIZE >= result.total) { setPostPage(Math.max(0,Math.ceil(result.total/POST_PAGE_SIZE)-1)); return }
+      setPosts(result.items); setPostTotal(result.total); setPostSummary(result.summary || []); setCampaigns(c as Campaign[]); setCampaignPostCounts(Object.fromEntries((counts as Array<{ campaign_id: string; post_count: number }>).map((row) => [row.campaign_id, row.post_count]))); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')
+    } catch (e) { if (sequence === postLoadSequence.current) handleError(e) } finally { if (sequence === postLoadSequence.current) setPostsLoading(false) }
   }
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setDebouncedSearch(search); setPostPage(0) }, 250)
+    return () => window.clearTimeout(timer)
+  }, [search])
+  useEffect(() => {
+    let live = true
+    setSelectedPost(null)
+    if (detailId) api(`/api/posts/${detailId}`).then(post => { if(live) setSelectedPost(post) }).catch(error => { if(live) handleError(error) })
+    return () => { live = false }
+  }, [detailId, posts])
   useEffect(() => {
     if (!key) return
     void loadProfile()
@@ -327,7 +351,7 @@ export default function App() {
 
   useEffect(() => {
     if (key && canAccessMarketing) void load()
-  }, [key, canAccessMarketing, marketingPermissions])
+  }, [key, canAccessMarketing, marketingPermissions, page, view, month, campaignFilter, debouncedSearch, filter, postPage])
 
   useEffect(() => {
     const marketingPages = ['Feed', 'Posts', 'Post', 'Campaigns', 'Marketing Accounts', 'Roadmap']
@@ -422,32 +446,10 @@ export default function App() {
     window.location.reload()
   }
 
-  const currentMonthPosts = useMemo(() => {
-    const now = new Date()
-    return posts.filter((p) => {
-      const stamp = p.published_at || p.publish_at || p.created_at
-      if (!stamp) return false
-      const d = new Date(stamp)
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-    })
-  }, [posts])
-
-  const visiblePosts = posts.filter(
-    (p) =>
-      (!month || inMonth(p, month)) &&
-      (filter === 'all' || p.status === filter || (filter === 'engagements' && p.status === 'published')) &&
-      (campaignFilter === 'all' || p.campaign_id === campaignFilter) &&
-      (!search || `${p.title} ${p.caption}`.toLowerCase().includes(search.toLowerCase())),
-  )
-
-  // Search and campaign filters only. The calendar picks its own month; the board adds the month below.
-  const filteredPosts = posts.filter(
-    (p) =>
-      (campaignFilter === 'all' || p.campaign_id === campaignFilter) &&
-      (!search || `${p.title} ${p.caption}`.toLowerCase().includes(search.toLowerCase())),
-  )
-
-  const monthPosts = month ? filteredPosts.filter((p) => inMonth(p, month)) : filteredPosts
+  // Filtering and totals come from the same database query, not this loaded page.
+  const visiblePosts = posts
+  const filteredPosts = posts
+  const monthPosts = posts
 
   async function patchPost(id: string, changes: Partial<Post>, message: string) {
     try {
@@ -463,7 +465,7 @@ export default function App() {
       const r = await api('/api/integrations/sync', { method: 'POST' })
       const fb = r.facebook?.status === 'error' ? `Facebook error: ${r.facebook.detail || 'unknown error'}` : r.facebook?.status === 'not_connected' ? 'Facebook not connected' : `Facebook synced (${r.facebook.items || 0} new, ${r.facebook.fetched || 0} checked${r.facebook.metricsUnavailable ? `; metrics unavailable for ${r.facebook.metricsUnavailable}${r.facebook.metricsErrors?.[0] ? `: ${r.facebook.metricsErrors[0]}` : ''}` : ''})`
       const ig = r.instagram?.status === 'synced' ? `Instagram synced (${r.instagram.items} items)` : r.instagram?.status === 'not_connected' ? 'Instagram not connected' : `Instagram error: ${r.instagram?.detail || 'unknown error'}`
-      setNotice(`${fb}; ${ig}.`)
+      setNotice(`${fb}; ${ig}.${r.facebook?.mediaUnavailable ? ` ${r.facebook.mediaUnavailable} image previews could not be copied; temporary image URLs were not saved.` : ''}`)
       if (r.facebook?.audience != null) setIntegrations((items) => items.map((item) => item.provider === 'facebook' ? { ...item, followers_count: r.facebook.audience } : item))
       if (r.facebook?.status === 'synced') setMonth(null)
       await load()
@@ -664,10 +666,12 @@ export default function App() {
   }
 
   // Scheduled and published posts cannot be edited, so they open the detail view instead.
-  function openEditor(p: Post) {
+  async function openEditor(p: Post) {
     const allowed = page === 'Feed' ? canMarketing('feed.edit') : canMarketing('posts.edit')
     if (!allowed) { setError('You do not have permission to edit this post.'); return }
-    if (EDITABLE.includes(p.status)) { setEditor(p); setError('') } else openPost(p.id)
+    if (EDITABLE.includes(p.status)) {
+      try { const full = await api(`/api/posts/${p.id}`); setEditor(full); setError('') } catch(e) { handleError(e) }
+    } else openPost(p.id)
   }
 
   async function saveCampaign(postId: string, campaignId: string | null) {
@@ -675,7 +679,7 @@ export default function App() {
     if (!allowed) { setError('You do not have permission to assign this post to a campaign.'); return }
     try {
       await api(`/api/posts/${postId}`, { method: 'PATCH', body: JSON.stringify({ campaign_id: campaignId }) })
-      setNotice('Campaign updated.'); setError('')
+      setNotice('Campaign updated.'); setError(''); if (detailId === postId) setSelectedPost(await api(`/api/posts/${postId}`))
       await load()
     } catch (e) { handleError(e) }
   }
@@ -688,7 +692,7 @@ export default function App() {
     return () => { document.body.style.overflow = previous }
   }, [page, detailId])
 
-  const selected = posts.find((p) => p.id === detailId)
+  const selected = selectedPost
   const channels = editor?.channels || []
   const canSchedule = isFuture(editor?.publish_at)
 
@@ -1028,16 +1032,16 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <div className="toolbar">
               <div className="search">
                 <Search size={17} />
-                <input aria-label="Search posts" placeholder="Search titles and captions" value={search} onChange={(e) => setSearch(e.target.value)} />
+                <input aria-label="Search posts" placeholder="Search titles, captions and campaigns" maxLength={200} value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
               <div className="view-toggle" role="group" aria-label="View">
                 {(['list', 'board', 'calendar', 'pivot'] as const).map((v) => (
-                  <button key={v} className={`secondary ${view === v ? 'active' : ''}`} aria-pressed={view === v} onClick={() => setView(v)}>
+                  <button key={v} className={`secondary ${view === v ? 'active' : ''}`} aria-pressed={view === v} onClick={() => { setPostPage(0); setView(v) }}>
                     {v[0].toUpperCase() + v.slice(1)}
                   </button>
                 ))}
               </div>
-              {view === 'list' && (<select aria-label="Filter by status" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              {view === 'list' && (<select aria-label="Filter by status" value={filter} onChange={(e) => { setPostPage(0); setFilter(e.target.value) }}>
                 <option value="all">All posts</option>
                 <option value="draft">Drafts</option>
                 <option value="awaiting_approval">Awaiting approval</option>
@@ -1046,8 +1050,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 <option value="failed">Failed</option>
                 <option value="engagements">Published / engagements</option>
               </select>)}
-              <select aria-label="Filter by campaign" value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}>
-                <option value="all">All campaigns</option>
+              <select aria-label="Filter by campaign" value={campaignFilter} onChange={(e) => { setPostPage(0); setCampaignFilter(e.target.value) }}>
+                <option value="all">All campaigns</option><option value="none">No campaign</option>
                 {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               {integrations.some((i) => (i.provider === 'facebook' || i.provider === 'instagram') && i.status === 'connected') && (
@@ -1058,14 +1062,10 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             <MonthNav
               month={view === 'calendar' ? month ?? startOfMonth() : month}
               allowAll={view !== 'calendar'}
-              onChange={setMonth}
-              count={
-                view === 'list' ? visiblePosts.length
-                : view === 'board' ? monthPosts.length
-                : view === 'pivot' ? filteredPosts.length
-                : filteredPosts.filter((p) => (p.published_at || p.publish_at) && inMonth(p, month ?? startOfMonth())).length
-              }
+              onChange={(value) => { setPostPage(0); setMonth(value) }}
+              count={postTotal}
             />
+            <div className="section-head" aria-live="polite"><span>{postsLoading ? 'Loading posts…' : view === 'pivot' ? `${postTotal} matching posts` : `${postTotal ? postPage*POST_PAGE_SIZE+1 : 0}–${Math.min(postPage*POST_PAGE_SIZE+posts.length,postTotal)} of ${postTotal} posts`}{view === 'board' || view === 'calendar' ? ' · This view shows the current page.' : ''}</span>{view !== 'pivot' && <div className="row-actions"><button className="secondary" disabled={postsLoading || postPage===0} onClick={() => setPostPage(p=>p-1)}>Previous</button><button className="secondary" disabled={postsLoading || (postPage+1)*POST_PAGE_SIZE>=postTotal} onClick={() => setPostPage(p=>p+1)}>Next</button></div>}</div>
             {view === 'list' && (
               <PostList posts={visiblePosts} campaigns={campaigns} onEdit={openEditor} onOpen={openPost} onDelete={removePost} canEdit={canMarketing('posts.edit')} canDelete={canMarketing('posts.delete')} />
             )}
@@ -1077,7 +1077,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               />
             )}
             {view === 'pivot' && (
-              <PostPivot posts={filteredPosts} campaigns={campaigns} campaignTypes={campaignTypes} />
+              <PostPivot summary={postSummary} campaignTypes={campaignTypes} />
             )}
             {view === 'calendar' && (
               <PostCalendar
@@ -1361,16 +1361,10 @@ function CampaignTypeConfiguration({ types, draft, onDraftChange, dragged, onDra
   </div>
 }
 
-function PostPivot({ posts, campaigns, campaignTypes }: { posts: Post[]; campaigns: Campaign[]; campaignTypes: string[] }) {
+function PostPivot({ summary, campaignTypes }: { summary: any[]; campaignTypes: string[] }) {
   const [selectedType, setSelectedType] = useState('all')
-  const scoped = selectedType === 'all' ? campaigns : campaigns.filter((campaign) => campaign.campaign_type === selectedType)
-  const rows = scoped.map((campaign) => {
-    const items = posts.filter((p) => p.campaign_id === campaign.id)
-    return { label: campaign.name, posts: items.length, likes: items.reduce((n, p) => n + (p.likes ?? 0), 0), comments: items.reduce((n, p) => n + (p.comments ?? 0), 0), shares: items.reduce((n, p) => n + (p.shares ?? 0), 0), clicks: items.reduce((n, p) => n + (p.clicks ?? 0), 0) }
-  })
-  const unassigned = posts.filter((p) => !p.campaign_id)
-  rows.push({ label: 'No campaign', posts: unassigned.length, likes: unassigned.reduce((n, p) => n + (p.likes ?? 0), 0), comments: unassigned.reduce((n, p) => n + (p.comments ?? 0), 0), shares: unassigned.reduce((n, p) => n + (p.shares ?? 0), 0), clicks: unassigned.reduce((n, p) => n + (p.clicks ?? 0), 0) })
-  const totals = rows.reduce((a, r) => ({ label: 'Total', posts: a.posts + r.posts, likes: a.likes + r.likes, comments: a.comments + r.comments, shares: a.shares + r.shares, clicks: a.clicks + r.clicks }), { label: 'Total', posts: 0, likes: 0, comments: 0, shares: 0, clicks: 0 })
+  const rows = summary.filter(row => selectedType === 'all' || row.campaign_type === selectedType)
+  const totals = rows.reduce((a, r) => ({ label: 'Total', posts: a.posts + Number(r.posts), likes: a.likes + Number(r.likes), comments: a.comments + Number(r.comments), shares: a.shares + Number(r.shares), clicks: a.clicks + Number(r.clicks) }), { label: 'Total', posts: 0, likes: 0, comments: 0, shares: 0, clicks: 0 })
   return (
     <div className="pivot-wrap">
       <div className="section-head"><div><h2>Post insights</h2><p>Grouped reporting for the current filters.</p></div><select aria-label="Campaign type" value={selectedType} onChange={(e) => setSelectedType(e.target.value)}><option value="all">All campaign types</option>{campaignTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></div>

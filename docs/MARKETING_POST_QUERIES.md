@@ -1,0 +1,13 @@
+# Marketing post queries and history
+
+Migration `0097_marketing_history_queries.sql` adds atomic audit history and permission-checked post queries. Confirm successful application through the connected Supabase GitHub integration, independently of the Vercel deployment status.
+
+- Posts use 50-row pages with an exact filtered total, deterministic date/ID ordering, and visible Previous/Next controls. Board and Calendar explicitly show the current page; their month filter is applied in the database. Dates use Johannesburg month boundaries. Changing filters resets the page, and stale requests cannot overwrite newer results.
+- A single literal substring query searches title, caption and campaign name. `%` and `_` are treated as text, not query syntax. Campaign, unassigned, status, channel and month filters run before paging. Selected post IDs are paged before reading media. Lists receive at most one preview; detail/edit retrieves full media for one post.
+- The Feed requests 25 posts per provider. Pivot groups the complete filtered result in the database; it never sums only the visible page. Campaign-type filtering operates on these complete groups.
+- Every new create, meaningful edit, provider update and deletion generates an audit event in the same transaction. Events include changed field names, status/campaign/schedule transitions, and a trusted actor name or System. No-op timestamp refreshes are ignored. History survives deletion and is read in 50-event batches. Browser writes to the audit table are revoked. Earlier events cannot be reconstructed retroactively.
+- Upload paths strip directory components and unsafe filename characters; display names retain the original name.
+- Sync copies HTTPS Facebook CDN images to the public `marketing-media` bucket using stable object names. Existing objects are reused when only the signed URL changes. Downloads have host/redirect validation, timeouts, a 10 MB limit and an image MIME allowlist. Failed copies are reported without persisting temporary URLs. Old CDN URLs are removed by 0097; the next refresh populates durable previews. Existing bucket images are retained if no replacement image can be copied.
+- The unused Vercel `/api/marketing/posts` endpoint is removed. The browser's `/api/posts` adapter uses Supabase RPCs directly, while Facebook publishing and sync remain server functions.
+
+Database tests cover over 1,000 posts, paging, full-result pivot totals, literal campaign-aware search, date boundaries, compact previews, complete detail, immutable audit records, named actors, deletion history and access restrictions. Client/server tests cover query parameters, safe names, durable storage, caching, redirect restrictions, oversized downloads and compiled server startup.

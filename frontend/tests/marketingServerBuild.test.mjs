@@ -11,7 +11,7 @@ test('compiled Marketing handlers resolve their JavaScript dependencies and star
   try {
     execFileSync(process.execPath, [path.join(root, 'node_modules/typescript/bin/tsc'),
       '--project', path.join(root, 'tsconfig.server-test.json'), '--outDir', output], { cwd: root, stdio: 'pipe' })
-    const handlers = ['facebook/sync', 'facebook/publish', 'facebook/publish-due', 'posts']
+    const handlers = ['facebook/sync', 'facebook/publish', 'facebook/publish-due']
     for (const name of handlers) {
       const entry = path.join(output, 'api/marketing', `${name}.js`)
       const { default: handler } = await import(pathToFileURL(entry).href)
@@ -20,6 +20,6 @@ test('compiled Marketing handlers resolve their JavaScript dependencies and star
       await handler({ method: 'DELETE', headers: {} }, response)
       assert.equal(code, 405, `${name} starts and rejects unsupported methods`)
     }
-    assert.match(readFileSync(path.join(output, 'src/recordLists.js'), 'utf8'), /from ['"]\.\/pagedRows\.js['"]/)
+    assert.match(readFileSync(path.join(output, 'api/marketing/facebook/sync.js'), 'utf8'), /from ['"]\.\/_media\.js['"]/)
   } finally { rmSync(output, { recursive: true, force: true }) }
 })

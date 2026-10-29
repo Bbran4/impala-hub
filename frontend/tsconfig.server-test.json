@@ -1,10 +1,13 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "noEmit": false, "incremental": false },
+  "compilerOptions": {
+    "noEmit": false,
+    "incremental": false,
+    "rootDir": "."
+  },
   "include": [
     "api/marketing/facebook/sync.ts",
     "api/marketing/facebook/publish.ts",
-    "api/marketing/facebook/publish-due.ts",
-    "api/marketing/posts.ts"
+    "api/marketing/facebook/publish-due.ts"
   ]
 }

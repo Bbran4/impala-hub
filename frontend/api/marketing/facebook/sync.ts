@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { facebookMediaId } from './_publishing.js'
+import { copyFacebookMedia } from './_media.js'
 const timedFetch = (url: string) => fetch(url, { signal: AbortSignal.timeout(20_000) })
 import { createClient } from '@supabase/supabase-js'
 
@@ -35,6 +35,7 @@ export default async function handler(req: any, res: any) {
     const result = await response.json()
     if (!response.ok) return res.status(502).json({ detail: 'Facebook rejected the sync request.' })
     let imported = 0
+    let mediaUnavailable = 0
     let audience: number | null = null
     try {
       const pageResponse = await timedFetch(`https://graph.facebook.com/${version}/me?fields=id,name,followers_count&access_token=${encodeURIComponent(pageToken)}`)
@@ -45,7 +46,7 @@ export default async function handler(req: any, res: any) {
     let metricsUnavailable = 0
     const metricsErrors: string[] = []
     for (const item of result.data || []) {
-      const { data: existing } = await admin.from('posts').select('id').contains('provider_ids', { facebook: item.id }).limit(1).maybeSingle()
+      const { data: existing } = await admin.from('posts').select('id,media').contains('provider_ids', { facebook: item.id }).limit(1).maybeSingle()
       let attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
       if (attachments.length < 2) {
         try {
@@ -54,11 +55,11 @@ export default async function handler(req: any, res: any) {
           attachments = (attachmentResult.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
         } catch { /* Keep the attachment data returned by published_posts. */ }
       }
-      const media = attachments.flatMap((attachment: any) => {
-        const image = attachment.media?.image?.src || attachment.url
-        return image ? [{ id: facebookMediaId(item.id, image), name: 'Facebook image', url: image, content_type: 'image/*' }] : []
-      })
-      if (!media.length && item.full_picture) media.push({ id: `${item.id}-1`, name: 'Facebook image', url: item.full_picture, content_type: 'image/*' })
+      const urls = attachments.flatMap((attachment: any) => attachment.media?.image?.src ? [attachment.media.image.src] : [])
+      if (!urls.length && item.full_picture) urls.push(item.full_picture)
+      const copied = await copyFacebookMedia(admin, item.id, urls, existing?.media || [])
+      const media = copied.media
+      mediaUnavailable += copied.unavailable
       const insights: Record<string, number> = {}
       const metricFallbacks: Array<[string, string[]]> = [
         ['views', ['post_media_view', 'post_impressions']],
@@ -89,6 +90,6 @@ export default async function handler(req: any, res: any) {
       if (!existing) imported += 1
 
     }
-    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors, audience })
+    return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors, audience, mediaUnavailable })
   } catch { return res.status(502).json({ detail: 'Facebook sync failed.' }) }
 }
