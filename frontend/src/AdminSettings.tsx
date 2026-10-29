@@ -5,7 +5,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { supabase } from './supabase'
-import { MARKETING_PERMISSION_GROUPS, type MarketingPermission } from './marketingPermissions'
 import ApplicationPermissions from './ApplicationPermissions'
 
 type AppDefinition = {
@@ -28,16 +27,6 @@ type AccessRow = {
 }
 
 type CampaignDropTarget = { type: string; edge: 'before' | 'after' }
-
-type MarketingPermissionRow = {
-  profile_id: string
-  display_name: string
-  email: string | null
-  sales_code: string | null
-  can_open: boolean
-  is_administrator: boolean
-  permissions: MarketingPermission[]
-}
 
 type Props = {
   integrations: any[]
@@ -85,9 +74,6 @@ export default function AdminSettings(props: Props) {
   const [accessLoading, setAccessLoading] = useState(true)
   const [savingProfileId, setSavingProfileId] = useState<string | null>(null)
   const [accessSearch, setAccessSearch] = useState('')
-  const [permissionRows, setPermissionRows] = useState<MarketingPermissionRow[]>([])
-  const [permissionLoading, setPermissionLoading] = useState(true)
-  const [savingPermission, setSavingPermission] = useState<string | null>(null)
   const [campaignDraft, setCampaignDraft] = useState('')
   const [draggedCampaignType, setDraggedCampaignType] = useState<string | null>(null)
   const [campaignDropTarget, setCampaignDropTarget] = useState<CampaignDropTarget | null>(null)
@@ -111,21 +97,6 @@ export default function AdminSettings(props: Props) {
 
   useEffect(() => { void loadAccess(selectedAppId) }, [selectedAppId])
 
-  async function loadMarketingPermissions() {
-    if (!supabase) return
-    setPermissionLoading(true)
-    const { data, error } = await supabase.rpc('admin_list_marketing_permissions')
-    if (error) {
-      props.setError(`Could not load Marketing permissions: ${error.message}`)
-      setPermissionRows([])
-    } else {
-      setPermissionRows((data || []) as MarketingPermissionRow[])
-    }
-    setPermissionLoading(false)
-  }
-
-  useEffect(() => { if (selectedAppId === 'marketing') void loadMarketingPermissions() }, [selectedAppId])
-
   const visibleRows = useMemo(() => {
     const query = accessSearch.trim().toLocaleLowerCase()
     if (!query) return accessRows
@@ -146,33 +117,8 @@ export default function AdminSettings(props: Props) {
     } else {
       props.setNotice(`${row.display_name || row.email || 'Employee'} ${canOpen ? 'can now open' : 'can no longer open'} ${selectedApp.label}.`)
       await loadAccess(selectedAppId)
-      if (selectedAppId === 'marketing') await loadMarketingPermissions()
     }
     setSavingProfileId(null)
-  }
-
-  async function setMarketingPermission(row: MarketingPermissionRow, permission: MarketingPermission, enabled: boolean) {
-    if (!supabase || row.is_administrator || !row.can_open) return
-    const savingKey = `${row.profile_id}:${permission}`
-    setSavingPermission(savingKey)
-    props.setError('')
-    const { error } = await supabase.rpc('admin_set_marketing_permission', {
-      p_profile_id: row.profile_id,
-      p_permission_key: permission,
-      p_enabled: enabled,
-    })
-    if (error) {
-      props.setError(`Could not update Marketing permission: ${error.message}`)
-    } else {
-      setPermissionRows((current) => current.map((item) => item.profile_id !== row.profile_id ? item : {
-        ...item,
-        permissions: enabled
-          ? Array.from(new Set([...item.permissions, permission]))
-          : item.permissions.filter((itemPermission) => itemPermission !== permission),
-      }))
-      props.setNotice(`${row.display_name || row.email || 'Employee'} permissions updated.`)
-    }
-    setSavingPermission(null)
   }
 
   function campaignDropEdge(event: React.DragEvent<HTMLDivElement>): 'before' | 'after' {
@@ -284,34 +230,6 @@ export default function AdminSettings(props: Props) {
               })}</div>
             </section>
 
-            <section className="admin-settings-panel marketing-permissions-panel">
-              <div className="section-head"><div><h2>Marketing permissions</h2><p>Choose what each employee can view or change inside Marketing. Administrators always have full access.</p></div><ShieldCheck size={20} /></div>
-              {permissionLoading ? <div className="app-access-empty">Loading Marketing permissions…</div> : MARKETING_PERMISSION_GROUPS.map((group) => (
-                <div className="permission-group" key={group.id}>
-                  <h3>{group.label}</h3>
-                  <div className="permission-table-wrap">
-                    <table className="permission-table">
-                      <thead><tr><th>Employee</th>{group.actions.map(([key, label]) => <th key={key}>{label}</th>)}</tr></thead>
-                      <tbody>{permissionRows.map((row) => (
-                        <tr key={`${group.id}:${row.profile_id}`} className={!row.can_open ? 'no-app-access' : ''}>
-                          <td><b>{row.display_name || row.email || 'Unnamed employee'}</b><small>{[row.sales_code, row.email, !row.can_open ? 'No Marketing access' : row.is_administrator ? 'Administrator' : ''].filter(Boolean).join(' · ')}</small></td>
-                          {group.actions.map(([permission, label]) => {
-                            const savingKey = `${row.profile_id}:${permission}`
-                            return <td key={permission}><label className="permission-check" title={`${label}: ${row.display_name || row.email || 'employee'}`}><input
-                              type="checkbox"
-                              aria-label={`${row.display_name || row.email || 'Employee'}: ${group.label} ${label}`}
-                              checked={row.is_administrator || row.permissions.includes(permission)}
-                              disabled={row.is_administrator || !row.can_open || savingPermission === savingKey}
-                              onChange={(event) => void setMarketingPermission(row, permission, event.target.checked)}
-                            /></label></td>
-                          })}
-                        </tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </section>
           </>}
 
           <section className="admin-settings-panel app-access-panel">
