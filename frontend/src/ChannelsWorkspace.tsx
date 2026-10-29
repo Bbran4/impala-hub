@@ -141,8 +141,9 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
 
 function ChannelAttachment({ attachment }: { attachment: Attachment }) {
   const [url, setUrl] = useState('')
-  useEffect(() => { if (!supabase) return; void supabase.storage.from('chat-attachments').createSignedUrl(attachment.storage_path, 3600).then(({ data }) => { if (data?.signedUrl) setUrl(data.signedUrl) }) }, [attachment.storage_path])
-  if (!url) return <span className="channel-attachment"><FileText size={14} /> {attachment.file_name}</span>
+  const [error, setError] = useState(false)
+  useEffect(() => { if (!supabase) return; setError(false); void supabase.storage.from('chat-attachments').createSignedUrl(attachment.storage_path, 3600).then(({ data, error: signedError }) => { if (data?.signedUrl) setUrl(data.signedUrl); else if (signedError) setError(true) }) }, [attachment.storage_path])
+  if (!url) return <span className="channel-attachment channel-attachment-unavailable"><FileText size={14} /> {attachment.file_name}{error && <small>Attachment unavailable</small>}</span>
   const download = async () => { const response = await fetch(url); if (!response.ok) return; const blobUrl = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = blobUrl; link.download = attachment.file_name; link.click(); window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000) }
   const isImage = attachment.content_type.toLowerCase().startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(attachment.file_name)
   return <span className="channel-attachment-wrap"><a className="channel-attachment" href={url} target="_blank" rel="noopener noreferrer">{isImage ? <img src={url} alt={attachment.file_name} /> : <><FileText size={14} /> {attachment.file_name}</>}</a><span className="chat-attachment-actions"><a href={url} target="_blank" rel="noopener noreferrer">Open</a><button className="chat-download" onClick={() => void download()}>Download</button></span></span>
