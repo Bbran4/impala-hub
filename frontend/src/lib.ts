@@ -41,6 +41,7 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
+import { createSalesDeskSessionCache } from './salesDeskSession.ts'
 import { loadPostPage, safeMarketingFilename } from './marketingPosts.ts'
 import { readMarketingResponse } from './marketingResponse.ts'
 import { loadMarketingCampaigns, loadRfqList } from './recordLists.ts'
@@ -56,6 +57,9 @@ export const KEY_STORAGE = 'impala_session_token'
 try { localStorage.removeItem(KEY_STORAGE) } catch { /* Storage may be unavailable. */ }
 export const getKey = () => sessionStorage.getItem(KEY_STORAGE) || ''
 const currentSupabaseToken = () => readSupabaseToken(supabase)
+const salesDeskSession = supabase ? createSalesDeskSessionCache(supabase) : null
+supabase?.auth.onAuthStateChange((event, session) => salesDeskSession?.authChanged(event, session))
+
 
 function describeError(detail: unknown, status: number): string {
   if (typeof detail === 'string') return detail
@@ -213,21 +217,12 @@ async function supabaseApi(path: string, options: RequestInit) {
   if (path === '/api/integrations/instagram/oauth-url' && method === 'POST') {
     throw new Error('Instagram OAuth is the next provider migration and is not enabled yet.')
   }
-  // Sales Desk RFQ foundation. This deliberately covers the read/create/edit path first;
-  // workflow actions and attachments remain on FastAPI until their Supabase equivalents land.
+  // Transactional commands own Sales Desk business rules and audit attribution.
   if (path.startsWith('/api/sales-desk/')) {
-    const user = (await client.auth.getUser()).data.user
+    const { data: { session } } = await client.auth.getSession()
+    const user = session?.user
     if (!user) throw new AuthError('Your session expired or is no longer valid. Sign in again.')
-    const profile = await client.from('profiles').select('display_name,active,sales_code').eq('id', user.id).single()
-    if (profile.error || !profile.data?.active) throw new Error('Your Impala Hub profile is inactive.')
-    const roleRows = await client.from('profile_roles').select('role_id').eq('profile_id', user.id)
-    const roleIds = (roleRows.data || []).map((r: any) => r.role_id)
-    const role = roleIds.includes('administrator') ? 'administrator' : roleIds.includes('management') ? 'management' : roleIds.includes('sales_manager') ? 'manager' : 'salesperson'
-    const auditRfq = async (rfqId: string, action: string, changes: Record<string, unknown> = {}) => {
-      const result = await client.from('sales_desk_rfq_audit').insert({ rfq_id: rfqId, actor_user_id: user.id, action, changes })
-      if (result.error) throw new Error(result.error.message)
-    }
-    if (path === '/api/sales-desk/auth/me' && method === 'GET') return { id: user.id, username: user.email, display_name: profile.data.display_name, role, sales_code: profile.data.sales_code || null, is_active: true }
+    if (path === '/api/sales-desk/auth/me' && method === 'GET') return salesDeskSession!.get()
     if (path === '/api/sales-desk/auth/logout' && method === 'POST') return null
     const attachmentUpload = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/attachments$/)
     const attachmentDelete = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/attachments\/([^/]+)$/)
@@ -251,21 +246,9 @@ async function supabaseApi(path: string, options: RequestInit) {
     }
     if (path === '/api/sales-desk/auth/users' && method === 'GET') return []
     if (path === '/api/sales-desk/config' && method === 'GET') {
-      const [media, statuses, codes] = await Promise.all([
-        client.from('sales_desk_media_platforms').select('*').order('sort_order').order('name'),
-        client.from('sales_desk_statuses').select('*').order('sort_order').order('name'),
-        client.from('sales_desk_sales_codes').select('*').order('code'),
-      ])
-      for (const result of [media, statuses, codes]) if (result.error) throw new Error(result.error.message)
-      const rfqCounts = await client.from('sales_desk_rfqs').select('sales_code_id').is('deleted_at', null)
-      if (rfqCounts.error) throw new Error(rfqCounts.error.message)
-      const countByCode = new Map<string, number>()
-      for (const row of rfqCounts.data || []) if (row.sales_code_id) countByCode.set(row.sales_code_id, (countByCode.get(row.sales_code_id) || 0) + 1)
-      const codeValues = (codes.data || []).map((item: any) => item.code)
-      const owners = codeValues.length ? await client.rpc('sales_desk_code_owners') : { data: [] as any[], error: null }
-      if (owners.error) throw new Error(owners.error.message)
-      const ownerByCode = new Map((owners.data || []).map((item: any) => [String(item.sales_code).toUpperCase(), item.display_name]))
-      return { media_platforms: (media.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), statuses: (statuses.data || []).map((item: any) => ({ ...item, is_active: item.is_active !== false })), sales_codes: (codes.data || []).map((item: any) => ({ ...item, consultant_name: ownerByCode.get(String(item.code).toUpperCase()) || null, rfq_count: countByCode.get(item.id) || 0 })), can_configure: role === 'administrator' }
+      const result = await client.rpc('sales_desk_configuration')
+      if (result.error) throw new Error(result.error.message)
+      return result.data
     }
     const mediaConfig = path.match(/^\/api\/sales-desk\/config\/media-platforms(?:\/([^/]+))?$/)
     const statusConfig = path.match(/^\/api\/sales-desk\/config\/statuses(?:\/([^/]+))?$/)
@@ -294,12 +277,9 @@ async function supabaseApi(path: string, options: RequestInit) {
     }
     const orderConfig = path.match(/^\/api\/sales-desk\/config\/(media-platforms|statuses)\/order$/)
     if (orderConfig && method === 'PUT') {
-      const table = orderConfig[1] === 'media-platforms' ? 'sales_desk_media_platforms' : 'sales_desk_statuses'
-      for (const [sort_order, id] of (body.ids || []).entries()) {
-        const result = await client.from(table).update({ sort_order }).eq('id', id)
-        if (result.error) throw new Error(result.error.message)
-      }
-      return body.ids || []
+      const result = await client.rpc('reorder_sales_desk_config', { p_kind: orderConfig[1], p_ids: body.ids || [] })
+      if (result.error) throw new Error(result.error.message)
+      return result.data
     }
     const detailMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)$/)
     if ((path === '/api/sales-desk/rfqs' || path.startsWith('/api/sales-desk/rfqs?')) && method === 'GET' || detailMatch && method === 'GET') {
@@ -315,7 +295,7 @@ async function supabaseApi(path: string, options: RequestInit) {
         if (actors.error) throw new Error(actors.error.message)
         const names = new Map((actors.data || []).map((actor: any) => [actor.id, actor.display_name]))
         const item = normalize(result.data)
-        item.audit_history = (history.data || []).map((entry: any) => ({ ...entry, changes: entry.changes || {}, actor_name: names.get(entry.actor_user_id) || entry.actor_user_id }))
+        item.audit_history = (history.data || []).map((entry: any) => ({ ...entry, changes: entry.changes || {}, actor_name: entry.changes?.actor_name || names.get(entry.actor_user_id) || entry.actor_user_id }))
         const attachments = await client.from('sales_desk_rfq_attachments').select('id,original_name,storage_path,content_type,size,uploaded_by,created_at').eq('rfq_id', detailMatch[1]).order('created_at')
         if (attachments.error) throw new Error(attachments.error.message)
         const uploaders = [...new Set((attachments.data || []).map((entry: any) => entry.uploaded_by))]
@@ -329,69 +309,35 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { items, total: result.count, limit: items.length, offset: 0 }
     }
     if (path === '/api/sales-desk/rfqs' && method === 'POST') {
-      if (role !== 'administrator') throw new Error('Only administrators can create RFQs directly.')
-      const seq = await client.rpc('next_sales_desk_rfq_number')
-      if (seq.error || !seq.data?.[0]) throw new Error(seq.error?.message || 'Unable to allocate an RFQ number.')
-      const n = seq.data[0]
-      const status = body.status_id || (await client.from('sales_desk_statuses').select('id').ilike('name', 'Unclaimed').eq('is_active', true).single()).data?.id
-      const result = await client.from('sales_desk_rfqs').insert({ ...body, rfq_no: n.rfq_no, business_date: n.business_date, daily_number: n.daily_number, status_id: status, created_by: user.id, updated_by: user.id }).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
+      const result = await client.rpc('create_sales_desk_rfq', { p_values: body })
       if (result.error) throw new Error(result.error.message)
-      await auditRfq(result.data.id, 'created', { rfq_no: result.data.rfq_no })
-      return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
+      return result.data
     }
     if (detailMatch && method === 'PATCH') {
-      const before = await client.from('sales_desk_rfqs').select('sales_code_id,sales_desk_sales_codes(code)').eq('id', detailMatch[1]).single()
-      if (before.error) throw new Error(before.error.message)
-      const result = await client.from('sales_desk_rfqs').update({ ...body, updated_by: user.id }).eq('id', detailMatch[1]).select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').single()
+      const result = await client.rpc('update_sales_desk_rfq', { p_id: detailMatch[1], p_values: body })
       if (result.error) throw new Error(result.error.message)
-      if (Object.prototype.hasOwnProperty.call(body, 'sales_code_id')) {
-        const previous = before.data.sales_desk_sales_codes?.[0]?.code || null
-        const current = result.data.sales_code?.code || null
-        await auditRfq(detailMatch[1], current ? (previous ? 'reassigned' : 'assigned') : 'unassigned', { from_sales_code: previous, to_sales_code: current })
-      } else {
-        await auditRfq(detailMatch[1], 'updated', { changed: Object.keys(body) })
-      }
-      return { ...result.data, media_platform: result.data.media_platform?.name, status: result.data.status?.name, status_name: result.data.status?.name, status_is_closed: !!result.data.status?.is_closed, sales_code: result.data.sales_code?.code || null }
+      return result.data
     }
     if (detailMatch && method === 'DELETE') {
-      if (role !== 'administrator' && role !== 'manager') throw new Error('Only managers and administrators can delete RFQs.')
-      const result = await client.from('sales_desk_rfqs').update({ deleted_at: new Date().toISOString(), deleted_by: user.id, updated_by: user.id }).eq('id', detailMatch[1]).is('deleted_at', null)
+      const result = await client.rpc('archive_sales_desk_rfq', { p_id: detailMatch[1] })
       if (result.error) throw new Error(result.error.message)
-      await auditRfq(detailMatch[1], 'deleted', { soft_delete: true })
       return null
     }
     const actionMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)\/(claim|send-for-approval|convert-to-invoice)$/)
     if (actionMatch && method === 'POST') {
       const id = actionMatch[1]; const action = actionMatch[2]
-      const current = await client.from('sales_desk_rfqs').select('*,status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').eq('id', id).single()
-      if (current.error) throw new Error(current.error.message)
       if (action === 'claim') {
-        if (role !== 'salesperson' || !profile.data.sales_code) throw new Error('Your account is not linked to a sales code.')
-        if (current.data.sales_code_id) throw new Error('This RFQ has already been claimed. Refresh the list.')
-        const code = await client.from('sales_desk_sales_codes').select('id').eq('code', profile.data.sales_code.toUpperCase()).eq('is_active', true).single()
-        if (code.error) throw new Error('Your configured sales code is inactive.')
-        const newStatus = await client.from('sales_desk_statuses').select('id').ilike('name', 'New').eq('is_active', true).single()
-        const updated = await client.from('sales_desk_rfqs').update({ sales_code_id: code.data.id, claimed_at: new Date().toISOString(), status_id: newStatus.data?.id || current.data.status_id, updated_by: user.id }).eq('id', id).is('sales_code_id', null).select().single()
-        if (updated.error) throw new Error(updated.error.message)
-        await auditRfq(id, 'claimed', { sales_code: profile.data.sales_code })
-      } else if (action === 'send-for-approval') {
-        if (!current.data.document_number?.trim()) throw new Error('A document number is required before sending for approval.')
-        if (!current.data.status?.is_closed) throw new Error('The RFQ status must be closed before sending for approval.')
-        const attachments = await client.from('sales_desk_rfq_attachments').select('id', { count: 'exact', head: true }).eq('rfq_id', id)
-        if ((attachments.count || 0) < 1) throw new Error('Add at least one attachment before sending for approval.')
-        return { sent: true, notified_admins: 0 }
-      } else {
-        if (current.data.rfq_type === 'invoice') throw new Error('An invoice cannot be converted to another invoice.')
-        if (!current.data.status?.is_closed) throw new Error('Only a closed RFQ can be converted to an invoice.')
-        const invoice = await client.rpc('convert_sales_desk_rfq_to_invoice', { source_id: id })
-        if (invoice.error) throw new Error(invoice.error.message)
-        await auditRfq(id, 'invoice_copy_created', { to_rfq_no: invoice.data.rfq_no })
-        await auditRfq(invoice.data.id, 'created_from_quotation', { from_rfq_no: current.data.rfq_no })
-        return invoice.data
+        const result = await client.rpc('claim_sales_desk_rfq', { p_id: id })
+        if (result.error) throw new Error(result.error.message)
+        return result.data
       }
-      const refreshed = await client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)').eq('id', id).single()
-      if (refreshed.error) throw new Error(refreshed.error.message)
-      return { ...refreshed.data, media_platform: refreshed.data.media_platform?.name, status: refreshed.data.status?.name, status_name: refreshed.data.status?.name, status_is_closed: !!refreshed.data.status?.is_closed, sales_code: refreshed.data.sales_code?.code || null }
+      if (action === 'convert-to-invoice') {
+        const result = await client.rpc('convert_sales_desk_rfq_to_invoice', { source_id: id }).single()
+        if (result.error) throw new Error(result.error.message)
+        return result.data
+      }
+      // Approval decisions/notifications remain a separate roadmap item.
+      throw new Error('Approval requests are not enabled yet. No approval request has been sent.')
     }
     if (path === '/api/sales-desk/dashboard' && method === 'GET') {
       const result = await client.rpc('sales_desk_dashboard')

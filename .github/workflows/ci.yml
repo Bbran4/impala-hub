@@ -46,6 +46,7 @@ jobs:
         with:
           version: 2.122.0
       - run: supabase start
+      - run: python scripts/test_sales_desk_concurrency.py
       - run: supabase test db
       - if: always()
         run: supabase stop --no-backup

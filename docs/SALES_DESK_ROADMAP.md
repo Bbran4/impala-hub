@@ -10,14 +10,16 @@ Implemented today:
 - Administrator, manager, and salesperson roles.
 - Sales-code assignment for sales consultants.
 - Visibility rules for personal RFQs, team RFQs, and unclaimed RFQs.
-- RFQ creation, editing, claiming, assignment, status changes, and audit history.
+- Transactional Supabase commands for RFQ creation, editing, claiming, assignment, archival and invoice conversion, with database-generated audits.
+- Locked daily counter numbering, atomic configuration ordering and grouped usage counts.
+- In-memory session role display caching; current database permissions authorize every command.
 - Configurable media platforms, sales codes, and statuses.
 - Attachments with download support and deletion protection.
 - RFQ numbering and quotation-to-invoice conversion foundations.
 - Sales Desk dashboard with team metrics.
 - RFQ analytics with period filters and charts.
 - Drag-and-drop ordering for configuration items.
-- Send for Approval has document-number, attachment and closed-status guards. Administrator notification persistence and the approval decision queue are not connected yet.
+- Approval requests remain disabled until notification persistence and the approval decision queue are connected. The interface does not report an unsaved request as sent.
 
 ## Improvement roadmap
 
@@ -54,7 +56,7 @@ The Daily Sales and RFQ Performance tables currently contain temporary test data
 | Attachments | Implemented with previews, downloads and deletion protection | Optional virus scanning |
 | Sales Desk dashboard | Implemented | Add drill-downs and saved periods |
 | RFQ analytics | Implemented | Add conversion funnel and cohort comparisons |
-| Daily sales and RFQ performance membership | Temporary Supabase seed data | Restrict rows to active users with profile sales codes and replace test values with live sales data |
+| Daily sales and RFQ performance membership | Active profile/code membership; RFQ workload is aggregated in SQL and temporary monetary seed data is excluded | Import verified live sales data |
 | Search/filtering | Basic filters | Add advanced filters and saved views |
 | Send for approval | Partial; prerequisite checks implemented | Add administrator notification persistence, approval queue and decision tracking |
 | Notifications | Shared Supabase notification centre, app channel, unread state, mark-read controls, and exact RFQ links implemented for assigned RFQs entering In Progress | Add approval, unclaimed, reassignment, overdue and SLA event producers |

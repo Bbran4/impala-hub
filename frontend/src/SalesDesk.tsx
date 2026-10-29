@@ -107,6 +107,14 @@ const shorten = (v: unknown) => {
 }
 function describeHistory(h: any): string {
   const c = h.changes || {}
+  if (h.action === 'updated' && Array.isArray(c.changed) && c.before && c.after) {
+    return c.changed.map((key: string) => {
+      const field = key === 'status_id' ? 'status' : key === 'media_platform_id' ? 'media_platform' : key
+      return `${CHANGE_LABELS[field] || field.replaceAll('_',' ')}: ${shorten(c.before[field])} -> ${shorten(c.after[field])}`
+    }).join(' | ')
+  }
+  if (h.action === 'invoice_copy_created') return `Invoice copy created: ${c.to_rfq_no}`
+  if (h.action === 'created_from_quotation') return `Created from quotation: ${c.from_rfq_no}`
   switch (h.action) {
     case 'created': return `Created ${c.rfq_no || ''}${c.sales_code ? ` for ${c.sales_code}` : ''}`
     case 'claimed': return `Claimed by ${c.sales_code}`
