@@ -1,3 +1,6 @@
+// Report emails (one function: the Hobby plan allows 12 per deployment).
+//   GET ?status=1          which settings are missing (names only, never values; no login needed)
+//   GET/POST + CRON_SECRET  sends due report emails.
 // Sends due report emails. Called every few minutes by Supabase (pg_cron + pg_net) with the
 // CRON_SECRET. Claims one delivery at a time, draws each sheet in headless Chrome as the recipient
 // (via a short-lived render ticket), and emails a picture plus a PDF per sheet over SMTP.
@@ -34,8 +37,26 @@ async function renderSheet(browser: Browser, base: string, ticket: string): Prom
   }
 }
 
+// Which report email settings are missing (names only, never values).
+export function missingSettings(env: Record<string, string | undefined>) {
+  const checks: [string, string[]][] = [
+    ['SUPABASE_URL', ['SUPABASE_URL', 'VITE_SUPABASE_URL']],
+    ['SUPABASE_SERVICE_ROLE_KEY', ['SUPABASE_SERVICE_ROLE_KEY']],
+    ['CRON_SECRET', ['CRON_SECRET']],
+    ['SMTP_HOST', ['SMTP_HOST']],
+    ['REPORT_EMAIL_FROM', ['REPORT_EMAIL_FROM']],
+    ['REPORT_HUB_URL', ['REPORT_HUB_URL', 'VERCEL_PROJECT_PRODUCTION_URL']],
+  ]
+  return checks.filter(([, names]) => !names.some((name) => env[name])).map(([label]) => label)
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ detail: 'Method not allowed' })
+  const query = req.query || Object.fromEntries(new URL(req.url || '/', 'http://x').searchParams)
+  if (req.method === 'GET' && query.status) {
+    const missing = missingSettings(process.env)
+    return res.status(200).json({ configured: missing.length === 0, missing })
+  }
   const cronSecret = process.env.CRON_SECRET
   const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   if (!cronSecret || supplied !== cronSecret) return res.status(401).json({ detail: 'Unauthorized scheduler request.' })
