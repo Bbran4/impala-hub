@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ClipboardList, Download, Eye, GripVertical, Paperclip, Plus, Settings, Trash2, X } from 'lucide-react'
 import { API, api, supabase, supabaseConfigured } from './lib'
+import CrossReference from './CrossReference'
 import './salesdesk.css'
 
 const FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx'
@@ -430,7 +431,7 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'year' | 'month' | 'week'>('year')
   const [analyticsMonth, setAnalyticsMonth] = useState(new Date().getMonth() + 1)
   const [analyticsWeek, setAnalyticsWeek] = useState(1)
-  const [view, setView] = useState<'dashboard' | 'rfqs' | 'analytics'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'rfqs' | 'analytics' | 'cross-reference'>('dashboard')
   const [users, setUsers] = useState<any[]>([])
   const [panel, setPanel] = useState<{ mode: 'create' | 'edit'; id?: string } | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -546,10 +547,12 @@ export default function SalesDesk({ page, token, setNotice, setError, openRfqId,
           <div className="sd-session-bar">
             {page === 'RFQs' && view === 'rfqs' && isAdmin && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
-            {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button></div>}
+            {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button><button className={view === 'cross-reference' ? 'active' : ''} onClick={() => setView('cross-reference')}>Cross Reference</button></div>}
           </div>
 
-          {page === 'RFQs' && view === 'dashboard' ? (
+          {page === 'RFQs' && view === 'cross-reference' ? (
+            <CrossReference setNotice={setNotice} setError={setError} />
+          ) : page === 'RFQs' && view === 'dashboard' ? (
             <div className="sd-dashboard">
               <div className="sd-dashboard-grid">
                 <div className="sd-metric"><span>Unclaimed</span><strong>{dashboard.unclaimed}</strong></div>
