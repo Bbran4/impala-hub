@@ -120,6 +120,7 @@ export default function App() {
   const [mfaSecret, setMfaSecret] = useState('')
   const [mfaSetupFactorId, setMfaSetupFactorId] = useState('')
   const [mfaSetupChallengeId, setMfaSetupChallengeId] = useState('')
+  const [mfaEnabled, setMfaEnabled] = useState(false)
   const [page, setPage] = useState('Apps')
   const [posts, setPosts] = useState<Post[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -198,6 +199,8 @@ export default function App() {
     setAssignedRoles(roleIds)
     const permissions = await supabase.rpc('my_marketing_permissions')
     setMarketingPermissions((permissions.data || []) as MarketingPermission[])
+    const factors = await supabase.auth.mfa.listFactors()
+    setMfaEnabled(Boolean(factors.data?.all?.some((factor) => factor.factor_type === 'totp' && factor.status === 'verified')))
     void supabase.rpc('bi_my_access').then(({ data }) => { if (data) setReportingAccess(data) })
     setProfile({ first_name: data?.first_name || user.user_metadata?.first_name || '', surname: data?.surname || user.user_metadata?.surname || '', email: user.email || data?.email || '', avatar_url: data?.avatar_url || '', sales_code: data?.sales_code || '' })
     setProfileLoaded(true)
@@ -245,6 +248,10 @@ export default function App() {
     if (!supabase) return
     setProfileBusy(true); setError('')
     try {
+      const existing = await supabase.auth.mfa.listFactors()
+      const current = existing.data?.all?.find((factor) => factor.factor_type === 'totp')
+      if (current?.status === 'verified') { setMfaEnabled(true); setNotice('Authenticator-app MFA is already enabled for this account.'); return }
+      if (current?.status === 'unverified') await supabase.auth.mfa.unenroll({ factorId: current.id })
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Impala Hub' })
       if (enrollError) throw new Error(enrollError.message)
       setMfaSetupFactorId(data.id); setMfaQr(data.totp?.qr_code || ''); setMfaSecret(data.totp?.secret || ''); setNotice('Scan the QR code with Google Authenticator, then enter the six-digit code.')
@@ -260,7 +267,7 @@ export default function App() {
       setMfaSetupChallengeId(challenge.data.id)
       const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: mfaSetupFactorId, challengeId: challenge.data.id, code: mfaCode.trim() })
       if (verifyError) throw new Error(verifyError.message)
-      setMfaCode(''); setMfaQr(''); setMfaSecret(''); setMfaSetupFactorId(''); setMfaSetupChallengeId(''); setNotice('Authenticator-app MFA is enabled for your account.')
+      setMfaCode(''); setMfaQr(''); setMfaSecret(''); setMfaSetupFactorId(''); setMfaSetupChallengeId(''); setMfaEnabled(true); setNotice('Authenticator-app MFA is enabled for your account.')
     } catch (e) { handleError(e) } finally { setProfileBusy(false) }
   }
 
@@ -830,7 +837,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               <label>Sales code<input value={profile.sales_code} placeholder="e.g. BB01" onChange={(e) => setProfile({ ...profile, sales_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></label>
                 <label>Email address<input value={profile.email} disabled /></label>
                 <div className="password-reset"><div><b>Password</b><p>Your password is changed through a secure email link.</p></div><button className="secondary" disabled={profileBusy} onClick={() => void sendPasswordReset()}>Send reset link</button></div>
-                <div className="mfa-settings"><div><b>Authenticator-app two-factor authentication</b><p>Scan the QR code with Google Authenticator, then enter its six-digit code.</p></div>{mfaSetupFactorId ? <div className="mfa-enrolment"><img className="mfa-qr" alt="Authenticator setup QR code" src={qrImageSource(mfaQr)} /><small>Manual setup key: <code>{mfaSecret}</code></small><div className="mfa-inline"><input inputMode="numeric" aria-label="Authenticator verification code" placeholder="Six-digit code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaCode.trim()} onClick={() => void verifyMfaEnrollment()}>Enable MFA</button></div></div> : <button className="secondary" disabled={profileBusy} onClick={() => void startMfaEnrollment()}>Set up MFA</button>}</div>
+                <div className="mfa-settings"><div><b>Authenticator-app two-factor authentication</b><p>{mfaEnabled ? 'Enabled. Login requires a six-digit Google Authenticator code.' : 'Scan the QR code with Google Authenticator, then enter its six-digit code.'}</p></div>{mfaSetupFactorId ? <div className="mfa-enrolment"><img className="mfa-qr" alt="Authenticator setup QR code" src={qrImageSource(mfaQr)} /><small>Manual setup key: <code>{mfaSecret}</code></small><div className="mfa-inline"><input inputMode="numeric" aria-label="Authenticator verification code" placeholder="Six-digit code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} /><button className="secondary" disabled={profileBusy || !mfaCode.trim()} onClick={() => void verifyMfaEnrollment()}>Enable MFA</button></div></div> : <button className="secondary" disabled={profileBusy || mfaEnabled} onClick={() => void startMfaEnrollment()}>{mfaEnabled ? 'MFA enabled' : 'Set up MFA'}</button>}</div>
                 <div className="account-actions"><button className="primary" disabled={profileBusy} onClick={() => void saveProfile()}>Save profile</button></div>
               </div>
             </div>
