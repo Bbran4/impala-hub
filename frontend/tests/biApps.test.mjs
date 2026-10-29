@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {buildSpec,compactNumber,compileObject,defaultSort,displayValue,formatNumber,freeSpot,modelProblems,niceTicks,normalizeObject,orderedModel,resolveField,resolveLayout,selectionKey,suggestLinks,toCsv,toPivot,toSeries,toggleSelection} from '../src/biApps.ts'
+import {buildSpec,cellStyle,columnOrder,contrastText,fitOptions,moveColumn,safeColor,compactNumber,compileObject,defaultSort,displayValue,formatNumber,freeSpot,modelProblems,niceTicks,relinkModel,removeFromModel,rerootModel,normalizeObject,orderedModel,resolveField,resolveLayout,selectionKey,suggestLinks,toCsv,toPivot,toSeries,toggleSelection} from '../src/biApps.ts'
 import {parseExpression} from '../src/biExpression.ts'
 
 const cols=(...names)=>names.map(name=>({name,type:'text'}))
@@ -12,7 +12,7 @@ const model=[
 const app={model,measures:[{name:'Sales',expression:'Sum(qty*unit_price)',format:'money'}]}
 const object=(overrides)=>normalizeObject({id:'o',kind:'bar',dimensions:[{expr:'branch'}],measures:[{expr:'[Sales]'}],options:{},...overrides})
 
-test('model order puts the main table first and resolves shared field names to it',()=>{
+test('model order puts the first table first and resolves shared field names to it',()=>{
   assert.deepEqual(orderedModel(model).map(table=>table.alias),['lines','invoices','items'])
   assert.equal(resolveField(model,{name:'invoice_no'}),'lines')
   assert.equal(resolveField(model,{name:'branch'}),'invoices')
@@ -29,8 +29,41 @@ test('link suggestions prefer key-like same-named fields',()=>{
 
 test('model problems are explained',()=>{
   assert.deepEqual(modelProblems(model),[])
-  assert.match(modelProblems(model.map(table=>({...table,parent_alias:null})))[0],/exactly one main table/)
-  assert.match(modelProblems([model[1],{...model[2],join_pairs:[]}])[0],/Choose how items links to lines/)
+  assert.match(modelProblems(model.map(table=>({...table,parent_alias:null})))[0],/Link every table to another table/)
+  assert.match(modelProblems([model[1],{...model[2],join_pairs:[]}])[0],/Choose the fields that link items and lines/)
+  assert.match(modelProblems([model[1],{...model[2],join_pairs:[['nope','item_code']]}])[0],/items has no field nope/)
+})
+
+// two-way links: the same pairs of tables stay linked whichever table is first
+const links=m=>m.filter(t=>t.parent_alias).map(t=>[t.alias,t.parent_alias,...t.join_pairs.flat()].join(' ')).sort()
+const undirected=m=>m.filter(t=>t.parent_alias).map(t=>[t.alias,t.parent_alias].sort().join('-')).sort()
+
+test('rerooting keeps the same links',()=>{
+  const rerooted=rerootModel(model,'items')
+  assert.equal(orderedModel(rerooted)[0].alias,'items')
+  assert.deepEqual(undirected(rerooted),undirected(model))
+  assert.deepEqual(links(rerooted),['invoices lines invoice_no invoice_no','lines items item_code item_code'])
+  assert.deepEqual(modelProblems(rerooted),[])
+})
+
+test('relinking moves one link and keeps the first table',()=>{
+  const relinked=relinkModel(model,'items','invoices',[['item_code','invoice_no']])
+  assert.equal(orderedModel(relinked)[0].alias,'lines')
+  assert.deepEqual(undirected(relinked),['invoices-items','invoices-lines'])
+  // the first table can be linked to something else too; the link it had through that table moves
+  const fromFirst=relinkModel(model,'lines','items',[['item_code','item_code']])
+  assert.deepEqual(undirected(fromFirst),undirected(model))
+  const chain=relinkModel(relinked,'lines','items',[['item_code','item_code']])
+  assert.deepEqual(undirected(chain),['invoices-items','items-lines'])
+  assert.equal(orderedModel(chain)[0].alias,'lines')
+})
+
+test('removing a table relinks the tables linked through it',()=>{
+  const removed=removeFromModel(model,'lines')
+  assert.deepEqual(removed.map(t=>t.alias).sort(),['invoices','items'])
+  assert.equal(removed.filter(t=>!t.parent_alias).length,1)
+  assert.deepEqual(modelProblems(removed),['Choose the fields that link items and invoices.'])
+  assert.deepEqual(modelProblems(removeFromModel(model,'items')),[])
 })
 
 test('objects compile with master measures, labels, formats and selection keys',()=>{
@@ -114,4 +147,40 @@ test('layout pushes overlaps down, floats objects up and finds free space',()=>{
   assert.equal(floated[0].y,0)
   assert.deepEqual(freeSpot([a,b],6,3),{x:0,y:4})
   assert.equal(resolveLayout([{...a,x:20}])[0].x,12)
+})
+
+test('moving dimensions and measures keeps sort and column order on the same columns',()=>{
+  const table=object({kind:'table',dimensions:[{expr:'branch'},{expr:'item_code'}],measures:[{expr:'Sum(qty)'},{expr:'[Sales]'}],options:{sortBy:3,columnOrder:[2,0,1,3]}})
+  const moved=moveColumn(table,'measure',1,0)
+  assert.deepEqual(moved.measures.map(m=>m.expr),['[Sales]','Sum(qty)'])
+  assert.equal(moved.options.sortBy,2)
+  assert.deepEqual(moved.options.columnOrder,[3,0,1,2])
+  const dims=moveColumn(table,'dimension',1,0)
+  assert.deepEqual(dims.dimensions.map(d=>d.expr),['item_code','branch'])
+  assert.deepEqual(dims.options.columnOrder,[2,1,0,3])
+  assert.deepEqual(columnOrder({...table,options:{columnOrder:[3,3,9]}}),[3,0,1,2])
+})
+
+test('adding or removing a column keeps the options aligned',()=>{
+  const table=object({kind:'table',dimensions:[{expr:'branch'},{expr:'item_code'}],measures:[{expr:'Sum(qty)'}],options:{sortBy:2,columnOrder:[2,1,0]}})
+  assert.deepEqual(fitOptions(table,3,1),{sortBy:3,columnOrder:[3,1,0]})
+  assert.deepEqual(fitOptions(table,1,1,{kind:'dimension',index:0}),{sortBy:1,columnOrder:[1,0]})
+  assert.deepEqual(fitOptions(table,2,0,{kind:'measure',index:0}),{sortBy:undefined,columnOrder:[1,0]})
+})
+
+test('cell colours come from extra query columns and only real colours are used',()=>{
+  assert.equal(safeColor('#E34948'),'#e34948');assert.equal(safeColor('rgb(1, 2, 3)'),'rgb(1, 2, 3)');assert.equal(safeColor('red'),'red')
+  assert.equal(safeColor('url(javascript:alert(1))'),null);assert.equal(safeColor('red; color: blue'),null);assert.equal(safeColor(12),null)
+  assert.equal(contrastText('#ffffff'),'#16324a');assert.equal(contrastText('rgb(20,30,40)'),'#ffffff')
+  const table=object({kind:'table',dimensions:[{expr:'branch',background:"If(branch = 'Centurion', 'gold')"}],measures:[{expr:'Sum(qty)',textColor:"If(Sum(qty) < 0, 'red', 'green')"},{expr:'[Sales]',background:"'#ffffff'"}]})
+  const compiled=compileObject(table,app)
+  assert.deepEqual(compiled.errors,[])
+  assert.deepEqual(compiled.styles.map(style=>[style.column,style.kind]),[[0,'background'],[1,'color'],[2,'background']])
+  assert.deepEqual(compiled.styles[2].node,{t:'fn',name:'only',args:[{t:'str',v:'#ffffff'}]})
+  assert.equal(buildSpec(compiled,[],{styles:true}).measures.length,5)
+  assert.equal(buildSpec(compiled,[]).measures.length,2)
+  const row=['Centurion',5,100,'gold','green','#ffffff']
+  assert.deepEqual(cellStyle(compiled,row,0,3),{background:'gold',color:'#16324a'})
+  assert.deepEqual(cellStyle(compiled,row,1,3),{color:'green'})
+  assert.deepEqual(cellStyle(compiled,['Pretoria',5,100,null,'nope',null],0,3),{})
 })

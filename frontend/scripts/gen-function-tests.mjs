@@ -66,6 +66,10 @@ export const CASES=[
   {d:"WildMatch(note, '*brake*', 'grv*')",cond:THREE,expect:[[2]]},{d:"WildMatch(code, 'IT000?')",cond:ONE,expect:[[1]]},
   {d:"WildMatch('100%', '1_0%')",expect:[[0]]},{d:"WildMatch('1_0%', '1_0%')",expect:[[1]]},
   {m:'Count(*)',cond:"WildMatch(branch, 'cent*') > 0",expect:[[2]]},
+  // colours
+  {d:'RGB(227, 73, 72)',cond:ONE,expect:[['rgb(227,73,72)']]},{d:'RGB(300, -5, 12.6)',cond:ONE,expect:[['rgb(255,0,13)']]},
+  {d:"ColorMix1(0.5, '#ffffff', '#2a78d6')",cond:ONE,expect:[['rgb(149,188,235)']]},{d:"ColorMix1(2, '#000000', '#FFFFFF')",cond:ONE,expect:[['rgb(255,255,255)']]},
+  {d:"ColorMix1(0.5, 'red', '#ffffff')",cond:ONE,expect:[[null]]},
   {d:"not IsNull(note) and qty < 3",cond:ONE,expect:[[true]]},
   {d:'1 + 2 * 3 // comment', expect:[[7]]},
 ]
