@@ -420,3 +420,36 @@ svg .dimmed{opacity:.3}
 .bi-dm-side p{font-size:12.5px}
 .bi-dm-side h3{font:800 16px Manrope,sans-serif;color:#1c2f41}
 .bi-dm-side .bi-section-title{margin-top:12px}
+/* row access */
+.bi-row-access .bi-check{margin:4px 0 8px}
+.bi-rule-list{display:flex;flex-direction:column;gap:10px;margin:6px 0}
+.bi-rule{border:1px solid #e1e7ec;border-radius:10px;padding:10px 12px;background:#fbfcfd}
+.bi-rule.invalid{border-color:#efc2b8}
+.bi-rule-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12.5px;color:#526170}
+.bi-rule-head select{width:auto!important;min-width:110px;padding:7px 9px!important}
+.bi-rule-head .icon-button{margin-left:auto}
+.bi-rule-values{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.bi-rule-values>input{max-width:260px}
+.bi-rule-chips{display:flex;flex-wrap:wrap;gap:6px}
+.bi-chip{display:inline-flex!important;flex-direction:row!important;align-items:center;gap:5px!important;padding:5px 10px;border:1px solid #d8e1e7;border-radius:999px;background:#fff;font-size:12px!important;font-weight:500!important;color:#34495a!important;cursor:pointer;user-select:none}
+.bi-chip input{display:none}
+.bi-chip.on{background:#1d4668;border-color:#1d4668;color:#fff!important}
+.bi-rule-extra input{width:130px!important;padding:5px 10px!important;border-radius:999px!important;font-size:12px!important}
+.bi-rule-actions{justify-content:space-between;align-items:center;margin-top:8px}
+.bi-my-rows{display:flex;align-items:center;gap:6px;margin:0 0 8px;padding:7px 12px;border-radius:8px;background:#eef5fb;color:#1d4f7a;font-size:12.5px}
+/* report emails */
+.bi-report-setup{background:#fff8e8;border-color:#f0d58c;font-size:13px;color:#5c4511}
+.bi-report-setup code{font-size:12px}
+.bi-reports td svg{vertical-align:-2px}
+.bi-reports .rp-badge{margin-left:6px}
+.bi-label{display:block;font-size:12px;color:#526170;margin-bottom:6px}
+.bi-settings textarea{width:100%;padding:9px 10px;border:1px solid #d8e1e7;border-radius:7px;font:inherit;font-size:12px;font-weight:400;resize:vertical}
+/* the page headless Chrome draws for report emails */
+.bi-print{width:1400px;padding:24px 28px 28px;background:#f4f6f8;font-family:Inter,system-ui,sans-serif}
+.bi-print-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;padding-bottom:10px;border-bottom:3px solid #e7b94f}
+.bi-print-head div{display:flex;flex-direction:column}
+.bi-print-head b{font:800 22px Manrope,sans-serif;color:#16324a}
+.bi-print-head span{font-size:14px;color:#526170}
+.bi-print-head small{color:#7a8794;font-size:12px}
+.bi-print-error,.bi-print-loading{padding:40px;font-family:system-ui,sans-serif;color:#a34130}
+.bi-rule-actions .text-button{margin-right:auto}

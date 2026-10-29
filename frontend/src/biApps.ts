@@ -33,6 +33,8 @@ export type ObjectOptions={
   // batch 3
   rowStyles?:string;tiles?:boolean;interval?:number;loop?:boolean
   writeColumns?:WriteColumn[];writeEditors?:'everyone'|'builders'
+  // write tables: the parsed dimensions, saved so the database can check row access on the rows
+  keyDims?:ExprNode[]
 }
 export type WriteColumn={name:string;type:'text'|'number'|'choice';choices?:string}
 export type WriteCell={row_key:string;column:string;value:string;updated_at:string;updated_by:string}
@@ -116,10 +118,55 @@ export async function saveSheet(client:SupabaseClient,appId:string,sheet:{id?:st
 }
 export async function deleteSheet(client:SupabaseClient,id:string){const {error}=await client.rpc('bi_delete_sheet',{p_sheet:id});fail(error)}
 export async function loadPrincipals(client:SupabaseClient){const {data,error}=await client.rpc('bi_list_principals');fail(error);return data as Principals}
-export async function loadWriteCells(client:SupabaseClient,appId:string,objectId:string){const {data,error}=await client.rpc('bi_write_get',{p_app:appId,p_object:objectId});fail(error);return (data||[]) as WriteCell[]}
+// Report rendering (headless Chrome) runs signed out with a ticket instead of a session: these
+// calls then go through the bi_render_* functions, which run as the report's recipient.
+let renderTicket:string|null=null
+export function setRenderTicket(ticket:string|null){renderTicket=ticket}
+// Number of data requests in flight, so the report renderer knows when a sheet has finished loading.
+let pending=0
+export const pendingRequests=()=>pending
+async function track<T>(work:()=>Promise<T>){pending++;try{return await work()}finally{pending--}}
+
+export async function loadWriteCells(client:SupabaseClient,appId:string,objectId:string){return track(async()=>{
+  const {data,error}=renderTicket?await client.rpc('bi_render_write_get',{p_ticket:renderTicket,p_object:objectId}):await client.rpc('bi_write_get',{p_app:appId,p_object:objectId})
+  fail(error);return (data||[]) as WriteCell[]})}
 export async function saveWriteCell(client:SupabaseClient,appId:string,objectId:string,rowKey:string,column:string,value:string){
   const {error}=await client.rpc('bi_write_set',{p_app:appId,p_object:objectId,p_row_key:rowKey,p_column:column,p_value:value});fail(error)}
-export async function runQuery(client:SupabaseClient,appId:string,spec:unknown){const {data,error}=await client.rpc('bi_query',{p_app:appId,p_spec:spec});fail(error);return data as QueryResult}
+export async function runQuery(client:SupabaseClient,appId:string,spec:unknown){return track(async()=>{
+  const {data,error}=renderTicket?await client.rpc('bi_render_query',{p_ticket:renderTicket,p_spec:spec}):await client.rpc('bi_query',{p_app:appId,p_spec:spec})
+  fail(error);return data as QueryResult})}
+
+// Write tables keep their parsed dimensions with the sheet, so row access can be checked per row.
+export function withWriteKeys(objects:SheetObject[],app:Pick<AppDetail,'model'|'measures'|'variables'>):SheetObject[]{
+  const variableValues=Object.fromEntries((app.variables||[]).map(v=>[v.name,v.value]))
+  return objects.map(object=>{
+    if(object.kind!=='writetable')return object
+    const {keyDims:_old,...options}=object.options
+    const compiled=compileObject(object,{...app,variableValues})
+    return {...object,options:compiled.errors.length?options:{...options,keyDims:compiled.dimensions.map(d=>d.node)}}
+  })
+}
+
+// Row access (like Qlik section access)
+export type RowRule={type:'role'|'user';principal:string;field:string;all:boolean;values:string[]}
+export type RowAccess={enabled:boolean;rules:RowRule[]}
+export type MyRowAccess=null|{'#deny'?:true}&Record<string,string[]|null|true>
+export async function loadRowAccess(client:SupabaseClient,appId:string){const {data,error}=await client.rpc('bi_get_row_access',{p_app:appId});fail(error);return data as RowAccess}
+export async function saveRowAccess(client:SupabaseClient,appId:string,access:RowAccess){const {error}=await client.rpc('bi_save_row_access',{p_app:appId,p:access});fail(error)}
+export async function loadMyRowAccess(client:SupabaseClient,appId:string){const {data,error}=await client.rpc('bi_my_row_access',{p_app:appId});fail(error);return data as MyRowAccess}
+export function rowRuleProblem(rule:RowRule,model:ModelTable[]):string|null{
+  if(!rule.principal)return 'Choose who the rule is for'
+  const [alias,column]=rule.field.split('.')
+  if(!model.some(t=>t.alias===alias&&t.columns.some(c=>c.name===column)))return 'Choose a field'
+  if(!rule.all&&!rule.values.some(v=>v.trim()))return 'Choose at least one value, or all values'
+  return null
+}
+// "branch: Centurion, Pretoria · region: all"
+export function describeRowAccess(access:MyRowAccess){
+  if(!access)return null
+  if(access['#deny'])return 'You have not been given any rows in this app yet. Ask a report builder.'
+  return Object.entries(access).map(([field,values])=>`${field.split('.')[1]||field}: ${Array.isArray(values)?values.join(', '):'all'}`).join(' · ')
+}
 
 export function normalizeApp(app:AppDetail):AppDetail{
   return {...app,measures:app.measures||[],variables:app.variables||[],model:(app.model||[]).map(table=>({...table,join_pairs:table.join_pairs||[],columns:table.columns||[]})),

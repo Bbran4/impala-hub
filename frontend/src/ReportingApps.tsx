@@ -3,13 +3,13 @@ import {
   ArrowLeft,BarChart3,Palette,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
   Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,Hash,ChartColumnIncreasing,ScatterChart,Target,ListFilter,ChartNoAxesColumn,LayoutDashboard,
   BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,Variable,SlidersHorizontal,CalendarDays,MousePointerClick,Menu,PanelTop,Columns2,Grid2x2,
-  Image as ImageIcon,Newspaper,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
+  Image as ImageIcon,Mail,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
 } from 'lucide-react'
 import {supabase} from './supabase'
 import {expandVariables,type AppVariable,type MasterMeasure} from './biExpression'
 import {checkExpression,ExpressionInput,type ExpressionContext} from './biExpressionEditor'
 import {
-  GRID_COLS,KIND_INFO,ROW_HEIGHT,compileObject,deleteApp,deleteSheet,displayValue,freeSpot,loadApp,loadApps,loadPrincipals,
+  GRID_COLS,KIND_INFO,ROW_HEIGHT,compileObject,deleteApp,deleteSheet,describeRowAccess,displayValue,freeSpot,loadApp,loadApps,loadMyRowAccess,loadPrincipals,withWriteKeys,
   CONTAINER_KINDS,NO_DATA_KINDS,columnOrder,fitOptions,isContained,modelProblems,moveColumn,newId,removeObject,setContainer,normalizeObject,orderedModel,relinkModel,removeFromModel,rerootModel,resolveLayout,saveApp,saveSheet,suggestLinks,toggleSelection,
   type AccessEntry,type AppDetail,type AppSummary,type ModelTable,type NumberFormat,type ObjectKind,
   type Principals,type Selection,type Sheet,type SheetObject,
@@ -19,6 +19,8 @@ import {ObjectBody,type SelectFn} from './biCharts'
 import {ModelDiagram} from './biModelViewer'
 import {modelLinks} from './biModelGraph'
 import {type AppRuntime} from './biChartKit'
+import RowAccessCard from './biRowAccess'
+import ReportEmails from './biReportEmails'
 import './reportingApps.css'
 
 type Props={canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
@@ -76,6 +78,8 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
   const [editing,setEditing]=useState<Sheet|null>(null)
   const [selectedObject,setSelectedObject]=useState<string|null>(null)
   const [settings,setSettings]=useState(false)
+  const [reports,setReports]=useState(false)
+  const [myRows,setMyRows]=useState<string|null>(null)
   const [saving,setSaving]=useState(false)
   const [version,setVersion]=useState('')
   const load=useCallback(async(keepSheet?:string|null)=>{
@@ -86,6 +90,8 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
     }catch(error){setError((error as Error).message);onBack()}
   },[appId,onBack,setError])
   useEffect(()=>{void load()},[load])
+  // viewers: what row access limits them to
+  useEffect(()=>{if(canBuild||!supabase)return;loadMyRowAccess(supabase,appId).then(access=>setMyRows(describeRowAccess(access))).catch(()=>setMyRows(null))},[appId,canBuild])
   // pick up fresh data from the sync agent every minute
   useEffect(()=>{const timer=setInterval(()=>{if(document.visibilityState==='visible'&&!editing)void load()},60000);return()=>clearInterval(timer)},[load,editing])
 
@@ -113,12 +119,12 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
   async function saveEditing(){
     if(!app||!editing)return
     setSaving(true)
-    try{await saveSheet(supabase!,app.id,{id:editing.id,title:editing.title,position:editing.position,objects:editing.objects});setEditing(null);setSelectedObject(null);await load(editing.id);setNotice('Sheet saved.')}
+    try{await saveSheet(supabase!,app.id,{id:editing.id,title:editing.title,position:editing.position,objects:withWriteKeys(editing.objects,app)});setEditing(null);setSelectedObject(null);await load(editing.id);setNotice('Sheet saved.')}
     catch(error){setError((error as Error).message)}finally{setSaving(false)}
   }
   async function duplicateSheet(){
     if(!app||!sheet)return
-    try{const id=await saveSheet(supabase!,app.id,{title:`${sheet.title} (copy)`,objects:sheet.objects.map(object=>({...object,id:newId()}))});await load(id);setNotice('Sheet duplicated.')}
+    try{const id=await saveSheet(supabase!,app.id,{title:`${sheet.title} (copy)`,objects:withWriteKeys(sheet.objects.map(object=>({...object,id:newId()})),app)});await load(id);setNotice('Sheet duplicated.')}
     catch(error){setError((error as Error).message)}
   }
   async function removeSheet(){
@@ -132,6 +138,7 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
   }
 
   if(!app)return <section className="rfq-workspace"><div className="sd-session-bar"><span>Loading app…</span></div></section>
+  if(reports)return <ReportEmails app={app} onClose={()=>setReports(false)} setNotice={setNotice} setError={setError}/>
   if(settings)return <AppSettings app={app} onClose={()=>setSettings(false)} onSaved={async()=>{setSettings(false);setSelections([]);await load()}} onDeleted={onBack} setNotice={setNotice} setError={setError}/>
 
   return <section className="bi-app">
@@ -140,6 +147,7 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
       <div className="bi-app-title"><b>{app.name}</b>{app.description&&<small>{app.description}</small>}</div>
       {canBuild&&!editing&&<div className="bi-app-actions">
         <button className="secondary" onClick={()=>setSettings(true)}><Settings2 size={15}/>Data model &amp; sharing</button>
+        <button className="secondary" onClick={()=>setReports(true)}><Mail size={15}/>Report emails</button>
         {sheet&&<button className="secondary" onClick={()=>{setEditing(structuredClone(sheet));setSelectedObject(null)}}><Pencil size={15}/>Edit sheet</button>}
       </div>}
       {editing&&<div className="bi-app-actions">
@@ -155,6 +163,7 @@ function AppView({appId,canBuild,onBack,setNotice,setError}:{appId:string;canBui
       {canBuild&&!editing&&<button className="bi-add-sheet" onClick={()=>void addSheet()}><Plus size={14}/>Sheet</button>}
     </div>
 
+    {myRows&&!editing&&<div className="bi-my-rows"><ShieldCheck size={14}/>Your data in this app: {myRows}</div>}
     {!editing&&<SelectionsBar selections={selections} onClear={key=>setSelections(current=>key?current.filter(item=>item.key!==key):[])}/>}
 
     {!sheet&&<div className="rfq-empty-card"><LayoutGrid size={26}/><h3>No sheets yet</h3><p>{canBuild?'Add a sheet, then add charts, tables and filters to it.':'This app has no sheets yet.'}</p></div>}
@@ -199,7 +208,7 @@ function ObjectPalette({onAdd}:{onAdd:(kind:ObjectKind)=>void}){
 // ---------------------------------------------------------------------------
 // Sheet canvas (24-column grid; drag the header to move, the corner to resize)
 // ---------------------------------------------------------------------------
-function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange}:{
+export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange}:{
   sheet:Sheet;app:AppDetail;runtime?:AppRuntime;editing:boolean;selections:Selection[];onSelect:SelectFn;version:string
   selectedObject:string|null;onPick:(id:string|null)=>void;onChange:(objects:SheetObject[])=>void
 }){
@@ -596,6 +605,7 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
         <div><b>People</b><input placeholder="Search by name or email" value={userSearch} onChange={event=>setUserSearch(event.target.value)}/>
           <div className="bi-user-list">{users.slice(0,50).map(u=><label key={u.id} className="bi-check"><input type="checkbox" checked={hasAccess('user',u.id)} onChange={()=>toggleAccess('user',u.id)}/>{u.name}<small>{u.email}</small></label>)}</div></div></div>
     </div>
+    {app&&<RowAccessCard app={app} principals={principals} setNotice={setNotice} setError={setError}/>}
   </section>
 }
 

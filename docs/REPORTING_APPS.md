@@ -12,7 +12,7 @@ ever read those loaded tables.
 | Role | Can |
 |---|---|
 | `administrator` | Everything, including the data loader (Data Connections, Data Loads, Run History, Audit Log) |
-| `report_builder` | Create, edit and delete apps and sheets; choose who can open each app |
+| `report_builder` | Create, edit and delete apps and sheets; choose who can open each app; row access; report emails |
 | everyone else | Open the apps shared with one of their roles or with them by name, and use selections |
 
 Give someone the builder role in the Supabase SQL editor:
@@ -72,6 +72,78 @@ Web and folder connections show their status (waiting, loading, loaded, failed w
 reloaded straight away. The agent's `config.toml` `[connectors]` section decides which hosts, folders and
 keys are allowed (see `bi-agent/README.md`); the page shows what each agent allows. Loaded connection
 tables appear in **Data** and **Data Model** and are added to apps like any other table.
+
+## Row access (like Qlik section access)
+
+Under an app's **Data model & sharing → Row access**, a report builder can limit which records each viewer
+sees, for example only their own branch:
+
+- Turn on *Limit rows for viewers of this app* and add rules: **who** (a role or a person) sees rows where
+  **a field** (e.g. `invoices.branch`) **is** one or more values, or any value. The value list comes from the
+  data; other values can be typed.
+- Several rules for the same person add up (a role rule plus a personal one). Rules on different fields
+  both apply. When row access is on, viewers without any rule see **no data**.
+- Administrators and report builders always see everything (they can change the rules anyway).
+- It is applied in the database on every query (`bi_query`), so charts, tables, filter values, totals,
+  exports, write tables and report emails all follow it. Records with no value in the field (e.g. stock
+  items that never sold, when the rule is on the invoice's branch) are hidden too.
+- Viewers see a line above the sheet saying what their data is limited to.
+- If a rule's field is removed from the data model, the people it applies to see nothing until the rule is
+  fixed (it fails closed).
+
+## Report emails
+
+In an app, **Report emails** (report builders) lists the app's scheduled emails:
+
+- **Sheets**: one or more sheets of the app, sent in that order.
+- **Who gets it**: hub users, chosen by role and/or by name. Everyone gets their own copy, drawn with their
+  own access, so row access applies. People who cannot open the app are skipped (shown in the history).
+- **When**: every day, weekdays, chosen days of the week, or a day of the month (31 = the last day), at a
+  time, in a time zone (Africa/Johannesburg by default). Emails go out within a few minutes of that time.
+- **Subject and message**: optional; the subject defaults to "App: report name".
+- **Test to me** sends it to yourself straight away; **Send now** sends it to everyone now. The **Sent** list
+  shows every email with its status (queued, sent, failed with the reason, skipped). A failed send is retried
+  twice, after 5 and 10 minutes.
+
+Each email has a picture of every sheet in the body, a PDF of every sheet attached, and a link to the hub.
+
+### Setting up sending (once)
+
+Sending runs in the cloud: `frontend/api/reporting/send-due.ts` (a Vercel function) draws each sheet in
+headless Chrome and sends through SMTP. Any email provider with SMTP works (Brevo, Mailgun, Resend, SMTP2GO,
+your domain's mail host, …).
+
+1. **Vercel → Project → Settings → Environment Variables** (Production):
+   | Name | Value |
+   |---|---|
+   | `SMTP_HOST`, `SMTP_PORT` | from your email provider (port 587 with STARTTLS, or 465) |
+   | `SMTP_USER`, `SMTP_PASSWORD` | from your email provider |
+   | `REPORT_EMAIL_FROM` | e.g. `Impala Reports <reports@impalaspares.co.za>` (a sender your provider has verified) |
+   | `REPORT_HUB_URL` | the hub's public address, e.g. `https://impala-hub.vercel.app` (optional: defaults to the production domain) |
+   | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET` | already set for Marketing |
+
+   Redeploy. The Report emails page warns while something is missing.
+2. **Supabase → SQL editor**: call the function every 2 minutes (Vercel's Hobby plan only allows daily
+   cron jobs, so Supabase does the timing). Replace the two values:
+   ```sql
+   create extension if not exists pg_cron;
+   create extension if not exists pg_net;
+   select vault.create_secret('<the CRON_SECRET from Vercel>', 'report_emails_cron_secret');
+   select cron.schedule('report-emails', '*/2 * * * *', $$
+     select net.http_post(
+       url := 'https://<your hub address>/api/reporting/send-due',
+       headers := jsonb_build_object('Authorization', 'Bearer ' ||
+         (select decrypted_secret from vault.decrypted_secrets where name = 'report_emails_cron_secret')),
+       timeout_milliseconds := 5000);
+   $$);
+   ```
+   To stop it: `select cron.unschedule('report-emails');`
+3. Make a report email and click **Test to me**.
+
+How it stays safe: only the service role (the Vercel function) can take emails off the queue. For each
+sheet it gets a one-time render ticket (stored only as a hash, valid 15 minutes, for one app) that the
+headless browser uses instead of a login; queries made with it run as the recipient. Each run handles as
+many emails as fit in four minutes; the rest wait for the next run.
 
 ## Objects
 
@@ -220,5 +292,6 @@ tests (`scripts/gen-function-tests.mjs`) or the generated docs (`scripts/gen-fun
 - Data connections can only be managed by administrators. Uploaded values are checked against the
   column types in the database; table and column names are checked against a fixed pattern. Web and
   folder connections run on the agent, which only reaches the hosts and folders its own config allows.
-- Not yet available: row-level access within an app (Qlik section access, e.g. "own branch only").
-  Until then, share apps only with people who may see all of their data.
+- Row access limits records per person within an app (see above). Administrators and report builders
+  always see all data.
+- Report emails are drawn as each recipient and only sent to hub users.

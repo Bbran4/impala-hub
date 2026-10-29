@@ -1,0 +1,58 @@
+// Pure helpers for report emails (tested in tests/reportMail.test.mjs).
+
+export type ClaimedSheet = { sheet_id: string; title: string; ticket: string }
+export type ClaimedDelivery = {
+  delivery_id: string; email: string; recipient_name: string | null; app_id: string; app_name: string
+  schedule_name: string; subject: string; message: string; is_test: boolean; attempt: number; sheets: ClaimedSheet[]
+}
+export type RenderedSheet = { title: string; png: Buffer; pdf: Buffer }
+
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+
+// Safe, readable attachment names: "Sales - Overview.pdf"
+export function fileName(appName: string, title: string, extension: string) {
+  const clean = `${appName} - ${title}`.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
+  return `${clean || 'Report'}.${extension}`
+}
+
+export function subjectFor(delivery: ClaimedDelivery) {
+  const subject = delivery.subject.trim() || `${delivery.app_name}: ${delivery.schedule_name}`
+  return (delivery.is_test ? `[Test] ${subject}` : subject).replace(/[\r\n]+/g, ' ').slice(0, 200)
+}
+
+// The hub's address for links and for headless Chrome; must be https (or localhost for testing).
+export function hubUrl(env: Record<string, string | undefined>) {
+  const raw = env.REPORT_HUB_URL || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '')
+  const url = raw.replace(/\/+$/, '')
+  if (!/^https:\/\/[^/\s]+$/.test(url) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(url)) return null
+  return url
+}
+
+export function emailBody(delivery: ClaimedDelivery, sheets: { title: string; cid: string }[], link: string, sentAt: Date) {
+  const when = sentAt.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+  const greeting = delivery.recipient_name ? `Hi ${delivery.recipient_name.split(/\s+/)[0]},` : 'Hi,'
+  const message = delivery.message.trim()
+  const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#1c2f41">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:1000px;background:#ffffff;border-radius:10px;overflow:hidden">
+<tr><td style="background:#16324a;padding:16px 22px;color:#ffffff"><div style="font-size:12px;letter-spacing:1px;color:#e7b94f;font-weight:bold">IMPALA HUB · REPORTING</div>
+<div style="font-size:20px;font-weight:bold;margin-top:4px">${escapeHtml(delivery.app_name)}</div><div style="font-size:13px;color:#b8c7d3">${escapeHtml(delivery.schedule_name)} · ${escapeHtml(when)}</div></td></tr>
+<tr><td style="padding:18px 22px 6px;font-size:14px;line-height:1.5"><p style="margin:0 0 8px">${escapeHtml(greeting)}</p>
+${message ? `<p style="margin:0 0 8px;white-space:pre-line">${escapeHtml(message)}</p>` : ''}
+<p style="margin:0 0 4px;color:#526170">${sheets.length === 1 ? 'The sheet is' : 'The sheets are'} below and attached as PDF. They show the data you have access to.</p></td></tr>
+${sheets.map((s) => `<tr><td style="padding:14px 22px 4px"><div style="font-size:15px;font-weight:bold;margin-bottom:8px">${escapeHtml(s.title)}</div>
+<img src="cid:${s.cid}" alt="${escapeHtml(s.title)}" width="956" style="width:100%;max-width:956px;height:auto;border:1px solid #e1e7ec;border-radius:6px;display:block"></td></tr>`).join('\n')}
+<tr><td style="padding:18px 22px 24px"><a href="${escapeHtml(link)}" style="display:inline-block;background:#1d4668;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:7px;font-weight:bold;font-size:14px">Open in Impala Hub</a>
+<p style="font-size:11px;color:#8a969f;margin:16px 0 0">You get this email because a report builder added you to "${escapeHtml(delivery.schedule_name)}". Ask them to change or stop it.</p></td></tr>
+</table></td></tr></table></body></html>`
+  const text = [greeting, '', message, message ? '' : null, `${delivery.app_name} — ${delivery.schedule_name} (${when})`,
+    `Attached: ${sheets.map((s) => s.title).join(', ')}`, '', `Open in Impala Hub: ${link}`].filter((line) => line !== null).join('\n')
+  return { html, text }
+}
+
+// Short, safe error text for the send history (no addresses or secrets).
+export function errorText(error: unknown, secrets: string[]) {
+  let text = error instanceof Error ? error.message : String(error)
+  for (const secret of secrets) if (secret && secret.length > 3) text = text.split(secret).join('***')
+  return text.replace(/\s+/g, ' ').slice(0, 500) || 'Sending failed'
+}
