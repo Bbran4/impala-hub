@@ -4,6 +4,8 @@ import {supabase} from './supabase'
 import {BulletChart,ComboChart,FunnelChart,GaugeChart,GridChart,HistogramChart,MekkoChart,RadarChart,ScatterChart,SpreadChart,TreemapChart,WaterfallChart,WordCloud} from './biChartsMore'
 import {ButtonObject,DatePicker,DividerObject,ImageObject,LayoutContainer,NavigationMenu,SliderObject,TabContainer,TextImageObject,TrellisContainer,VariableInput,VideoObject} from './biControls'
 import {type ExprNode} from './biExpression'
+import {AnimatorObject,InsightsObject,MapChart,NetworkChart,OrgChart,PnlPivot,SankeyChart,VarianceWaterfall} from './biChartsBatch3'
+import {WriteTable} from './biWriteTable'
 import {Legend,Message,Tooltip,selectedValues,truncate,useQuery,useSize,type Compiled,type ObjectProps,type SelectFn,type Tip} from './biChartKit'
 import {
   SERIES_COLORS,buildSpec,cellStyle,columnOrder,contrastText,safeColor,compactNumber,compareValues,compileObject,defaultSort,displayValue,formatNumber,niceTicks,
@@ -38,6 +40,15 @@ export function ObjectBody(props:ObjectProps&{extraConditions?:ExprNode[]}){
   if(compiled.errors.length)return <Message kind="error">{compiled.errors[0]}</Message>
   switch(object.kind){
     case 'datepicker':return <DatePicker {...props} compiled={compiled}/>
+    case 'pnl':return <PnlPivot {...props} compiled={compiled}/>
+    case 'variance':return <VarianceWaterfall {...props} compiled={compiled}/>
+    case 'sankey':return <SankeyChart {...props} compiled={compiled}/>
+    case 'network':return <NetworkChart {...props} compiled={compiled}/>
+    case 'orgchart':return <OrgChart {...props} compiled={compiled}/>
+    case 'map':return <MapChart {...props} compiled={compiled}/>
+    case 'animator':return <AnimatorObject {...props} compiled={compiled}/>
+    case 'insights':return <InsightsObject {...props} compiled={compiled}/>
+    case 'writetable':return <WriteTable {...props} compiled={compiled}/>
     case 'trellis':return <TrellisContainer {...props} compiled={compiled} renderChild={renderChild}/>
     case 'kpi':return <KpiObject {...props} compiled={compiled}/>
     case 'bar':case 'line':return <XYChart {...props} compiled={compiled}/>

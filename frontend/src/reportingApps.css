@@ -335,3 +335,33 @@ svg .dimmed{opacity:.3}
 .bi-object.divider:not(.picked) .bi-object-inner{background:transparent;border-color:transparent;box-shadow:none}
 .bi-video{width:100%;height:100%;border:0;border-radius:6px;background:#0b2030}
 .bi-in-container{background:#eef4fb;border-radius:8px;padding:8px 10px}
+/* batch 3 */
+.bi-pnl tr.bold td{font-weight:800}
+.bi-pnl tr.italic td{font-style:italic}
+.bi-pnl tr.header td{background:#17364d;color:#fff;font-weight:800}
+.bi-pnl tr.highlight td{background:#fff7df}
+.bi-pnl tr.line td{border-top:2px solid #16324a}
+.bi-pnl .bi-pnl-total{background:#f3f6f8;font-weight:700}
+.bi-pnl tr.header td.bi-pnl-total{background:#17364d}
+.bi-org{height:100%;overflow:auto}
+.bi-org-name{font-size:12px;font-weight:800;fill:#16324a}
+.bi-org-measure{font-weight:700}
+.bi-map{overflow:hidden;background:#e8eef2;border-radius:8px}
+.bi-map svg{position:absolute;inset:0}
+.bi-map-tile{position:absolute;width:256px;height:256px;user-select:none;pointer-events:none}
+.bi-map-credit{position:absolute;right:4px;bottom:3px;background:#ffffffd9;padding:1px 5px;border-radius:4px;font-size:10px;color:#526170}
+.bi-map-credit a{color:#315f83}
+.bi-animator input[type=range]{width:100%;accent-color:#1d4668}
+.bi-animator-value{font:800 16px Manrope,sans-serif;color:#16324a;margin-left:6px}
+.bi-insights{height:100%;overflow:auto}
+.bi-insights ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.bi-insights li{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;color:#243342}
+.bi-insights li svg{flex:none;color:#e7b94f;margin-top:3px}
+.bi-write-head{background:#fff7df!important}
+.bi-write-cell{background:#fffcf2;padding:3px 6px!important}
+.bi-write-input{display:flex;align-items:center;gap:4px}
+.bi-write-input input,.bi-write-input select{width:100%;min-width:70px;border:1px solid transparent;border-radius:5px;padding:4px 6px;background:transparent;font:inherit;text-align:inherit}
+.bi-write-input input:hover,.bi-write-input select:hover{border-color:#e3d6a8}
+.bi-write-input input:focus,.bi-write-input select:focus{border-color:#2a78d6;background:#fff;outline:0}
+.bi-write-ok{color:#1baf7a;flex:none}
+.bi-write-bad{color:#e34948;flex:none}

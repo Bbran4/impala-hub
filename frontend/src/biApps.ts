@@ -16,6 +16,7 @@ export type ObjectItem={expr:string;label?:string;format?:NumberFormat;backgroun
 export type ObjectKind='kpi'|'bar'|'line'|'pie'|'table'|'pivot'|'filter'|'text'
   |'combo'|'scatter'|'gauge'|'bullet'|'funnel'|'waterfall'|'treemap'|'histogram'|'boxplot'|'distribution'|'radar'|'mekko'|'grid'|'wordcloud'
   |'variable'|'slider'|'datepicker'|'button'|'navigation'|'tabs'|'layout'|'trellis'|'image'|'textimage'|'divider'|'video'
+  |'pnl'|'variance'|'sankey'|'network'|'orgchart'|'map'|'animator'|'insights'|'writetable'
 export type ObjectOptions={
   conditions?:string[];sortBy?:number;sortDesc?:boolean;limit?:number
   horizontal?:boolean;stacked?:boolean;text?:string;totals?:boolean
@@ -29,7 +30,12 @@ export type ObjectOptions={
   children?:string[];child?:string;container?:string;columns?:number
   // media
   url?:string;fit?:'contain'|'cover';color?:string;thickness?:number;imageSide?:'left'|'right'|'top'
+  // batch 3
+  rowStyles?:string;tiles?:boolean;interval?:number;loop?:boolean
+  writeColumns?:WriteColumn[];writeEditors?:'everyone'|'builders'
 }
+export type WriteColumn={name:string;type:'text'|'number'|'choice';choices?:string}
+export type WriteCell={row_key:string;column:string;value:string;updated_at:string;updated_by:string}
 export type SheetObject={id:string;kind:ObjectKind;title:string;x:number;y:number;w:number;h:number;dimensions:ObjectItem[];measures:ObjectItem[];options:ObjectOptions}
 export type Sheet={id:string;title:string;position:number;objects:SheetObject[];updated_at?:string}
 export type AppSummary={id:string;name:string;description:string;updated_at:string;can_edit:boolean;tables:string[];sheets:{id:string;title:string}[];last_loaded_at:string|null}
@@ -78,6 +84,15 @@ export const KIND_INFO:Record<ObjectKind,{label:string;dims:[number,number];meas
   textimage:{label:'Text & image',dims:[0,0],measures:[0,0],w:12,h:5,hint:'A note with a picture next to it.'},
   divider:{label:'Line',dims:[0,0],measures:[0,0],w:24,h:2,hint:'A horizontal or vertical line to separate parts of a sheet.'},
   video:{label:'Video player',dims:[0,0],measures:[0,0],w:12,h:7,hint:'A YouTube or Vimeo video, or a video file (https).'},
+  pnl:{label:'P&L pivot',dims:[1,2],measures:[1,4],w:24,h:9,hint:'Rows in your own order with styles (bold, header, line, indent); a second dimension becomes columns with a total.'},
+  variance:{label:'Variance waterfall',dims:[1,1],measures:[2,2],w:12,h:7,hint:'From the second measure (e.g. budget or last year) to the first (actual), one step per value.'},
+  sankey:{label:'Sankey chart',dims:[2,4],measures:[1,1],w:12,h:8,hint:'Flows from the first dimension to the next, e.g. branch → category → supplier.'},
+  network:{label:'Network chart',dims:[2,2],measures:[0,1],w:12,h:9,hint:'Links between the values of two dimensions (from → to); a measure sets the link weight.'},
+  orgchart:{label:'Org chart',dims:[2,3],measures:[0,1],w:24,h:9,hint:'A tree from a node and its parent; an optional third dimension is shown under the name.'},
+  map:{label:'Map',dims:[1,1],measures:[2,3],w:12,h:9,hint:'Points placed by latitude (first measure) and longitude (second); a third measure sizes the bubbles.'},
+  animator:{label:'Animator',dims:[1,1],measures:[0,0],w:8,h:3,hint:'Plays through the values of a dimension (e.g. month by month), selecting each in turn.'},
+  insights:{label:'Insights',dims:[1,1],measures:[1,1],w:8,h:6,hint:'Written findings about a measure: total, highest and lowest, share and biggest changes.'},
+  writetable:{label:'Write table',dims:[1,6],measures:[0,10],w:24,h:8,hint:'A table with extra columns people can type into, e.g. an order quantity or a comment.'},
 }
 
 export const CONTAINER_KINDS:ObjectKind[]=['tabs','layout','trellis']
@@ -101,6 +116,9 @@ export async function saveSheet(client:SupabaseClient,appId:string,sheet:{id?:st
 }
 export async function deleteSheet(client:SupabaseClient,id:string){const {error}=await client.rpc('bi_delete_sheet',{p_sheet:id});fail(error)}
 export async function loadPrincipals(client:SupabaseClient){const {data,error}=await client.rpc('bi_list_principals');fail(error);return data as Principals}
+export async function loadWriteCells(client:SupabaseClient,appId:string,objectId:string){const {data,error}=await client.rpc('bi_write_get',{p_app:appId,p_object:objectId});fail(error);return (data||[]) as WriteCell[]}
+export async function saveWriteCell(client:SupabaseClient,appId:string,objectId:string,rowKey:string,column:string,value:string){
+  const {error}=await client.rpc('bi_write_set',{p_app:appId,p_object:objectId,p_row_key:rowKey,p_column:column,p_value:value});fail(error)}
 export async function runQuery(client:SupabaseClient,appId:string,spec:unknown){const {data,error}=await client.rpc('bi_query',{p_app:appId,p_spec:spec});fail(error);return data as QueryResult}
 
 export function normalizeApp(app:AppDetail):AppDetail{
@@ -342,7 +360,7 @@ export function buildSpec(compiled:CompiledObject,selections:Selection[],options
 // charts, which follow the dimension (usually time).
 export function defaultSort(object:SheetObject,compiled:CompiledObject){
   if(object.options.sortBy!=null&&object.options.sortBy<compiled.dimensions.length+compiled.measures.length)return [{index:object.options.sortBy,desc:Boolean(object.options.sortDesc)}]
-  if(['line','pivot','filter','waterfall','histogram','grid'].includes(object.kind)||!compiled.measures.length)return compiled.dimensions.map((_,index)=>({index,desc:false}))
+  if(['line','pivot','filter','waterfall','histogram','grid','pnl','variance','animator','insights'].includes(object.kind)||!compiled.measures.length)return compiled.dimensions.map((_,index)=>({index,desc:false}))
   return [{index:compiled.dimensions.length,desc:true}]
 }
 

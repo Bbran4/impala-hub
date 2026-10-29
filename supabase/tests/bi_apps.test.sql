@@ -41,6 +41,7 @@ grant all on ids to authenticated;
 
 select ok(exists(select 1 from public.roles where id='report_builder'),'report builder role exists');
 select ok(not has_function_privilege('anon','public.bi_query(uuid,jsonb)','execute'),'signed-out users cannot query');
+select ok(not has_function_privilege('anon','public.bi_write_set(uuid,text,text,text,text)','execute'),'signed-out users cannot write');
 select ok(not has_function_privilege('authenticated','bi.compile_expr(jsonb,jsonb,boolean,boolean,integer)','execute'),'the expression compiler is not callable from the app');
 
 -- ---------------------------------------------------------------------------
@@ -70,7 +71,21 @@ select throws_ok($sql$select public.bi_save_app(jsonb_build_object('name','Dup v
 select lives_ok($sql$select public.bi_save_app(jsonb_build_object('id',(select id from ids where name='sales'),'name','Sales','model',(select jsonb_agg(jsonb_build_object('alias',m->>'alias','table_name',m->>'table_name','parent_alias',m->>'parent_alias','join_pairs',m->'join_pairs')) from jsonb_array_elements(public.bi_get_app((select id from ids where name='sales'))->'model') m),'measures','[{"name":"Sales","expression":"Sum(qty*unit_price)"}]'::jsonb))$sql$,'saving without variables');
 select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'variables'),1,'keeps the variables');
 select lives_ok($sql$insert into ids select 'sheet', public.bi_save_sheet(jsonb_build_object('app_id',(select id from ids where name='sales'),'title','Overview','objects','[{"id":"o1","kind":"bar"}]'::jsonb))$sql$,'builder saves a sheet');
-select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'sheets'),1,'the app has its sheet');
+-- write tables
+select lives_ok($sql$select public.bi_save_sheet(jsonb_build_object('app_id',(select id from ids where name='sales'),'title','Orders','objects','[{"id":"w1","kind":"writetable","options":{"writeColumns":[{"name":"Order qty","type":"number"},{"name":"Status","type":"choice","choices":"Open, Ordered"}]}},{"id":"w2","kind":"writetable","options":{"writeEditors":"builders","writeColumns":[{"name":"Note","type":"text"}]}}]'::jsonb))$sql$,'builder saves a sheet with write tables');
+select lives_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["BRK"]','Order qty','12')$sql$,'a value is saved');
+select is(public.bi_write_get((select id from ids where name='sales'),'w1')->0->>'value','12','and read back');
+select is(public.bi_write_get((select id from ids where name='sales'),'w1')->0->>'updated_by','apps-builder','with who changed it');
+select lives_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["BRK"]','Order qty','15,5')$sql$,'a decimal comma is accepted');
+select is(public.bi_write_get((select id from ids where name='sales'),'w1')->0->>'value','15.5','and stored with a point');
+select throws_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["BRK"]','Order qty','lots')$sql$,'22023',null,'number columns only take numbers');
+select throws_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["BRK"]','Status','Lost')$sql$,'22023',null,'choice columns only take their choices');
+select lives_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["BRK"]','Status','Ordered')$sql$,'a choice is saved');
+select throws_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["BRK"]','qty','1')$sql$,'22023',null,'only the editable columns can be written');
+select throws_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'o1','["BRK"]','Order qty','1')$sql$,'P0002',null,'only write tables can be written');
+select lives_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["BRK"]','Status','')$sql$,'an empty value clears the cell');
+select is(jsonb_array_length(public.bi_write_get((select id from ids where name='sales'),'w1')),1,'leaving the other column');
+select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'sheets'),2,'the app has its sheets');
 select is(jsonb_array_length(public.bi_get_app((select id from ids where name='sales'))->'access'),2,'builders see the access list');
 reset role;
 
@@ -143,6 +158,8 @@ select is(jsonb_array_length(public.bi_list_apps()),1,'a user granted personally
 select ok(not public.can_access_workspace('reporting'),'personal app access does not open the data catalogue');
 select is((public.bi_my_access()->>'apps')::int,1,'access summary counts the shared app');
 select is(public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"fn","name":"count","args":[{"t":"star"}]}}]}')->'rows','[[5]]'::jsonb,'and can query it');
+select lives_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["FLT"]','Order qty','3')$sql$,'people with access can write in a write table');
+select throws_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w2','["FLT"]','Note','x')$sql$,'42501',null,'but not in one for builders only');
 reset role;
 
 set local role authenticated;
@@ -150,6 +167,8 @@ set local request.jwt.claims='{"sub":"47000000-0000-0000-0000-000000000005","rol
 select is(jsonb_array_length(public.bi_list_apps()),0,'users without a grant see no apps');
 select throws_ok($sql$select public.bi_get_app((select id from ids where name='sales'))$sql$,'42501',null,'and cannot open one');
 select throws_ok($sql$select public.bi_query((select id from ids where name='sales'),'{"measures":[{"expr":{"t":"fn","name":"count","args":[{"t":"star"}]}}]}')$sql$,'42501',null,'and cannot query one');
+select throws_ok($sql$select public.bi_write_get((select id from ids where name='sales'),'w1')$sql$,'42501',null,'and cannot read write tables');
+select throws_ok($sql$select public.bi_write_set((select id from ids where name='sales'),'w1','["X"]','Order qty','1')$sql$,'42501',null,'or write in them');
 select throws_ok($sql$select * from bi.apps$sql$,'42501',null,'app tables are not readable directly');
 reset role;
 
