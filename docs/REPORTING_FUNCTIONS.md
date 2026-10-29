@@ -54,7 +54,7 @@ these functions as you type.
 
 ## Aggregation
 
-Combine many rows into one value. Measures must use at least one. They cannot be nested (no Sum(Avg(x))), but If() inside them works like a filter.
+Combine many rows into one value. Measures must use at least one. They cannot be nested (no Sum(Avg(x))), but If() inside them works like a filter. Each aggregation counts every record of the tables it uses once, like Qlik: Sum(qty_on_hand) from the stock items table adds each item once, even when the item is on many invoice lines.
 
 ### Sum
 

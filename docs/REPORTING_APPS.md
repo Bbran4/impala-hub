@@ -68,6 +68,13 @@ the app under **Reporting → Function Reference**. A few common ones:
 | Dates | `Today()` `YearMonth(d)` `MonthStart(d)` `AddMonths(d, n)` `DaysBetween(a, b)` |
 | Logic | `If(condition, then, else)` `Alt(value, fallback)` `Match(x, 'a', 'b')` `WildMatch(x, 'BOSCH*')` `Pick(n, a, b)` |
 
+**How records are counted.** Like Qlik, every aggregation counts each record of the tables it uses
+once. In an app whose main table is invoice lines with stock items linked to it, `Sum(qty_on_hand)` adds
+each item's stock once (not once per invoice line it appears on), `Sum(qty)` adds every invoice line, and
+`Sum(qty * cost_price)` works per invoice line because it uses both tables. `Count(*)` counts records of
+the main table. Items only appear when the main table links to them: to list stock that has not sold
+(for example a reorder report), make an app whose main table is the stock items table.
+
 **Writing expressions.** Every expression box suggests master measures, fields and functions as you
 type (↑ ↓ and Enter insert at the cursor). The expand button opens a large editor with line numbers,
 errors by line and column, a searchable function list with examples, and **Test**, which runs the

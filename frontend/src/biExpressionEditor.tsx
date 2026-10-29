@@ -249,7 +249,7 @@ export function FunctionReference(){
       <div className="sd-view-tabs bi-ref-tabs">{(['All',...CATEGORIES] as const).map(item=><button key={item} className={category===item?'active':''} onClick={()=>setCategory(item)}>{item}</button>)}</div>
     </div>
     {!query&&category==='All'&&<div className="bi-card"><h3>Operators and syntax</h3><table className="bi-ref-ops"><tbody>{OPERATORS.map(o=><tr key={o.op}><td><code>{o.op}</code></td><td>{o.description}</td><td><code>{o.example}</code></td></tr>)}</tbody></table>
-      <p className="hint">Dimensions split the data and cannot aggregate. Measures must aggregate. Conditions filter rows before anything is calculated. Master measures are used as <code>[Name]</code>. Function names are not case-sensitive.</p></div>}
+      <p className="hint">Dimensions split the data and cannot aggregate. Measures must aggregate. Conditions filter rows before anything is calculated. Master measures are used as <code>[Name]</code>. Function names are not case-sensitive. Each aggregation counts every record of the tables it uses once, so <code>Sum(qty_on_hand)</code> adds each stock item once even when it is on many invoice lines.</p></div>}
     <div className="bi-ref-grid">{specs.map(spec=><article key={spec.name} className="bi-ref-card">
       <div className="bi-ref-head"><code>{spec.signature}</code><span className="sd-type">{spec.category}</span></div>
       <p>{spec.description}{spec.aliases?.length?<> Also written as {spec.aliases.join(', ')}().</>:null}</p>

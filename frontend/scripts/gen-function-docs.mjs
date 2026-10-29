@@ -4,7 +4,7 @@ import {writeFileSync} from 'node:fs'
 import {CATEGORIES,FUNCTION_CATALOGUE,OPERATORS} from '../src/biFunctions.ts'
 
 const intro={
-  Aggregation:'Combine many rows into one value. Measures must use at least one. They cannot be nested (no Sum(Avg(x))), but If() inside them works like a filter.',
+  Aggregation:'Combine many rows into one value. Measures must use at least one. They cannot be nested (no Sum(Avg(x))), but If() inside them works like a filter. Each aggregation counts every record of the tables it uses once, like Qlik: Sum(qty_on_hand) from the stock items table adds each item once, even when the item is on many invoice lines.',
   Text:'Work on text. Join text with the & operator.',
   Number:'Work on numbers. Dividing by 0, Mod/Div by 0, Sqrt of a negative and Log of 0 give an empty value instead of an error.',
   Date:'Work on dates. Subtracting a number of days also works: Today() - 1.',
