@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
   LayoutDashboard, Megaphone, Plus, Search, Settings, Send, Trash2, Upload, X, Map, PackageCheck,
-  Database, ServerCog, History, ShieldCheck, BookOpen, Network, CloudDownload,
+  Database, ServerCog, History, ShieldCheck, BookOpen, Network, CloudDownload, Gauge, BookMarked,
 } from 'lucide-react'
 import PostDetail from './PostDetail'
 import PostBoard from './PostBoard'
@@ -713,6 +713,12 @@ export default function App() {
       return
     }
     if (notification.channel === 'reporting' && canAccessReporting) {
+      const meta = notification.metadata || {}
+      if (typeof meta.app_id === 'string') {
+        const detail = { app: meta.app_id, sheet: typeof meta.sheet_id === 'string' ? meta.sheet_id : null, object: typeof meta.object_id === 'string' ? meta.object_id : null }
+        try { sessionStorage.setItem('bi-open-app', detail.app); if (detail.sheet) sessionStorage.setItem('bi-open-sheet', detail.sheet); if (detail.object) sessionStorage.setItem('bi-open-object', detail.object) } catch { /* storage unavailable */ }
+        window.dispatchEvent(new CustomEvent('bi-open', { detail }))
+      }
       setPage(notification.target_page || 'Dashboards')
       return
     }
@@ -760,7 +766,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
                 : isReturnsClaimsPage
                   ? ([['Returns & Claims', ClipboardList], ['Returns & Claims Roadmap', Map]] as const)
                 : isReportingPage
-                  ? ([['Dashboards', LayoutDashboard], ...(isAdministrator || reportingAccess.catalogue ? [['Data', Database] as const, ['Data Model', Network] as const] : []), ...(isAdministrator ? [['Data Connections', CloudDownload] as const, ['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ['Function Reference', BookOpen], ['Reporting Roadmap', Map]] as const)
+                  ? ([['Dashboards', LayoutDashboard], ...(isAdministrator || reportingAccess.catalogue ? [['Data', Database] as const, ['Data Model', Network] as const] : []), ...(isAdministrator ? [['Data Connections', CloudDownload] as const, ['Data Loads', ServerCog] as const, ['Run History', History] as const, ['Audit Log', ShieldCheck] as const] : []), ...(isAdministrator || reportingAccess.catalogue || reportingAccess.builder ? [['Data Quality', Gauge] as const] : []), ...(isAdministrator || reportingAccess.builder ? [['Usage', Users] as const, ['Master Items', BookMarked] as const] : []), ['Function Reference', BookOpen], ['Reporting Roadmap', Map]] as const)
                 : ([
                     ...(canMarketing('feed.view') ? [['Feed', LayoutDashboard] as const] : []),
                     ...(canMarketing('posts.view') ? [['Posts', ClipboardList] as const] : []),

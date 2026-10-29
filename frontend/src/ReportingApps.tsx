@@ -3,7 +3,7 @@ import {
   ArrowLeft,BarChart3,Palette,Copy,Database,Filter,GripVertical,LayoutGrid,LineChart,Link2,Pencil,PieChart,Plus,Save,Settings2,
   Sigma,Table2,Trash2,Type,Users,X,Grid3x3,Gauge,Hash,ChartColumnIncreasing,ScatterChart,Target,ListFilter,ChartNoAxesColumn,LayoutDashboard,
   BarChartBig,ChartCandlestick,Grip,Radar,Columns3,Cloud,Variable,SlidersHorizontal,CalendarDays,MousePointerClick,Menu,PanelTop,Columns2,Grid2x2,
-  Image as ImageIcon,Calculator,History,ListTree,Mail,Star,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
+  Image as ImageIcon,Calculator,MessageSquare,BookMarked,History,ListTree,Mail,Star,Newspaper,ShieldCheck,Minus,Video,FileSpreadsheet,ChartNoAxesCombined,Shuffle,Network,Workflow,MapPin,Clapperboard,Sparkles,PencilLine,
 } from 'lucide-react'
 import {supabase} from './supabase'
 import {expandVariables,type AppVariable,type ExprNode,type MasterMeasure} from './biExpression'
@@ -22,6 +22,8 @@ import {type AppRuntime} from './biChartKit'
 import RowAccessCard from './biRowAccess'
 import ReportEmails,{MyReportEmails} from './biReportEmails'
 import {BookmarkMenu,ExportMenu,SmartSearch} from './biEveryday'
+import {CommentsPanel,CopyAppButton,LibraryPicker,VersionHistory,saveMeasureToLibrary,useLibrary,useSheetComments} from './biCollab'
+import {commentCounts} from './biCollabLogic'
 import './reportingApps.css'
 
 type Props={canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
@@ -44,14 +46,26 @@ const FORMATS:[NumberFormat,string][]=[['auto','Automatic'],['number','Number'],
 
 export default function ReportingApps({canBuild,setNotice,setError}:Props){
   const [openId,setOpenId]=useState<string|null>(()=>{try{return sessionStorage.getItem('bi-open-app')}catch{return null}})
-  const [openSheet,setOpenSheet]=useState<string|null>(null)
+  const [openSheet,setOpenSheet]=useState<string|null>(()=>peekStored('bi-open-sheet'))
+  const [openObject,setOpenObject]=useState<string|null>(()=>peekStored('bi-open-object'))
+  const [visit,setVisit]=useState(0)
   const [creating,setCreating]=useState(false)
+  useEffect(()=>{takeStored('bi-open-sheet');takeStored('bi-open-object')},[])
+  // a notification (comment) or another page asks to open an app at a sheet
+  useEffect(()=>{const handler=(event:Event)=>{const detail=(event as CustomEvent<{app:string;sheet?:string|null;object?:string|null}>).detail;if(!detail?.app)return
+      takeStored('bi-open-sheet');takeStored('bi-open-object')
+      setCreating(false);setOpenSheet(detail.sheet||null);setOpenObject(detail.object||null);setOpenId(detail.app);setVisit(v=>v+1)}
+    window.addEventListener('bi-open',handler);return()=>window.removeEventListener('bi-open',handler)},[])
   useEffect(()=>{try{openId?sessionStorage.setItem('bi-open-app',openId):sessionStorage.removeItem('bi-open-app')}catch{/* storage unavailable */}},[openId])
-  const back=useCallback(()=>{setOpenId(null);setOpenSheet(null)},[])
+  const back=useCallback(()=>{setOpenId(null);setOpenSheet(null);setOpenObject(null)},[])
+  const openApp=useCallback((id:string,sheet?:string|null)=>{setOpenSheet(sheet||null);setOpenObject(null);setOpenId(id);setVisit(v=>v+1)},[])
   if(creating)return <AppSettings app={null} onClose={()=>setCreating(false)} onSaved={id=>{setCreating(false);setOpenId(id)}} setNotice={setNotice} setError={setError}/>
-  if(openId)return <AppView key={openId} appId={openId} initialSheet={openSheet} canBuild={canBuild} onBack={back} setNotice={setNotice} setError={setError}/>
+  if(openId)return <AppView key={`${openId}:${visit}`} appId={openId} initialSheet={openSheet} initialComment={openObject} canBuild={canBuild} onBack={back} onOpenApp={openApp} setNotice={setNotice} setError={setError}/>
   return <AppHub canBuild={canBuild} onOpen={(id,sheet)=>{setOpenSheet(sheet||null);setOpenId(id)}} onCreate={()=>setCreating(true)} setError={setError}/>
 }
+
+function peekStored(key:string){try{return sessionStorage.getItem(key)}catch{return null}}
+function takeStored(key:string){try{const value=sessionStorage.getItem(key);sessionStorage.removeItem(key);return value}catch{return null}}
 
 // ---------------------------------------------------------------------------
 // Hub
@@ -84,7 +98,8 @@ function AppHub({canBuild,onOpen,onCreate,setError}:{canBuild:boolean;onOpen:(id
 // ---------------------------------------------------------------------------
 // App view: sheets, selections, editing
 // ---------------------------------------------------------------------------
-function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:string;initialSheet?:string|null;canBuild:boolean;onBack:()=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
+function AppView({appId,initialSheet,initialComment,canBuild,onBack,onOpenApp,setNotice,setError}:{appId:string;initialSheet?:string|null;initialComment?:string|null;canBuild:boolean;onBack:()=>void
+  onOpenApp:(id:string,sheet?:string|null)=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
   const [app,setApp]=useState<AppDetail|null>(null)
   const [sheetId,setSheetId]=useState<string|null>(initialSheet||null)
   const [favourites,setFavourites]=useState<Set<string>>(new Set())
@@ -96,6 +111,9 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
   const [settings,setSettings]=useState(false)
   const [reports,setReports]=useState(false)
   const [myEmails,setMyEmails]=useState(false)
+  const [history,setHistory]=useState(false)
+  // comments panel: undefined = closed, null = all charts of the sheet, an id = one chart
+  const [commentsFor,setCommentsFor]=useState<string|null|undefined>(initialComment??undefined)
   const [myRows,setMyRows]=useState<string|null>(null)
   const [saving,setSaving]=useState(false)
   const [version,setVersion]=useState('')
@@ -114,6 +132,9 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
   useEffect(()=>{const timer=setInterval(()=>{if(document.visibilityState==='visible'&&!editing)void load()},60000);return()=>clearInterval(timer)},[load,editing])
 
   const sheet=editing||app?.sheets.find(item=>item.id===sheetId)||null
+  const {comments,reload:reloadComments}=useSheetComments(app?.id,editing?undefined:sheet?.id)
+  const counts=useMemo(()=>commentCounts(comments),[comments])
+  const openComments=comments.filter(c=>!c.resolved).length
   const onSelect:SelectFn=(dimension,value,additive)=>{if(!editing)setSelections(current=>toggleSelection(current,dimension,value,additive))}
   // variables: each viewer's current values, starting from the app's saved defaults
   const [variableValues,setVariableValues]=useState<Record<string,string>>({})
@@ -175,9 +196,10 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
   }
 
   if(!app)return <section className="rfq-workspace"><div className="sd-session-bar"><span>Loading app…</span></div></section>
+  if(history)return <VersionHistory app={app} onClose={()=>setHistory(false)} onRestored={async restored=>{setHistory(false);await load(restored)}} setNotice={setNotice} setError={setError}/>
   if(myEmails)return <MyReportEmails app={app} sheetId={sheet?.id||null} selections={selections} onClose={()=>setMyEmails(false)} setNotice={setNotice} setError={setError}/>
   if(reports)return <ReportEmails app={app} onClose={()=>setReports(false)} setNotice={setNotice} setError={setError}/>
-  if(settings)return <AppSettings app={app} onClose={()=>setSettings(false)} onSaved={async()=>{setSettings(false);setSelections([]);await load()}} onDeleted={onBack} setNotice={setNotice} setError={setError}/>
+  if(settings)return <AppSettings app={app} onClose={()=>setSettings(false)} onSaved={async()=>{setSettings(false);setSelections([]);await load()}} onDeleted={onBack} onCopied={id=>{setSettings(false);onOpenApp(id)}} setNotice={setNotice} setError={setError}/>
 
   return <section className="bi-app">
     <div className="bi-app-bar">
@@ -188,13 +210,16 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
         <BookmarkMenu app={app} canBuild={canBuild} sheetId={sheet?.id||null} selections={selections} states={stateSelections} variables={variableValues}
           onApply={applyBookmark} setNotice={setNotice} setError={setError}/>
         {sheet&&<button className={`icon-button bi-fav ${favourites.has(sheet.id)?'on':''}`} title={favourites.has(sheet.id)?'Remove from favourites':'Add this sheet to your favourites'} aria-pressed={favourites.has(sheet.id)} onClick={()=>void favourite()}><Star size={16}/></button>}
+        {sheet&&<button className={`secondary bi-comments-toggle ${commentsFor!==undefined?'on':''}`} onClick={()=>setCommentsFor(commentsFor===undefined?null:undefined)} title="Comments on the charts of this sheet" aria-pressed={commentsFor!==undefined}>
+          <MessageSquare size={15}/>Comments{openComments>0&&<span className="bi-count">{openComments}</span>}</button>}
         <button className="secondary" onClick={()=>setMyEmails(true)} title="Get this sheet by email, or an alert"><Mail size={15}/>Email me</button>
         {sheet&&<ExportMenu app={viewApp||app} sheet={sheet} selectionsFor={object=>object.options.state?stateSelections[object.options.state]||[]:selections} setError={setError}/>}
       </div>}
       {canBuild&&!editing&&<div className="bi-app-actions">
         <button className="secondary" onClick={()=>setSettings(true)}><Settings2 size={15}/>Data model &amp; sharing</button>
         <button className="secondary" onClick={()=>setReports(true)}><Mail size={15}/>Report emails</button>
-        {sheet&&<button className="secondary" onClick={()=>{setEditing(structuredClone(sheet));setSelectedObject(null)}}><Pencil size={15}/>Edit sheet</button>}
+        <button className="secondary" onClick={()=>setHistory(true)} title="Earlier versions of the sheets and app settings"><History size={15}/>History</button>
+        {sheet&&<button className="secondary" onClick={()=>{setEditing(structuredClone(sheet));setSelectedObject(null);setCommentsFor(undefined)}}><Pencil size={15}/>Edit sheet</button>}
       </div>}
       {editing&&<div className="bi-app-actions">
         <button className="secondary" onClick={()=>void duplicateSheet()} disabled={saving}><Copy size={15}/>Duplicate</button>
@@ -215,7 +240,7 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
       onClear={key=>setStateSelections(current=>({...current,[state]:key?(current[state]||[]).filter(item=>item.key!==key):[]}))}/>)}
 
     {!sheet&&<div className="rfq-empty-card"><LayoutGrid size={26}/><h3>No sheets yet</h3><p>{canBuild?'Add a sheet, then add charts, tables and filters to it.':'This app has no sheets yet.'}</p></div>}
-    {sheet&&<div className={`bi-workarea ${editing?'editing':''}`}>
+    {sheet&&<div className={`bi-workarea ${editing?'editing':''} ${!editing&&commentsFor!==undefined?'with-comments':''}`}>
       {editing&&<ObjectPalette onAdd={kind=>{const info=KIND_INFO[kind];const spot=freeSpot(editing.objects,info.w,info.h)
         const object=normalizeObject({id:newId(),kind,title:'',...spot,w:info.w,h:info.h,
           dimensions:info.dims[0]>0||kind==='table'?[{expr:''}]:[],measures:info.measures[0]>0||kind==='table'?[{expr:''}]:[],
@@ -224,7 +249,10 @@ function AppView({appId,initialSheet,canBuild,onBack,setNotice,setError}:{appId:
       <SheetCanvas sheet={sheet} app={viewApp||app} runtime={runtime} editing={Boolean(editing)} selections={selections} onSelect={onSelect} version={version}
         stateSelections={stateSelections} onStateSelect={onStateSelect}
         selectedObject={selectedObject} onPick={setSelectedObject}
+        comments={editing?undefined:counts} onComment={editing?undefined:id=>setCommentsFor(id)}
         onChange={objects=>editing&&setEditing({...editing,objects})}/>
+      {!editing&&commentsFor!==undefined&&<CommentsPanel app={app} sheet={sheet} objectId={commentsFor} comments={comments} onPick={setCommentsFor}
+        onChanged={reloadComments} onClose={()=>setCommentsFor(undefined)} setError={setError}/>}
       {editing&&<SidePanel app={viewApp||app} sheet={editing} objectId={selectedObject} onPick={setSelectedObject}
         onSheet={title=>setEditing({...editing,title})}
         onObject={object=>setEditing({...editing,objects:editing.objects.map(item=>item.id===object.id?object:item)})}
@@ -257,8 +285,9 @@ function ObjectPalette({onAdd}:{onAdd:(kind:ObjectKind)=>void}){
 // ---------------------------------------------------------------------------
 // Sheet canvas (24-column grid; drag the header to move, the corner to resize)
 // ---------------------------------------------------------------------------
-export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange,stateSelections={},onStateSelect,extraConditions}:{
+export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,version,selectedObject,onPick,onChange,stateSelections={},onStateSelect,extraConditions,comments,onComment}:{
   sheet:Sheet;app:AppDetail;runtime?:AppRuntime;editing:boolean;selections:Selection[];onSelect:SelectFn;version:string
+  comments?:Map<string,{open:number;total:number}>;onComment?:(objectId:string)=>void
   stateSelections?:Record<string,Selection[]>;onStateSelect?:(state:string,...args:Parameters<SelectFn>)=>void;extraConditions?:ExprNode[]
   selectedObject:string|null;onPick:(id:string|null)=>void;onChange:(objects:SheetObject[])=>void
 }){
@@ -308,6 +337,9 @@ export function SheetCanvas({sheet,app,runtime,editing,selections,onSelect,versi
             selections={editing?[]:object.options.state?stateSelections[object.options.state]||[]:selections}
             onSelect={object.options.state&&onStateSelect?(dimension,value,additive)=>onStateSelect(object.options.state!,dimension,value,additive):onSelect}/></div>
         </div>
+        {onComment&&!editing&&!['divider','image','video'].includes(object.kind)&&(()=>{const n=comments?.get(object.id)
+          return <button className={`bi-object-comment ${n?.open?'has':''} ${n&&!n.open?'resolved':''}`} title={n?.open?`${n.open} open comment${n.open===1?'':'s'}`:n?'All comments resolved':'Comment on this chart'}
+            aria-label={`Comments on ${object.title||KIND_INFO[object.kind].label}`} onClick={event=>{event.stopPropagation();onComment(object.id)}}><MessageSquare size={12}/>{n?.open?<span>{n.open}</span>:null}</button>})()}
         {editing&&<div className="bi-resize" onPointerDown={event=>start(event,object,'resize')} title="Drag to resize"/>}
       </div>})}
     {editing&&!objects.length&&<div className="bi-canvas-empty">Add charts, tables and filters from the left.</div>}
@@ -545,7 +577,8 @@ function FieldList({app}:{app:AppDetail}){
 // ---------------------------------------------------------------------------
 // App settings: details, data model, master measures, sharing
 // ---------------------------------------------------------------------------
-function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:AppDetail|null;onClose:()=>void;onSaved:(id:string)=>void;onDeleted?:()=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
+function AppSettings({app,onClose,onSaved,onDeleted,onCopied,setNotice,setError}:{app:AppDetail|null;onClose:()=>void;onSaved:(id:string)=>void;onDeleted?:()=>void;onCopied?:(id:string)=>void;setNotice:(m:string)=>void;setError:(m:string)=>void}){
+  const library=useLibrary(setError)
   const [name,setName]=useState(app?.name||'')
   const [description,setDescription]=useState(app?.description||'')
   const [model,setModel]=useState<ModelTable[]>(app?.model||[])
@@ -606,7 +639,8 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
 
   return <section className="rfq-workspace bi-settings">
     <div className="sd-session-bar"><Settings2 size={18}/><span>{app?`${app.name}: data model & sharing`:'Create app'}</span>
-      <div className="bi-app-actions">{app&&<button className="secondary danger" onClick={()=>void remove()}><Trash2 size={15}/>Delete app</button>}
+      <div className="bi-app-actions">{app&&onCopied&&<CopyAppButton app={app} onCopied={onCopied} setNotice={setNotice} setError={setError}/>}
+        {app&&<button className="secondary danger" onClick={()=>void remove()}><Trash2 size={15}/>Delete app</button>}
         <button className="secondary" onClick={onClose} disabled={saving}>Cancel</button>
         <button className="primary" disabled={saving||!name.trim()||problems.length>0||measureProblems.some(Boolean)||variableProblems.some(Boolean)||calcProblems.some(Boolean)} onClick={()=>void save()}><Save size={15}/>{saving?'Saving…':app?'Save':'Create app'}</button></div></div>
 
@@ -664,10 +698,13 @@ function AppSettings({app,onClose,onSaved,onDeleted,setNotice,setError}:{app:App
         <input placeholder="Name" value={m.name} onChange={event=>setMeasures(measures.map((x,j)=>j===i?{...x,name:event.target.value}:x))}/>
         <ExpressionInput ctx={measureCtx} kind="measure" label={m.name||`Master measure ${i+1}`} value={m.expression} onChange={expression=>setMeasures(measures.map((x,j)=>j===i?{...x,expression}:x))}/>
         <select value={m.format||'auto'} onChange={event=>setMeasures(measures.map((x,j)=>j===i?{...x,format:event.target.value}:x))}>{FORMATS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+        <button className="icon-button" aria-label={`Save ${m.name||'measure'} to the library`} title="Save to the master item library (for every app)" disabled={!m.name.trim()||!m.expression.trim()||Boolean(measureProblems[i])}
+          onClick={()=>void saveMeasureToLibrary(library.items,m).then(done=>{if(done){setNotice(`"${m.name.trim()}" saved to the library.`);library.reload()}}).catch(error=>setError((error as Error).message))}><BookMarked size={14}/></button>
         <button className="icon-button" aria-label="Remove measure" onClick={()=>setMeasures(measures.filter((_,j)=>j!==i))}><Trash2 size={14}/></button>
         {(measureProblems[i].startsWith('Needs')||measureProblems[i].startsWith('Two'))&&<small className="bi-expr-error">{measureProblems[i]}</small>}
       </div>)}
-      <button className="text-button" onClick={()=>setMeasures([...measures,{name:'',expression:''}])}><Plus size={13}/>Add master measure</button>
+      <div className="bi-row"><button className="text-button" onClick={()=>setMeasures([...measures,{name:'',expression:''}])}><Plus size={13}/>Add master measure</button>
+        <LibraryPicker items={library.items} existing={measures.map(m=>m.name)} onAdd={item=>setMeasures([...measures,{name:item.name,expression:item.expression,...(item.format&&item.format!=='auto'?{format:item.format}:{})}])}/></div>
     </div>
 
     <div className="bi-card"><h3><Variable size={16}/>Variables</h3>

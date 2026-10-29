@@ -10,11 +10,13 @@ import ReportingApps from './ReportingApps'
 import DataConnections from './biConnections'
 import {DataModelPage} from './biModelViewer'
 import {FunctionReference} from './biExpressionEditor'
+import {DataQualityPage,LibraryPage,UsagePage} from './biCollab'
 import './reporting.css'
 
 type Props={page:string;isAdministrator:boolean;canBuild:boolean;setNotice:(message:string)=>void;setError:(message:string)=>void}
 
-export const REPORTING_PAGES=['Dashboards','Data','Data Model','Data Connections','Data Loads','Run History','Audit Log','Function Reference','Reporting Roadmap'] as const
+export const REPORTING_PAGES=['Dashboards','Data','Data Model','Data Connections','Data Loads','Run History','Audit Log','Data Quality','Usage','Master Items','Function Reference','Reporting Roadmap'] as const
+export const REPORTING_BUILDER_PAGES=['Usage','Master Items']
 export const REPORTING_ADMIN_PAGES=['Data Connections','Data Loads','Run History','Audit Log']
 
 const REPORTING_ROADMAP_ROWS=[
@@ -42,6 +44,10 @@ const REPORTING_ROADMAP_ROWS=[
   ['Bookmarks and smart search','Qlik bookmarks, smart search','Personal or shared bookmarks (selections, compare states, variables, sheet); search every text field and click to select','Implemented'],
   ['Exports, favourites, phones','Qlik export to Excel/PDF, favourites, mobile','Sheet to PDF (print) or Excel (one tab per chart), table to Excel; favourite sheets and recently opened on the Reporting home; phone layout','Implemented'],
   ['Alerts, subscriptions, filtered emails','Qlik alerting, NPrinting filters and subscriptions','Report emails with a bookmark/conditions filter and Excel; alerts only when a measure meets a condition; Email me subscriptions and opting out','Implemented'],
+  ['Comments','Qlik notes and comments','Comment on any chart; threads can be resolved and the others in a thread are notified in the Hub','Implemented'],
+  ['Version history','Qlik app versions (publish/duplicate)','Earlier versions of each sheet and of the app settings, restore (also deleted sheets); copy an app with or without its access','Implemented'],
+  ['Master item library','Qlik master items shared across apps','Library of measures and dimensions for every app; add to or save from an app','Implemented'],
+  ['Usage and data quality','Qlik monitoring apps','Which apps and sheets are opened, by whom and per day; tables with failed or late loads, dropped row counts and always-empty fields','Implemented'],
   ['Stock history','Qlik QVD snapshots','Keep daily stock levels over time (only changes stored, about 150–200 MB a year)','Planned'],
   ['Row-level access','Qlik section access','Per app: users or roles see only rows where a field has their values (e.g. own branch); enforced in the database for every query','Implemented'],
   ['Scheduled emails','Qlik NPrinting','Chosen sheets as picture + PDF to roles or people, daily/weekdays/weekly/monthly, each drawn with the recipient’s row access','Implemented'],
@@ -66,6 +72,7 @@ function usePolling(load:()=>Promise<void>,intervalMs:number){
 
 export default function Reporting({page,isAdministrator,canBuild,setNotice,setError}:Props){
   if(REPORTING_ADMIN_PAGES.includes(page)&&!isAdministrator)return <section className="rfq-workspace"><div className="rfq-empty-card"><ShieldCheck size={26}/><h3>Administrators only</h3><p>The data loader is managed by administrators.</p></div></section>
+  if(REPORTING_BUILDER_PAGES.includes(page)&&!canBuild)return <section className="rfq-workspace"><div className="rfq-empty-card"><ShieldCheck size={26}/><h3>Report builders only</h3><p>Ask an administrator for the report builder role.</p></div></section>
   if(!supabase)return <section className="rfq-workspace"><div className="rfq-empty-card"><Database size={26}/><h3>Supabase is not configured</h3><p>Reporting needs the Supabase connection.</p></div></section>
   if(page==='Dashboards')return <ReportingApps canBuild={canBuild} setNotice={setNotice} setError={setError}/>
   if(page==='Data Model')return <DataModelPage setError={setError}/>
@@ -73,6 +80,9 @@ export default function Reporting({page,isAdministrator,canBuild,setNotice,setEr
   if(page==='Data Loads')return <DataLoads setNotice={setNotice} setError={setError}/>
   if(page==='Run History')return <RunHistory setError={setError}/>
   if(page==='Audit Log')return <AuditLog setError={setError}/>
+  if(page==='Data Quality')return <DataQualityPage setError={setError}/>
+  if(page==='Usage')return <UsagePage setError={setError}/>
+  if(page==='Master Items')return <LibraryPage setNotice={setNotice} setError={setError}/>
   if(page==='Function Reference')return <FunctionReference/>
   if(page==='Reporting Roadmap')return <ReportingRoadmap/>
   return <DataCatalogue setError={setError}/>
