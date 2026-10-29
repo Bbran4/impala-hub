@@ -36,8 +36,8 @@ const REPORTING_ROADMAP_ROWS=[
   ['Selections','Qlik associative selections','Click any value to filter every object in the app; Ctrl+click to add; selections bar','Implemented'],
   ['Function reference','Qlik help: chart functions','Searchable in-app reference and docs/REPORTING_FUNCTIONS.md, generated from the same list the editor and database use','Implemented'],
   ['App access','Qlik spaces','Apps shared with roles or named people; builders are administrators and report builders','Implemented'],
-  ['Row-level access','Qlik section access','Limit rows per user within an app (e.g. own branch only)','Planned'],
-  ['Scheduled emails','Qlik NPrinting','Daily report emails filtered by each recipient’s access','Planned'],
+  ['Row-level access','Qlik section access','Per app: users or roles see only rows where a field has their values (e.g. own branch); enforced in the database for every query','Implemented'],
+  ['Scheduled emails','Qlik NPrinting','Chosen sheets as picture + PDF to roles or people, daily/weekdays/weekly/monthly, each drawn with the recipient’s row access','Implemented'],
   ['Smart Stock feed','ERP stock snapshots','Feed Smart Stock imports from the ERP through the sync agent','Planned'],
 ]
 
@@ -247,7 +247,7 @@ function AuditLog({setError}:{setError:(message:string)=>void}){
 function ReportingRoadmap(){
   return <section className="roadmap-page">
     <div className="section-head"><div><h2>Reporting roadmap</h2><p>Replacing the Qlik Sense functions Impala uses, step by step.</p></div></div>
-    <div className="roadmap-priorities"><strong>Next priorities</strong><span>Connect the sync agent to the ERP</span><span>Rebuild the daily Qlik reports as apps</span><span>Scheduled report emails</span><span>Row-level access</span></div>
+    <div className="roadmap-priorities"><strong>Next priorities</strong><span>Connect the sync agent to the ERP</span><span>Rebuild the daily Qlik reports as apps</span><span>Set up SMTP for report emails</span><span>Agree row access rules per branch</span></div>
     <div className="roadmap-table-wrap"><table className="roadmap-table"><thead><tr><th>Capability</th><th>Qlik equivalent</th><th>Impala Hub</th><th>Status</th></tr></thead><tbody>
       {REPORTING_ROADMAP_ROWS.map(([capability,reference,impala,status])=><tr key={capability}><td>{capability}</td><td>{reference}</td><td>{impala}</td><td><span className={'roadmap-status '+(status==='Implemented'?'complete':'partial')}>{status}</span></td></tr>)}
     </tbody></table></div>
