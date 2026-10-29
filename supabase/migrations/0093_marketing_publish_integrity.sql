@@ -12,8 +12,6 @@ alter table public.posts add column publish_started_at timestamptz;
 alter table public.posts drop constraint posts_status_check;
 alter table public.posts add constraint posts_status_check check
   (status in ('draft','awaiting_approval','scheduled','publishing','published','failed','publish_unknown'));
--- Unfinished attempts from older deployments must never be blindly retried.
-update public.posts set publish_started_at = coalesce(updated_at, now()) where status = 'publishing';
 
 create or replace function public.authorize_marketing_post_write()
 returns trigger language plpgsql security invoker set search_path = '' as $$
@@ -50,6 +48,9 @@ begin
   end if;
   return new;
 end $$;
+
+-- Unfinished attempts from older deployments must never be blindly retried.
+update public.posts set publish_started_at = coalesce(updated_at, now()) where status = 'publishing';
 
 -- A checked, atomic content-save/schedule command, not arbitrary privileged JSON writes.
 create function public.save_marketing_post(p_id uuid, p_values jsonb)
