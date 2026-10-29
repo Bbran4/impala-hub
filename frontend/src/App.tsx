@@ -1,3 +1,4 @@
+import { loadAllRows } from './pagedRows.ts'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
@@ -292,8 +293,8 @@ export default function App() {
       const canUseCampaignOptions = canReadPosts || canMarketing('feed.assign_campaign') || canMarketing('posts.assign_campaign') || canMarketing('campaigns.assign_campaign')
       const [p, c, counts, i, ct] = await Promise.all([
         canReadPosts ? api('/api/posts') : Promise.resolve([]),
-        canReadCampaigns ? api('/api/campaigns') : canUseCampaignOptions && supabase ? supabase.rpc('my_marketing_campaign_options').then(({ data, error }) => { if (error) throw error; return data || [] }) : Promise.resolve([]),
-        canReadCampaigns && supabase ? supabase.rpc('my_marketing_campaign_post_counts').then(({ data, error }) => { if (error) throw error; return data || [] }) : Promise.resolve([]),
+        canReadCampaigns ? api('/api/campaigns') : canUseCampaignOptions && supabase ? loadAllRows((from, to) => supabase!.rpc('my_marketing_campaign_options', {}, { count: 'exact' }).order('id').range(from, to)).then(({ data }) => data) : Promise.resolve([]),
+        canReadCampaigns && supabase ? loadAllRows((from, to) => supabase!.rpc('my_marketing_campaign_post_counts', {}, { count: 'exact' }).order('campaign_id').range(from, to)).then(({ data }) => data) : Promise.resolve([]),
         api('/api/integrations'), api('/api/campaign-types'),
       ])
       setPosts(p); setCampaigns(c as Campaign[]); setCampaignPostCounts(Object.fromEntries((counts as Array<{ campaign_id: string; post_count: number }>).map((row) => [row.campaign_id, row.post_count]))); setIntegrations(i); setCampaignTypes(ct.map((item: { name: string }) => item.name)); setError('')
@@ -391,7 +392,7 @@ export default function App() {
       const response = await fetch(`${apiBaseUrl}/api/sales-desk/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
       const body = await response.json()
       if (!response.ok) throw new Error(body.detail || 'Sign-in failed')
-      localStorage.setItem(KEY_STORAGE, body.access_token)
+      sessionStorage.setItem(KEY_STORAGE, body.access_token)
       setKey(body.access_token); setPassword(''); setPage('Apps'); setNotice('Signed in successfully.')
     } catch (e) { setError((e as Error).message) }
   }

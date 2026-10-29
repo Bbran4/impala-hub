@@ -40,25 +40,20 @@ export const EDITABLE = ['draft', 'awaiting_approval', 'failed']
 
 export const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 import { supabase, supabaseConfigured } from './supabase'
+import { loadAllRows } from './pagedRows.ts'
+import { loadMarketingCampaigns, loadMarketingPosts, loadRfqList } from './recordLists.ts'
+import { AuthError, readSupabaseToken } from './sessionToken.ts'
+export { AuthError } from './sessionToken.ts'
 import { claimFileType } from './returnsAttachments'
 import { deleteRecordAttachment } from './recordAttachments'
 import { supplierWorkflowFields, prepareSupplierWorkflow } from './returnsWorkflow'
 export { supabase }
 export { supabaseConfigured }
 export const KEY_STORAGE = 'impala_session_token'
-export const getKey = () => sessionStorage.getItem(KEY_STORAGE) || localStorage.getItem(KEY_STORAGE) || ''
-async function currentSupabaseToken() {
-  if (supabase) {
-    const { data } = await supabase.auth.getSession()
-    if (data.session?.access_token) {
-      localStorage.setItem(KEY_STORAGE, data.session.access_token)
-      return data.session.access_token
-    }
-  }
-  return getKey()
-}
-
-export class AuthError extends Error {}
+// Remove tokens persisted by older releases; sessions are tab-scoped.
+try { localStorage.removeItem(KEY_STORAGE) } catch { /* Storage may be unavailable. */ }
+export const getKey = () => sessionStorage.getItem(KEY_STORAGE) || ''
+const currentSupabaseToken = () => readSupabaseToken(supabase)
 
 function describeError(detail: unknown, status: number): string {
   if (typeof detail === 'string') return detail
@@ -91,7 +86,7 @@ export async function api(path: string, options: RequestInit = {}) {
     throw new Error(`Cannot reach the Impala Hub API at ${API}. The request was retried three times. Confirm that http://127.0.0.1:8000/api/health opens and that the backend is not restarting.`)
   }
   if (res.status === 401) {
-    localStorage.removeItem(KEY_STORAGE)
+    sessionStorage.removeItem(KEY_STORAGE)
     throw new AuthError('Your session expired or is no longer valid. Sign in again.')
   }
   if (!res.ok) {
@@ -110,8 +105,7 @@ async function supabaseApi(path: string, options: RequestInit) {
   if (path === '/api/campaigns' || campaignMatch) {
     const query = client.from('campaigns')
     if (method === 'GET') {
-      const { data, error } = await query.select('*').order('updated_at', { ascending: false })
-      if (error) throw new Error(error.message)
+      const { data } = await loadMarketingCampaigns(client)
       return data || []
     }
     if (method === 'POST') {
@@ -309,7 +303,7 @@ async function supabaseApi(path: string, options: RequestInit) {
     const detailMatch = path.match(/^\/api\/sales-desk\/rfqs\/([^/]+)$/)
     if ((path === '/api/sales-desk/rfqs' || path.startsWith('/api/sales-desk/rfqs?')) && method === 'GET' || detailMatch && method === 'GET') {
       const query = client.from('sales_desk_rfqs').select('*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)')
-      const result = detailMatch ? await query.eq('id', detailMatch[1]).is('deleted_at', null).single() : await query.is('deleted_at', null).order('received_at', { ascending: true }).limit(500)
+      const result = detailMatch ? await query.eq('id', detailMatch[1]).is('deleted_at', null).single() : await loadRfqList(client)
       if (result.error) throw new Error(result.error.message)
       const normalize = (r: any) => ({ ...r, media_platform: r.media_platform?.name || null, status: r.status?.name || null, status_name: r.status?.name || null, status_is_closed: !!r.status?.is_closed, sales_code: r.sales_code?.code || null })
       if (detailMatch) {
@@ -331,7 +325,7 @@ async function supabaseApi(path: string, options: RequestInit) {
         return item
       }
       const items = (result.data || []).map(normalize)
-      return { items, total: items.length, limit: 500, offset: 0 }
+      return { items, total: result.count, limit: items.length, offset: 0 }
     }
     if (path === '/api/sales-desk/rfqs' && method === 'POST') {
       if (role !== 'administrator') throw new Error('Only administrators can create RFQs directly.')
@@ -399,8 +393,7 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { ...refreshed.data, media_platform: refreshed.data.media_platform?.name, status: refreshed.data.status?.name, status_name: refreshed.data.status?.name, status_is_closed: !!refreshed.data.status?.is_closed, sales_code: refreshed.data.sales_code?.code || null }
     }
     if (path === '/api/sales-desk/dashboard' && method === 'GET') {
-      const all = await client.from('sales_desk_rfqs').select('status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed),sales_desk_sales_codes(code,display_name)')
-      if (all.error) throw new Error(all.error.message)
+      const all = await loadAllRows((from, to) => client.from('sales_desk_rfqs').select('id,status_id,sales_code_id,received_at,sales_desk_statuses(name,is_closed),sales_desk_sales_codes(code,display_name)', { count: 'exact' }).is('deleted_at', null).order('id').range(from, to))
       const today = new Date().toISOString().slice(0, 10); const rows: any[] = all.data || []
       const [daily, performance] = await Promise.all([
         client.from('sales_desk_daily_sales').select('*').eq('business_date', today).order('gross_sales', { ascending: false }),
@@ -417,8 +410,7 @@ async function supabaseApi(path: string, options: RequestInit) {
       return { unclaimed: rows.filter((r) => !r.sales_code_id).length, claimed: rows.filter((r) => !!r.sales_code_id).length, received_today: rows.filter((r) => String(r.received_at).slice(0, 10) === today).length, open: rows.filter((r) => !r.sales_desk_statuses?.is_closed).length, daily_sales: daily.data || [], rfq_performance: performanceRows }
     }
     if (path.startsWith('/api/sales-desk/analytics') && method === 'GET') {
-      const result = await client.from('sales_desk_rfqs').select('rfq_type,status_id,created_at,sales_desk_statuses(name,is_closed)')
-      if (result.error) throw new Error(result.error.message)
+      const result = await loadAllRows((from, to) => client.from('sales_desk_rfqs').select('id,rfq_type,status_id,created_at,sales_desk_statuses(name,is_closed)', { count: 'exact' }).is('deleted_at', null).order('id').range(from, to))
       const rows: any[] = result.data || []
       const totals = {
         claimed: rows.filter((r) => !!r.status_id).length,
@@ -535,8 +527,7 @@ async function supabaseApi(path: string, options: RequestInit) {
   }
   if (path === '/api/posts' || postMatch) {
     if (method === 'GET') {
-      const { data, error } = await client.from('posts').select('*').order('updated_at', { ascending: false })
-      if (error) throw new Error(error.message)
+      const { data } = await loadMarketingPosts(client)
       return data || []
     }
     if (method === 'POST') {

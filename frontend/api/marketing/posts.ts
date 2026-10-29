@@ -1,3 +1,4 @@
+import { loadMarketingPosts } from '../../src/recordLists.ts'
 import { createClient } from '@supabase/supabase-js'
 
 export default async function handler(req: any, res: any) {
@@ -17,7 +18,8 @@ export default async function handler(req: any, res: any) {
   if (checks.some((check) => check.error)) return res.status(500).json({ detail: 'Could not verify Marketing post access.' })
   if (!checks.some((check) => check.data === true)) return res.status(403).json({ detail: 'Feed or Posts view permission required.' })
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
-  const { data, error } = await admin.from('posts').select('*').eq('created_by', user.user.id).order('updated_at', { ascending: false })
-  if (error) return res.status(500).json({ detail: 'Could not load posts from Supabase.' })
-  return res.status(200).json(data || [])
+  try {
+    const { data } = await loadMarketingPosts(admin, user.user.id)
+    return res.status(200).json(data)
+  } catch { return res.status(500).json({ detail: 'Could not load the complete post list. Please reload.' }) }
 }

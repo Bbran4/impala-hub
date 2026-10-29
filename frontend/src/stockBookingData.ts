@@ -1,3 +1,4 @@
+import { loadAllRows } from './pagedRows.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadStockAccess, type StockAccess } from './stockPartsQueries.ts'
 
@@ -24,8 +25,7 @@ export async function loadStockBookingWorkspace(client:SupabaseClient):Promise<{
   for(const result of [active,locations,history])if(result.error)throw new Error(result.error.message)
   const activeBatchId=(active.data as {id:string}|null)?.id||null
   if(!activeBatchId)return {items:[],locations:(locations.data||[]) as StockLocation[],activeBatchId:null,access,history:(history.data||[]) as StockTransferHistory[]}
-  const items=await client.from('stock_booking_items').select(bookingColumns).eq('import_batch_id',activeBatchId).order('part_number')
-  if(items.error)throw new Error(items.error.message)
+  const items=await loadAllRows((from,to)=>client.from('stock_booking_items').select(bookingColumns,{count:'exact'}).eq('import_batch_id',activeBatchId).order('part_number').order('id').range(from,to))
   return {items:(items.data||[]) as StockBookingItem[],locations:(locations.data||[]) as StockLocation[],activeBatchId,access,history:(history.data||[]) as StockTransferHistory[]}
 }
 
@@ -59,10 +59,9 @@ export async function createStockBookingTransfer(client:SupabaseClient,input:{ac
 export async function loadStockBookingTransfer(client:SupabaseClient,transferId:string):Promise<StockTransferResult> {
   const [batch,items]=await Promise.all([
     client.from('stock_transfer_batches').select('id,reference,import_batch_id,from_location,to_location,supply_branch,remarks,item_count').eq('id',transferId).single(),
-    client.from('stock_transfer_items').select('franchise,part_number,from_bin_location,to_bin_location,transfer_qty').eq('transfer_batch_id',transferId).order('part_number'),
+    loadAllRows((from,to)=>client.from('stock_transfer_items').select('franchise,part_number,from_bin_location,to_bin_location,transfer_qty',{count:'exact'}).eq('transfer_batch_id',transferId).order('part_number').order('id').range(from,to)),
   ])
   if(batch.error)throw new Error(batch.error.message)
-  if(items.error)throw new Error(items.error.message)
   const saved=batch.data as Omit<StockTransferResult,'items'>
   return {...saved,items:(items.data||[]).map((item:any)=>({...item,from_location:saved.from_location,to_location:saved.to_location,remarks:saved.remarks}))}
 }
