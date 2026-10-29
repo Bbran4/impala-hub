@@ -1,13 +1,5 @@
-import crypto from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-
-function decrypt(value: string, secret: string) {
-  const key = Buffer.from(secret, 'base64')
-  const [iv, tag, data] = value.split('.')
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64'))
-  decipher.setAuthTag(Buffer.from(tag, 'base64'))
-  return Buffer.concat([decipher.update(Buffer.from(data, 'base64')), decipher.final()]).toString('utf8')
-}
+import { claimPost, publishClaimed } from './_publishing.ts'
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ detail: 'Method not allowed' })
@@ -36,20 +28,10 @@ export default async function handler(req: any, res: any) {
   ])
   if (!post) return res.status(404).json({ detail: 'Post not found.' })
   if (!connection?.page_id || !connection.token_ciphertext) return res.status(409).json({ detail: 'Facebook is not connected. Connect Facebook first.' })
-  const pageToken = decrypt(connection.token_ciphertext, encryptionKey)
-  const message = post.caption || post.title || ''
-  const media = Array.isArray(post.media) ? post.media : []
-  const version = process.env.FACEBOOK_API_VERSION || 'v22.0'
-  let graphPath = `${connection.page_id}/feed`
-  const params: Record<string, string> = { access_token: pageToken, message }
-  if (media[0]?.url && media.length === 1) { graphPath = `${connection.page_id}/photos`; params.url = media[0].url }
-  const response = await fetch(`https://graph.facebook.com/${version}/${graphPath}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) })
-  const result = await response.json()
-  if (!response.ok || !result.id) {
-    await admin.from('posts').update({ status: 'failed', last_error: 'Facebook rejected this post.' }).eq('id', post.id)
-    return res.status(502).json({ detail: 'Facebook rejected this post. Check the Page connection and content.' })
-  }
-  const providerIds = { ...(post.provider_ids || {}), facebook: result.id }
-  await admin.from('posts').update({ status: 'published', published_at: new Date().toISOString(), provider_ids: providerIds, last_error: null }).eq('id', post.id)
-  return res.status(200).json({ id: post.id, status: 'published', facebook_post_id: result.id })
+  try {
+    const claimed = await claimPost(admin, post.id, ['draft', 'awaiting_approval', 'failed', 'scheduled'], user.user.id)
+    if (!claimed) return res.status(409).json({ detail: 'This post is already published, publishing, or awaiting reconciliation.' })
+    const outcome = await publishClaimed(admin, claimed, connection, encryptionKey)
+    return res.status(outcome.status === 'published' ? 200 : 502).json(outcome)
+  } catch { return res.status(500).json({ detail: 'Could not persist the publishing attempt. Do not retry until its status has been checked.' }) }
 }

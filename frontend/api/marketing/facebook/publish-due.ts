@@ -1,13 +1,5 @@
-import crypto from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-
-function decrypt(value: string, secret: string) {
-  const key = Buffer.from(secret, 'base64')
-  const [iv, tag, data] = value.split('.')
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64'))
-  decipher.setAuthTag(Buffer.from(tag, 'base64'))
-  return Buffer.concat([decipher.update(Buffer.from(data, 'base64')), decipher.final()]).toString('utf8')
-}
+import { claimPost, publishClaimed } from './_publishing.ts'
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ detail: 'Method not allowed' })
@@ -19,34 +11,19 @@ export default async function handler(req: any, res: any) {
   const encryptionKey = process.env.META_TOKEN_ENCRYPTION_KEY
   if (!url || !serviceKey || !encryptionKey) return res.status(503).json({ detail: 'Scheduled publishing configuration is incomplete.' })
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
-  const now = new Date().toISOString()
-  const { data: due, error } = await admin.from('posts').select('*').eq('status', 'scheduled').lte('publish_at', now).limit(25)
-  if (error) return res.status(500).json({ detail: 'Could not load scheduled posts.' })
-  const results: Array<{ id: string; status: string }> = []
-  for (const post of due || []) {
-    const claim = await admin.from('posts').update({ status: 'publishing' }).eq('id', post.id).eq('status', 'scheduled').select('id').maybeSingle()
-    if (!claim.data) continue
-    const { data: connection } = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('is_workspace_connection', true).maybeSingle()
-    if (!connection?.page_id || !connection.token_ciphertext) {
-      await admin.from('posts').update({ status: 'failed', last_error: 'Facebook is not connected for the post owner.' }).eq('id', post.id)
-      results.push({ id: post.id, status: 'failed' }); continue
+  try {
+    const now = new Date().toISOString()
+    const recovered = await admin.from('posts').update({ status: 'publish_unknown', last_error: 'Interrupted publication. Check Facebook and reconcile before retrying.' }).eq('status', 'publishing').lt('publish_started_at', new Date(Date.now() - 10 * 60_000).toISOString())
+    if (recovered.error) throw recovered.error
+    const { data: due, error } = await admin.from('posts').select('id').eq('status', 'scheduled').lte('publish_at', now).order('publish_at').order('id').limit(25)
+    if (error) throw error
+    const connection = await admin.from('provider_connections').select('*').eq('provider', 'facebook').eq('is_workspace_connection', true).maybeSingle()
+    if (connection.error) throw connection.error
+    const results = []
+    for (const candidate of due || []) {
+      const post = await claimPost(admin, candidate.id, ['scheduled'], undefined, now)
+      if (post) results.push(await publishClaimed(admin, post, connection.data, encryptionKey))
     }
-    try {
-      const pageToken = decrypt(connection.token_ciphertext, encryptionKey)
-      const media = Array.isArray(post.media) ? post.media : []
-      const version = process.env.FACEBOOK_API_VERSION || 'v22.0'
-      const path = media[0]?.url && media.length === 1 ? `${connection.page_id}/photos` : `${connection.page_id}/feed`
-      const params: Record<string, string> = { access_token: pageToken, message: post.caption || post.title || '' }
-      if (path.endsWith('/photos')) params.url = media[0].url
-      const response = await fetch(`https://graph.facebook.com/${version}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) })
-      const result = await response.json()
-      if (!response.ok || !result.id) throw new Error('Facebook rejected the scheduled post.')
-      await admin.from('posts').update({ status: 'published', published_at: new Date().toISOString(), provider_ids: { ...(post.provider_ids || {}), facebook: result.id }, last_error: null }).eq('id', post.id)
-      results.push({ id: post.id, status: 'published' })
-    } catch (publishError) {
-      await admin.from('posts').update({ status: 'failed', last_error: publishError instanceof Error ? publishError.message : 'Scheduled Facebook publishing failed.' }).eq('id', post.id)
-      results.push({ id: post.id, status: 'failed' })
-    }
-  }
-  return res.status(200).json({ processed: results.length, results })
+    return res.status(200).json({ processed: results.length, results })
+  } catch { return res.status(500).json({ detail: 'Scheduled publication could not be completed. Check post statuses before retrying.' }) }
 }

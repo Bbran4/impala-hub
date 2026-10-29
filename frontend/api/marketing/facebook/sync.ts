@@ -1,4 +1,6 @@
 import crypto from 'node:crypto'
+import { facebookMediaId } from './_publishing.ts'
+const timedFetch = (url: string) => fetch(url, { signal: AbortSignal.timeout(20_000) })
 import { createClient } from '@supabase/supabase-js'
 
 function decrypt(value: string, secret: string) {
@@ -29,13 +31,13 @@ export default async function handler(req: any, res: any) {
     const pageToken = decrypt(connection.token_ciphertext, encryptionKey)
     const version = process.env.FACEBOOK_API_VERSION || 'v22.0'
     const fields = 'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments},likes.limit(0).summary(true),comments.limit(0).summary(true),shares'
-    const response = await fetch(`https://graph.facebook.com/${version}/${connection.page_id}/published_posts?limit=100&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`)
+    const response = await timedFetch(`https://graph.facebook.com/${version}/${connection.page_id}/published_posts?limit=100&fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`)
     const result = await response.json()
     if (!response.ok) return res.status(502).json({ detail: 'Facebook rejected the sync request.' })
     let imported = 0
     let audience: number | null = null
     try {
-      const pageResponse = await fetch(`https://graph.facebook.com/${version}/me?fields=id,name,followers_count&access_token=${encodeURIComponent(pageToken)}`)
+      const pageResponse = await timedFetch(`https://graph.facebook.com/${version}/me?fields=id,name,followers_count&access_token=${encodeURIComponent(pageToken)}`)
       const pageData = await pageResponse.json()
       audience = pageData.followers_count ?? pageData.fan_count ?? null
       if (audience != null) await admin.from('provider_connections').update({ followers_count: audience }).eq('id', connection.id)
@@ -47,14 +49,14 @@ export default async function handler(req: any, res: any) {
       let attachments = (item.attachments?.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
       if (attachments.length < 2) {
         try {
-          const attachmentResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/attachments?fields=media,subattachments&access_token=${encodeURIComponent(pageToken)}`)
+          const attachmentResponse = await timedFetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/attachments?fields=media,subattachments&access_token=${encodeURIComponent(pageToken)}`)
           const attachmentResult = await attachmentResponse.json()
           attachments = (attachmentResult.data || []).flatMap((attachment: any) => [attachment, ...(attachment.subattachments?.data || [])])
         } catch { /* Keep the attachment data returned by published_posts. */ }
       }
       const media = attachments.flatMap((attachment: any) => {
         const image = attachment.media?.image?.src || attachment.url
-        return image ? [{ id: `${item.id}-${Math.random().toString(36).slice(2)}`, name: 'Facebook image', url: image, content_type: 'image/*' }] : []
+        return image ? [{ id: facebookMediaId(item.id, image), name: 'Facebook image', url: image, content_type: 'image/*' }] : []
       })
       if (!media.length && item.full_picture) media.push({ id: `${item.id}-1`, name: 'Facebook image', url: item.full_picture, content_type: 'image/*' })
       const insights: Record<string, number> = {}
@@ -67,26 +69,23 @@ export default async function handler(req: any, res: any) {
         for (const metricName of metricNames) {
           if (insights[target] != null) break
         try {
-          const insightResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
+          const insightResponse = await timedFetch(`https://graph.facebook.com/${version}/${encodeURIComponent(item.id)}/insights?metric=${metricName}&access_token=${encodeURIComponent(pageToken)}`)
           const insightData = await insightResponse.json()
           const value = insightData.data?.[0]?.values?.[0]?.value
           if (!insightResponse.ok || insightData.error || value == null) {
             metricsUnavailable += 1
             if (metricsErrors.length < 3) metricsErrors.push(`${metricName}: ${insightData.error?.message || `HTTP ${insightResponse.status}`}`)
           }
-          else insights[target] = typeof value === 'object' ? Object.values(value).reduce((sum: number, entry) => sum + Number(entry || 0), 0) : Number(value || 0)
+          else insights[target] = typeof value === 'object' ? Object.values(value).reduce<number>((sum, entry) => sum + Number(entry || 0), 0) : Number(value || 0)
         } catch { metricsUnavailable += 1 }
         }
       }
-      const values = { title: '', caption: item.message || '', campaign_id: null, channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.views ?? null, reach: insights.reach ?? null, views: insights.views ?? null, clicks: insights.clicks ?? null, metrics_refreshed_at: new Date().toISOString(), created_by: user.user.id }
-      if (existing) {
-        const { error: updateError } = await admin.from('posts').update(values).eq('id', existing.id)
-        if (updateError) return res.status(500).json({ detail: `Could not update imported Facebook post (${updateError.code || 'database error'}).` })
-      } else {
-        const { error: insertError } = await admin.from('posts').insert(values)
-        if (insertError) return res.status(500).json({ detail: `Could not save imported Facebook post (${insertError.code || 'database error'}).` })
-        imported += 1
-      }
+      const values = { caption: item.message || '', channels: ['facebook'], status: 'published', published_at: item.created_time, media, provider_ids: { facebook: item.id, ...(item.permalink_url ? { permalink: item.permalink_url } : {}) }, likes: item.likes?.summary?.total_count || 0, comments: item.comments?.summary?.total_count || 0, shares: item.shares?.count || 0, impressions: insights.views ?? null, reach: insights.reach ?? null, views: insights.views ?? null, clicks: insights.clicks ?? null, metrics_refreshed_at: new Date().toISOString() }
+      // Serialize lookup/insert in the database; preserve all local editorial fields.
+      const saved = await admin.rpc('sync_facebook_post', { p_values: values, p_actor: user.user.id })
+      if (saved.error) return res.status(500).json({ detail: 'Could not save imported Facebook post.' })
+      if (!existing) imported += 1
+
     }
     return res.status(200).json({ status: 'synced', items: imported, fetched: (result.data || []).length, metricsUnavailable, metricsErrors, audience })
   } catch { return res.status(502).json({ detail: 'Facebook sync failed.' }) }

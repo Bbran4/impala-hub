@@ -540,13 +540,12 @@ async function supabaseApi(path: string, options: RequestInit) {
       return data || []
     }
     if (method === 'POST') {
-      const user = (await client.auth.getUser()).data.user
-      const { data, error } = await client.from('posts').insert({ ...body, created_by: user?.id }).select().single()
+      const { data, error } = await client.rpc('save_marketing_post', { p_id: null, p_values: body })
       if (error) throw new Error(error.message)
       return data
     }
     if (method === 'PATCH' && postMatch) {
-      const { data, error } = await client.from('posts').update(body).eq('id', postMatch[1]).select().single()
+      const { data, error } = await client.rpc('save_marketing_post', { p_id: postMatch[1], p_values: body })
       if (error) throw new Error(error.message)
       return data
     }
