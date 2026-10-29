@@ -12,7 +12,7 @@ ever read those loaded tables.
 | Role | Can |
 |---|---|
 | `administrator` | Everything, including the data loader (Data Connections, Data Loads, Run History, Audit Log) |
-| `report_builder` | Create, edit and delete apps and sheets; choose who can open each app; row access; report emails |
+| `report_builder` | Create, edit, copy and delete apps and sheets; version history; choose who can open each app; row access; report emails; Master Items, Usage and Data Quality pages |
 | everyone else | Open the apps shared with one of their roles or with them by name, and use selections |
 
 Give someone the builder role in the Supabase SQL editor:
@@ -88,6 +88,34 @@ Everyone who can open an app gets these tools above the sheets:
   every chart and table on the sheet, one tab each, with number formats (up to 10,000 rows per chart). Tables
   also have *CSV* and *Excel* buttons.
 - On phones the charts stack in one column, and the tabs, selections and tools scroll sideways.
+
+## Comments, history and shared master items
+
+- **Comments**: everyone who can open an app can comment on a chart. Hover a chart and click the speech bubble
+  (charts with open comments always show it, with the count), or use *Comments* above the sheet to see every
+  thread on the sheet. Comments can be edited or deleted by their writer and resolved or reopened by anyone.
+  The others in a thread (writers of earlier comments on that chart) get a Hub notification; clicking it opens
+  the app at that sheet with the thread.
+- **Version history** (builders, *History* button): every time a sheet or the app settings (name, data model,
+  master measures, variables, calculated fields) are saved, or a sheet is deleted, the version before is kept —
+  the last 50 of each. *Restore* puts a version back (a deleted sheet is brought back); the version it replaces is
+  kept too, so a restore can be undone.
+- **Copy app** (builders, in *Data model & sharing*): copies the data model, sheets, master measures, variables and
+  calculated fields, optionally with who can open it and the row access. Bookmarks, comments and report emails stay
+  with the original.
+- **Master Items** (builders): a library of measures and dimensions for every app, so "Sales" means the same
+  everywhere. In an app's master measures, *Add from the library* copies one in, and the bookmark icon next to a
+  measure saves it to the library. An app keeps its own copy, so editing the library does not change existing apps
+  (the library shows how many apps use each measure by name).
+
+## Usage and data quality
+
+- **Usage** (builders and administrators): sheets opened per day, and per app, sheet and person over the last 7,
+  30, 90 or 365 days, with report emails sent. Sheets nobody opened are marked — candidates to drop when moving
+  the Qlik apps over.
+- **Data Quality** (everyone who can see the data catalogue): for every loaded table, the last ten loads and the
+  issues: the last load failed, loads are more than three intervals late, the row count dropped by more than 20%
+  since the load before, and fields that are empty in every row (or mostly empty), from the database statistics.
 
 ## Row access (like Qlik section access)
 
@@ -363,6 +391,9 @@ dimensions, measures, selections, sets and row access.
 - Queries time out after 20 seconds and return at most 10,000 rows.
 - Creating, changing and deleting apps is recorded in the Reporting audit log, as are uploads and
   connection changes (without header values).
+- Comments can only be read and written by people who can open the app; notifications go only to people
+  who already wrote in that thread (and still have access). Versions, the library, usage and copying apps are
+  for builders only. Restores and copies are recorded in the audit log.
 - Data connections can only be managed by administrators. Uploaded values are checked against the
   column types in the database; table and column names are checked against a fixed pattern. Web and
   folder connections run on the agent, which only reaches the hosts and folders its own config allows.
