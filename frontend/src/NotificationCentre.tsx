@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CheckCheck, MessageCircle, RefreshCw, X } from "lucide-react";
+import { Bell, CheckCheck, RefreshCw, X } from "lucide-react";
 import { supabase } from "./supabase";
 
 export type NotificationChannel =
@@ -28,7 +28,6 @@ type Props = {
   enabled: boolean;
   channels: NotificationChannel[];
   onNavigate: (notification: UserNotification) => void;
-  onOpenChat: () => void;
   onError: (message: string) => void;
 };
 
@@ -54,7 +53,6 @@ export default function NotificationCentre({
   enabled,
   channels,
   onNavigate,
-  onOpenChat,
   onError,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -264,12 +262,6 @@ export default function NotificationCentre({
           </header>
 
           <div className="notification-panel-actions">
-            <button
-              className="secondary"
-              onClick={() => { closePanel(false); onOpenChat() }}
-            >
-              <MessageCircle size={15} /> Chat
-            </button>
             {unreadInView > 0 && (
               <button
                 className="text-button"

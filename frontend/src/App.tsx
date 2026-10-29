@@ -17,6 +17,7 @@ import StockImport from './StockImport'
 import ReturnsClaims from './ReturnsClaims'
 import AdminSettings from './AdminSettings'
 import ChatDock from './ChatDock'
+import ChannelsWorkspace from './ChannelsWorkspace'
 import NotificationCentre, { type NotificationChannel, type UserNotification } from './NotificationCentre'
 import Reporting, { REPORTING_PAGES } from './Reporting'
 import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
@@ -656,7 +657,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
   const isReturnsClaimsPage = page === 'Returns & Claims' || page === 'Returns & Claims Roadmap'
   const isReportingPage = (REPORTING_PAGES as readonly string[]).includes(page)
   const isAdminSettingsPage = page === 'Admin Settings'
-  const isPlatformPage = page === 'Apps' || page === 'Account' || isAdminSettingsPage
+  const isChannelsPage = page === 'Channels'
+  const isPlatformPage = page === 'Apps' || page === 'Account' || isAdminSettingsPage || isChannelsPage
 
   return (
     <div className="shell">
@@ -666,10 +668,9 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           <div><b>IMPALA HUB</b>{!isPlatformPage && <small>{isSalesDeskPage ? 'Sales Desk workspace' : isStockControlPage ? 'Smart Stock Control workspace' : isReturnsClaimsPage ? 'Returns & Claims workspace' : isReportingPage ? 'Reporting workspace' : 'Marketing workspace'}</small>}</div>
         </div>
         <button className={`nav-item app-home-link ${page === 'Apps' ? 'active' : ''}`} onClick={() => setPage('Apps')}><LayoutDashboard size={18} /> Apps Dashboard</button>
-        {isAdministrator && <button className={`nav-item ${isAdminSettingsPage ? 'active' : ''}`} onClick={() => setPage('Admin Settings')}><Settings size={18} /> Settings</button>}
         {isPlatformPage && (
           <div className="sidebar-bottom">
-            {key && <NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onOpenChat={() => setChatOpenRequest((value) => value + 1)} onError={setError} />}
+            {key && <div className="communication-buttons"><button className="communication-button" onClick={() => setChatOpenRequest((value) => value + 1)}><MessageCircle size={16} /><span>Chat</span></button><NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />{isAdministrator && <button className="communication-button" onClick={() => setPage('Admin Settings')}><Settings size={16} /><span>Settings</span></button>}</div>}
             <div className="connection-dot" /> <span>Local workspace</span>
           <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
             {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
@@ -702,7 +703,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
               </button>
             ))}
             <div className="sidebar-bottom">
-              {key && <NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onOpenChat={() => setChatOpenRequest((value) => value + 1)} onError={setError} />}
+              {key && <div className="communication-buttons"><button className="communication-button" onClick={() => setChatOpenRequest((value) => value + 1)}><MessageCircle size={16} /><span>Chat</span></button><NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />{isAdministrator && <button className="communication-button" onClick={() => setPage('Admin Settings')}><Settings size={16} /><span>Settings</span></button>}</div>}
               <div className="connection-dot" /> <span>Local workspace</span>
               <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}>{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</button>
               {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
@@ -817,6 +818,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
             </div>
           </section>
         )}
+
+        {page === 'Channels' && key && <ChannelsWorkspace setNotice={setNotice} setError={setError} />}
 
         {key && isAdminSettingsPage && isAdministrator && (
           <AdminSettings
@@ -1163,7 +1166,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Configuration' || page 
           </div>
         )}
 </main>
-      <ChatDock enabled={Boolean(key)} openRequest={chatOpenRequest} onError={setError} />
+      <ChatDock enabled={Boolean(key)} openRequest={chatOpenRequest} onError={setError} onOpenChannels={() => setPage('Channels')} />
 
       {editor && (
         <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setEditor(null) }}>
