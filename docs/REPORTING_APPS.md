@@ -54,7 +54,10 @@ Every object can have **conditions**: row filters that only apply to that object
 ## Expressions
 
 Dimensions are usually a field (`branch`, `[Cost Price]`, `invoices.branch` if two tables share the
-name) but can be calculated (`Year(invoice_date)`, `YearMonth(invoice_date)`). Measures must aggregate.
+name) but can be calculated (`Year(invoice_date)`, `YearMonth(invoice_date)`). Measures combine records with an
+aggregation; a field on its own in a measure means `Only(field)`, as in Qlik (its value when every record
+in the chart row has the same value, otherwise empty), so `reorder_level - qty_on_hand` works in a table
+per item.
 
 There are 71 functions (aggregation, text, number, date and logic) plus `&` to join text and `//` or
 `/* */` comments. The full list with examples is in [REPORTING_FUNCTIONS.md](REPORTING_FUNCTIONS.md) and in
@@ -67,6 +70,13 @@ the app under **Reporting → Function Reference**. A few common ones:
 | Numbers | `Round(x, 2)` `Floor` `Ceil` `Mod` `RangeSum(a, b)` |
 | Dates | `Today()` `YearMonth(d)` `MonthStart(d)` `AddMonths(d, n)` `DaysBetween(a, b)` |
 | Logic | `If(condition, then, else)` `Alt(value, fallback)` `Match(x, 'a', 'b')` `WildMatch(x, 'BOSCH*')` `Pick(n, a, b)` |
+
+**How records are counted.** Like Qlik, every aggregation counts each record of the tables it uses
+once. In an app whose main table is invoice lines with stock items linked to it, `Sum(qty_on_hand)` adds
+each item's stock once (not once per invoice line it appears on), `Sum(qty)` adds every invoice line, and
+`Sum(qty * cost_price)` works per invoice line because it uses both tables. `Count(*)` counts records of
+the main table. Items only appear when the main table links to them: to list stock that has not sold
+(for example a reorder report), make an app whose main table is the stock items table.
 
 **Writing expressions.** Every expression box suggests master measures, fields and functions as you
 type (↑ ↓ and Enter insert at the cursor). The expand button opens a large editor with line numbers,

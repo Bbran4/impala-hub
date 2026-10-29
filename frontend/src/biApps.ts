@@ -1,5 +1,5 @@
 import type {SupabaseClient} from '@supabase/supabase-js'
-import {checkFields,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
+import {asMeasure,checkFields,hasAggregation,parseExpression,plainField,type ExprNode,type MasterMeasure} from './biExpression.ts'
 
 // Reporting apps: data model, sheets and objects. All data access goes through the
 // role-checked public.bi_* functions (migrations 0046 and 0047).
@@ -167,8 +167,9 @@ export function compileObject(object:SheetObject,app:Pick<AppDetail,'model'|'mea
   })
   const measures:CompiledObject['measures']=[]
   object.measures.forEach((item,i)=>{
-    const node=parse(item.expr,`Measure ${i+1}`);if(!node)return
-    if(!hasAggregation(node)){errors.push(`Measure ${i+1}: use an aggregation such as Sum(${item.expr})`);return}
+    const parsed=parse(item.expr,`Measure ${i+1}`);if(!parsed)return
+    const node=asMeasure(parsed)
+    if(!hasAggregation(node)){errors.push(`Measure ${i+1}: use a field or an aggregation such as Sum(…)`);return}
     const master=app.measures.find(measure=>`[${measure.name}]`.toLowerCase()===item.expr.trim().toLowerCase())
     measures.push({node,label:item.label||master?.name||item.expr,format:item.format||(master?.format as NumberFormat|undefined)})
   })

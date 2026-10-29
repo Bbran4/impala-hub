@@ -40,8 +40,14 @@ test('objects compile with master measures, labels, formats and selection keys',
   assert.equal(compiled.dimensions[0].selectKey,'invoices.branch')
 })
 
+test('a bare field in a measure means Only(field), like Qlik',()=>{
+  const compiled=compileObject(object({measures:[{expr:'qty - Sum(qty)'}]}),app)
+  assert.deepEqual(compiled.errors,[])
+  assert.deepEqual(compiled.measures[0].node,{t:'bin',op:'-',l:{t:'fn',name:'only',args:[{t:'field',name:'qty'}]},r:{t:'fn',name:'sum',args:[{t:'field',name:'qty'}]}})
+})
+
 test('object validation catches the common mistakes',()=>{
-  assert.match(compileObject(object({measures:[{expr:'qty'}]}),app).errors[0],/use an aggregation such as Sum\(qty\)/)
+  assert.match(compileObject(object({measures:[{expr:'1 + 2'}]}),app).errors[0],/use a field or an aggregation/)
   assert.match(compileObject(object({dimensions:[{expr:'Sum(qty)'}]}),app).errors[0],/dimensions cannot use aggregations/)
   assert.match(compileObject(object({dimensions:[{expr:'salary'}]}),app).errors[0],/Unknown field "salary"/)
   assert.match(compileObject(object({kind:'pie',measures:[{expr:'[Sales]'},{expr:'Count(*)'}]}),app).errors[0],/Pie chart needs 1 measure/)

@@ -7,7 +7,9 @@ The same list is in the app under **Reporting → Function reference**, and the 
 these functions as you type.
 
 - **Dimensions** split the data (`branch`, `YearMonth(invoice_date)`). They cannot aggregate.
-- **Measures** calculate a value per dimension value and must aggregate (`Sum(qty * unit_price)`).
+- **Measures** calculate one value per chart row by combining records with an aggregation (`Sum(qty * unit_price)`).
+  A field on its own in a measure means `Only(field)`, as in Qlik: its value when every record in the row has the same
+  value, otherwise empty (`reorder_level - qty_on_hand` in a table per item).
 - **Conditions** filter rows before anything is calculated (`invoice_date = Today() - 1`).
 - **Master measures** are reusable measures, used as `[Name]`.
 - Function names are not case-sensitive. Field names follow the sync agent's naming: lower case with underscores;
@@ -54,7 +56,7 @@ these functions as you type.
 
 ## Aggregation
 
-Combine many rows into one value. Measures must use at least one. They cannot be nested (no Sum(Avg(x))), but If() inside them works like a filter.
+Combine many rows into one value. A field used in a measure outside any aggregation means Only(field), as in Qlik. Aggregations cannot be nested (no Sum(Avg(x))), but If() inside them works like a filter. Each aggregation counts every record of the tables it uses once, like Qlik: Sum(qty_on_hand) from the stock items table adds each item once, even when the item is on many invoice lines.
 
 ### Sum
 

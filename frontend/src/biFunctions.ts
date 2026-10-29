@@ -1,7 +1,7 @@
 // The Reporting function catalogue: the single list of functions that expressions may use.
 // It drives the parser's checks, the suggestions in the expression editor, the in-app
 // Function reference page and docs/REPORTING_FUNCTIONS.md. The database whitelist in
-// bi.compile_expr (migration 0062_bi_expression_functions.sql) implements the same list;
+// bi.compile_expr (latest definition: migration 0064_bi_count_records_once.sql) implements the same list;
 // supabase/tests/bi_functions.test.sql runs every function against real data.
 
 export type FunctionCategory='Aggregation'|'Text'|'Number'|'Date'|'Logic'
