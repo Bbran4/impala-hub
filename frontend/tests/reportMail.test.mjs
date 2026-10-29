@@ -67,3 +67,10 @@ test('write tables keep their parsed dimensions for row access checks',()=>{
   assert.equal(out[1].options.keyDims,undefined,'other objects are unchanged')
   assert.equal(withWriteKeys([{...objects[0],dimensions:[{expr:'nope'}]}],app)[0].options.keyDims,undefined,'not when the dimensions have errors')
 })
+
+test('Vercel Hobby allows at most 12 functions per deployment',async()=>{
+  const {readdirSync,statSync}=await import('node:fs')
+  const walk=dir=>readdirSync(dir).flatMap(name=>{const path=`${dir}/${name}`;if(name.startsWith('_')||name.startsWith('.'))return [];return statSync(path).isDirectory()?walk(path):/\.(ts|js|mjs)$/.test(name)?[path]:[]})
+  const functions=walk(new URL('../api',import.meta.url).pathname)
+  assert.ok(functions.length<=12,`${functions.length} functions in api/: ${functions.join(', ')}`)
+})

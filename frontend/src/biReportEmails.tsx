@@ -18,7 +18,7 @@ export default function ReportEmails({app,onClose,setNotice,setError}:{app:AppDe
     try{setData(await loadReports(supabase,app.id))}catch(error){setError((error as Error).message)}},[app.id,setError])
   useEffect(()=>{void load()
     if(supabase)loadPrincipals(supabase).then(setPrincipals).catch(()=>setPrincipals(null))
-    fetch('/api/reporting/email-status').then(r=>r.ok?r.json():null).then(setSetup).catch(()=>setSetup(null))},[load])
+    fetch('/api/reporting/send-due?status=1').then(r=>r.ok?r.json():null).then(setSetup).catch(()=>setSetup(null))},[load])
   // keep the history fresh while something is queued
   useEffect(()=>{if(!data?.deliveries.some(d=>d.status==='pending'||d.status==='sending'))return
     const timer=setInterval(()=>void load(),10000);return()=>clearInterval(timer)},[data,load])
