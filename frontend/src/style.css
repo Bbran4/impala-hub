@@ -515,3 +515,14 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .marketing-refresh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .marketing-last-update{font-size:10px;color:#71808d;line-height:1.5}
 .marketing-last-update time{font-variant-numeric:tabular-nums}
+
+.roadmap-document{line-height:1.65;color:#34495e}
+.roadmap-document>h2:first-child{margin-top:0}
+.roadmap-document h2,.roadmap-document h3{margin-top:24px;color:#21384f}
+.roadmap-document p,.roadmap-document ul,.roadmap-document ol{margin:12px 0}
+.roadmap-document li{margin:5px 0}
+.roadmap-document code{font-size:.9em;overflow-wrap:anywhere}
+.roadmap-document .roadmap-table-wrap{margin:18px 0}
+.roadmap-document td[data-roadmap-status="Implemented"]{color:#19734c}
+.roadmap-document td[data-roadmap-status="Missing"]{color:#aa3838}
+.roadmap-document td[data-roadmap-status="Partial"],.roadmap-document td[data-roadmap-status="Planned"]{color:#9b681f}

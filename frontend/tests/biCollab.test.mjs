@@ -49,9 +49,10 @@ test('every batch 4 RPC the frontend calls exists in migration 0088 with matchin
 test('new Reporting pages are routed and in the navigation',()=>{
   const reporting=readFileSync(new URL('../src/Reporting.tsx',import.meta.url),'utf8')
   const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8')
+  const navigation=readFileSync(new URL('../src/platform/AppSidebar.tsx',import.meta.url),'utf8')
   for(const page of ['Data Quality','Usage','Master Items']){
     assert.ok(reporting.includes(`page==='${page}'`),`${page} routed`)
-    assert.ok(app.includes(`['${page}',`),`${page} in the nav`)
+    assert.match(navigation,new RegExp(`\\[\\s*["']${page}["']\\s*,`),`${page} in the nav`)
   }
-  assert.ok(app.includes("new CustomEvent('bi-open'"),'comment notifications open the app at the sheet')
+  assert.match(app,/new CustomEvent\(["']bi-open["']/ ,'comment notifications open the app at the sheet')
 })
