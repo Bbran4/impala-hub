@@ -1,6 +1,9 @@
+import type { Post } from './marketingTypes'
 import type { SupabaseClient } from '@supabase/supabase-js'
 export const POST_PAGE_SIZE = 50
 export type PostFilters = { month?: string | null; campaign?: string; search?: string; status?: string; channel?: string; offset?: number; limit?: number; preview?: boolean; summary?: boolean }
+export type PostSummary = { label: string; campaign_type: string; posts: number; likes: number; comments: number; shares: number; clicks: number }
+export type PostPage = { items: Post[]; total: number; offset: number; limit: number; summary: PostSummary[] }
 export async function loadPostPage(client: SupabaseClient, filters: PostFilters = {}) {
   const { data, error } = await client.rpc('marketing_post_page', {
     p_month: filters.month || null, p_campaign: filters.campaign && !['all','none'].includes(filters.campaign) ? filters.campaign : null,
@@ -10,7 +13,7 @@ export async function loadPostPage(client: SupabaseClient, filters: PostFilters 
     p_preview: !!filters.preview, p_summary: !!filters.summary,
   })
   if (error) throw new Error(error.message)
-  return data as { items: any[]; total: number; offset: number; limit: number; summary: any[] }
+  return data as PostPage
 }
 
 export function safeMarketingFilename(name: string) {

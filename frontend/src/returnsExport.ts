@@ -1,6 +1,7 @@
+import type { Claim } from './returnsTypes'
 import { claimReportRows, summarizeClaims } from './returnsReporting.ts'
 
-export async function createClaimsWorkbook(rows: Record<string, any>[], today: string, filters: string) {
+export async function createClaimsWorkbook(rows: Claim[], today: string, filters: string) {
   if (!rows.length) throw new Error('No claims match the selected filters.')
   const module = await import('exceljs')
   const excel = module.default || module

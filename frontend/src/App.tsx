@@ -1,5 +1,9 @@
-import { loadPostPage, POST_PAGE_SIZE } from './marketingPosts.ts'
-import { loadAllRows } from './pagedRows.ts'
+import { authService } from './authService'
+import { postsService, type PostPatch } from './postsService'
+import { campaignsService } from './campaignsService'
+import { integrationsService, type Integration } from './integrationsService'
+import type { PostSummary } from './marketingPosts.ts'
+import { POST_PAGE_SIZE } from './marketingPosts.ts'
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarClock, CheckCircle2, ChevronDown, CircleAlert, ClipboardList, ImagePlus, Users, Heart, MessageCircle, Eye, ExternalLink,
@@ -22,7 +26,7 @@ import ChatDock from './ChatDock'
 import ChannelsWorkspace from './ChannelsWorkspace'
 import NotificationCentre, { type NotificationChannel, type UserNotification } from './NotificationCentre'
 import Reporting, { REPORTING_PAGES } from './Reporting'
-import { API as apiBaseUrl, api, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
+import { API as apiBaseUrl, AuthError, EDITABLE, fmt, getKey, inMonth, isFuture, KEY_STORAGE, mediaSrc, metric, startOfMonth, type Media, type Post, type Campaign } from './lib'
 import { supabase, supabaseConfigured } from './supabase'
 import { ALL_MARKETING_PERMISSIONS, type MarketingPermission } from './marketingPermissions'
 
@@ -129,14 +133,14 @@ export default function App() {
   const [posts, setPosts] = useState<Post[]>([])
   const [postTotal, setPostTotal] = useState(0)
   const [postPage, setPostPage] = useState(0)
-  const [postSummary, setPostSummary] = useState<any[]>([])
+  const [postSummary, setPostSummary] = useState<PostSummary[]>([])
   const [postsLoading, setPostsLoading] = useState(false)
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const postLoadSequence = useRef(0)
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [campaignPostCounts, setCampaignPostCounts] = useState<Record<string, number>>({})
-  const [integrations, setIntegrations] = useState<any[]>([])
+  const [integrations, setIntegrations] = useState<Integration[]>([])
   const [facebookPages, setFacebookPages] = useState<Array<{id: string; name: string}>>([])
   const [selectedFacebookPage, setSelectedFacebookPage] = useState('')
   const [filter, setFilter] = useState('all')
@@ -205,8 +209,8 @@ export default function App() {
     if (!user) { setProfileLoaded(true); return }
     const { data } = await supabase.from('profiles').select('first_name,surname,email,avatar_url,sales_code').eq('id', user.id).maybeSingle()
     const roles = await supabase.from('profile_roles').select('role_id').eq('profile_id', user.id)
-    setIsAdministrator((roles.data || []).some((role: any) => role.role_id === 'administrator'))
-    const roleIds = (roles.data || []).map((role: any) => role.role_id)
+    setIsAdministrator((roles.data || []).some((role: { role_id: string }) => role.role_id === 'administrator'))
+    const roleIds = (roles.data || []).map((role: { role_id: string }) => role.role_id)
     setAssignedRoles(roleIds)
     const permissions = await supabase.rpc('my_marketing_permissions')
     setMarketingPermissions((permissions.data || []) as MarketingPermission[])
@@ -302,11 +306,11 @@ export default function App() {
       const canReadCampaigns = canMarketing('campaigns.view')
       const canUseCampaignOptions = canReadPosts || canMarketing('feed.assign_campaign') || canMarketing('posts.assign_campaign') || canMarketing('campaigns.assign_campaign')
       const [p, c, counts, i, ct] = await Promise.all([
-        canReadPosts && page === 'Feed' && supabase ? Promise.all(['facebook','instagram'].map(channel => loadPostPage(supabase!, { channel, limit: 25, preview: true }))).then(pages => ({ items: [...new globalThis.Map<string,Post>(pages.flatMap(p => p.items).map(p => [p.id,p] as [string,Post])).values()], total: pages.reduce((sum,p) => sum+p.items.length,0), summary: [] }))
-          : canReadPosts && page === 'Posts' ? api('/api/posts?' + new URLSearchParams({ month: (view === 'calendar' ? month ?? startOfMonth() : month) ? `${(month ?? startOfMonth()).getFullYear()}-${String((month ?? startOfMonth()).getMonth()+1).padStart(2,'0')}-01` : '', campaign: campaignFilter, search: debouncedSearch, status: view === 'list' ? filter : 'all', offset: String(postPage*POST_PAGE_SIZE), summary: String(view === 'pivot'), preview: String(view === 'list' || view === 'board') })) : Promise.resolve({ items: [], total: 0, summary: [] }),
-        canReadCampaigns ? api('/api/campaigns') : canUseCampaignOptions && supabase ? loadAllRows((from, to) => supabase!.rpc('my_marketing_campaign_options', {}, { count: 'exact' }).order('id').range(from, to)).then(({ data }) => data) : Promise.resolve([]),
-        canReadCampaigns && supabase ? loadAllRows((from, to) => supabase!.rpc('my_marketing_campaign_post_counts', {}, { count: 'exact' }).order('campaign_id').range(from, to)).then(({ data }) => data) : Promise.resolve([]),
-        api('/api/integrations'), api('/api/campaign-types'),
+        canReadPosts && page === 'Feed' && supabase ? Promise.all(['facebook','instagram'].map(channel => postsService.list({ channel, limit: 25, preview: true }))).then(pages => ({ items: [...new globalThis.Map<string,Post>(pages.flatMap(p => p.items).map(p => [p.id,p] as [string,Post])).values()], total: pages.reduce((sum,p) => sum+p.items.length,0), summary: [] }))
+          : canReadPosts && page === 'Posts' ? postsService.list({ month: (view === 'calendar' ? month ?? startOfMonth() : month) ? `${(month ?? startOfMonth()).getFullYear()}-${String((month ?? startOfMonth()).getMonth()+1).padStart(2,'0')}-01` : '', campaign: campaignFilter, search: debouncedSearch, status: view === 'list' ? filter : 'all', offset: postPage*POST_PAGE_SIZE, summary: view === 'pivot', preview: view === 'list' || view === 'board' }) : Promise.resolve({ items: [], total: 0, summary: [] }),
+        canReadCampaigns ? campaignsService.list() : canUseCampaignOptions && supabase ? campaignsService.options() : Promise.resolve([]),
+        canReadCampaigns && supabase ? campaignsService.postCounts() : Promise.resolve([]),
+        integrationsService.list(), campaignsService.types(),
       ])
       if (sequence !== postLoadSequence.current) return
       const result = Array.isArray(p) ? { items: p, total: p.length, summary: [] } : p
@@ -321,7 +325,7 @@ export default function App() {
   useEffect(() => {
     let live = true
     setSelectedPost(null)
-    if (detailId) api(`/api/posts/${detailId}`).then(post => { if(live) setSelectedPost(post) }).catch(error => { if(live) handleError(error) })
+    if (detailId) postsService.detail(detailId).then(post => { if(live) setSelectedPost(post) }).catch(error => { if(live) handleError(error) })
     return () => { live = false }
   }, [detailId, posts])
   useEffect(() => {
@@ -439,7 +443,7 @@ export default function App() {
     setKey(trimmed); setKeyEntry(''); setError(''); setNotice('API key set for this browser session.')
   }
   async function disconnectKey() {
-    if (supabase) await supabase.auth.signOut()
+    await authService.signOut()
     localStorage.removeItem(KEY_STORAGE)
     sessionStorage.removeItem(KEY_STORAGE)
     setKey(''); setKeyEntry(''); setPosts([]); setCampaigns([]); setIntegrations([]); setNotice('')
@@ -451,9 +455,9 @@ export default function App() {
   const filteredPosts = posts
   const monthPosts = posts
 
-  async function patchPost(id: string, changes: Partial<Post>, message: string) {
+  async function patchPost(id: string, changes: PostPatch, message: string) {
     try {
-      await api(`/api/posts/${id}`, { method: 'PATCH', body: JSON.stringify(changes) })
+      await postsService.update(id, changes)
       setNotice(message); setError('')
       await load()
     } catch (e) { handleError(e) }
@@ -462,7 +466,7 @@ export default function App() {
   async function syncAll() {
     setBusy(true); setError('')
     try {
-      const r = await api('/api/integrations/sync', { method: 'POST' })
+      const r = await integrationsService.sync()
       const fb = r.facebook?.status === 'error' ? `Facebook error: ${r.facebook.detail || 'unknown error'}` : r.facebook?.status === 'not_connected' ? 'Facebook not connected' : `Facebook synced (${r.facebook.items || 0} new, ${r.facebook.fetched || 0} checked${r.facebook.metricsUnavailable ? `; metrics unavailable for ${r.facebook.metricsUnavailable}${r.facebook.metricsErrors?.[0] ? `: ${r.facebook.metricsErrors[0]}` : ''}` : ''})`
       const ig = r.instagram?.status === 'synced' ? `Instagram synced (${r.instagram.items} items)` : r.instagram?.status === 'not_connected' ? 'Instagram not connected' : `Instagram error: ${r.instagram?.detail || 'unknown error'}`
       if (r.facebook?.syncedAt) setIntegrations(items => items.map(item => item.provider === 'facebook' ? { ...item, last_synced_at: r.facebook.syncedAt } : item))
@@ -475,7 +479,7 @@ export default function App() {
 
   async function loadFacebookPages() {
     try {
-      const result = await api('/api/integrations/facebook/pages')
+      const result = await integrationsService.facebookPages()
       setFacebookPages(result.pages || [])
       if (result.connected_page_id) setSelectedFacebookPage(result.connected_page_id)
       else if (result.pages?.length) setSelectedFacebookPage(result.pages[0].id)
@@ -485,7 +489,7 @@ export default function App() {
   async function connectInstagram() {
     setBusy(true); setError('')
     try {
-      const result = await api('/api/integrations/instagram/oauth-url', { method: 'POST' })
+      const result = await integrationsService.connectInstagram()
       window.location.assign(result.url)
     } catch (e) { handleError(e); setBusy(false) }
   }
@@ -493,7 +497,7 @@ export default function App() {
   async function checkInstagramConnection() {
     setBusy(true); setError('')
     try {
-      const r = await api('/api/integrations/instagram/check', { method: 'POST' })
+      const r = await integrationsService.checkInstagram()
       setNotice(`Instagram connection verified for ${r.username ? '@' + r.username : r.account_id}.`)
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
@@ -503,7 +507,7 @@ export default function App() {
     if (!window.confirm('Disconnect the Instagram account saved through Connect Instagram?')) return
     setBusy(true); setError('')
     try {
-      const r = await api('/api/integrations/instagram/disconnect', { method: 'POST' })
+      const r = await integrationsService.disconnectInstagram()
       setNotice(`Instagram disconnected. ${r.posts_removed || 0} post(s) removed from the feed.`)
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
@@ -512,7 +516,7 @@ export default function App() {
   async function connectFacebook() {
     setBusy(true); setError('')
     try {
-      const result = await api('/api/integrations/facebook/oauth-url', { method: 'POST' })
+      const result = await integrationsService.connectFacebook()
       window.location.assign(result.url)
     } catch (e) { handleError(e); setBusy(false) }
   }
@@ -521,7 +525,7 @@ export default function App() {
     if (!selectedFacebookPage) return
     setBusy(true); setError('')
     try {
-      const result = await api('/api/integrations/facebook/select-page', { method: 'POST', body: JSON.stringify({ page_id: selectedFacebookPage }) })
+      const result = await integrationsService.selectFacebookPage(selectedFacebookPage)
       setNotice('Connected Facebook Page: ' + result.page_name)
       setIntegrations((items) => items.map((item) => item.provider === 'facebook' ? { ...item, status: 'connected', account_name: result.page_name, page_name: result.page_name, page_id: result.page_id, diagnostic_note: 'Facebook Page connection saved.' } : item))
       setFacebookPages([])
@@ -533,7 +537,7 @@ export default function App() {
     if (!window.confirm('Disconnect the Facebook Page saved through Connect Facebook?')) return
     setBusy(true); setError('')
     try {
-      await api('/api/integrations/facebook/disconnect', { method: 'POST' })
+      await integrationsService.disconnectFacebook()
       setNotice('Saved Facebook connection removed. To also revoke Impala Hub at Meta, remove the app under Facebook Settings > Business Integrations.')
       setFacebookPages([])
       await load()
@@ -543,7 +547,7 @@ export default function App() {
   async function checkFacebookConnection() {
     setBusy(true); setError('')
     try {
-      const r = await api('/api/integrations/facebook/check', { method: 'POST' })
+      const r = await integrationsService.checkFacebook()
       setNotice(`Facebook connection verified for ${r.page_name || r.page_id}.`)
       await load()
     } catch (e) { handleError(e) } finally { setBusy(false) }
@@ -555,7 +559,7 @@ export default function App() {
     if (!canMarketing(permission)) { setError('You do not have permission to save this post.'); return }
     setBusy(true); setError('')
     try {
-      const status = mode === 'draft' ? 'draft' : mode === 'schedule' ? 'scheduled' : 'draft'
+      const status = mode === 'schedule' ? 'scheduled' as const : 'draft' as const
       if (mode === 'schedule' && !isFuture(editor.publish_at)) {
         throw new Error('Choose a future date and time to schedule this post.')
       }
@@ -572,12 +576,12 @@ export default function App() {
         publish_at: editor.publish_at ? new Date(editor.publish_at).toISOString() : null,
       }
       let saved: Post
-      if (editor.id) saved = await api(`/api/posts/${editor.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
-      else saved = await api('/api/posts', { method: 'POST', body: JSON.stringify(payload) })
+      if (editor.id) saved = await postsService.update(editor.id, payload)
+      else saved = await postsService.create(payload)
       const facebookLive = integrations.some((i) => i.provider === 'facebook' && i.status === 'connected')
       if (mode === 'publish-now') {
         if (!facebookLive) throw new Error('Connect Facebook in Settings before publishing.')
-        await api(`/api/posts/${saved.id}/publish-now`, { method: 'POST' })
+        await postsService.publish(saved.id)
         setNotice('Publish requested. Check the post status for the confirmed Facebook result.')
       } else {
         setNotice(
@@ -599,9 +603,7 @@ export default function App() {
     try {
       const uploaded: Media[] = []
       for (const file of files) {
-        const fd = new FormData()
-        fd.append('file', file)
-        uploaded.push(await api('/api/media', { method: 'POST', body: fd }))
+        uploaded.push(await postsService.upload(file))
       }
       // Functional update: keeps anything typed while the upload was running.
       setEditor((e) => (e ? { ...e, media: [...(e.media || []), ...uploaded] } : e))
@@ -613,7 +615,7 @@ export default function App() {
     if (!campaignName.trim()) return
     try {
       const payload = { name: campaignName, objective: campaignObjective, stage: campaignStage, campaign_type: campaignType }
-      await api(editingCampaignId ? `/api/campaigns/${editingCampaignId}` : '/api/campaigns', { method: editingCampaignId ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
+      await (editingCampaignId ? campaignsService.update(editingCampaignId, payload) : campaignsService.create(payload))
       setCampaignName(''); setCampaignObjective(''); setEditingCampaignId(null); setCampaignModal(false); setNotice(editingCampaignId ? 'Campaign updated.' : 'Campaign created.')
       await load()
     } catch (e) { handleError(e) }
@@ -621,7 +623,7 @@ export default function App() {
   async function moveCampaign(campaignId: string, stage: 'new' | 'in_progress' | 'done') {
     if (!canMarketing('campaigns.change_status')) { setError('You do not have permission to change campaign status.'); return }
     try {
-      await api('/api/campaigns/' + campaignId, { method: 'PATCH', body: JSON.stringify({ stage }) })
+      await campaignsService.update(campaignId, { stage })
       setNotice('Campaign moved.')
       await load()
     } catch (e) { handleError(e) }
@@ -635,7 +637,7 @@ export default function App() {
     if ((campaignPostCounts[c.id] || 0) > 0) { setError('Campaigns can only be deleted when they contain no posts.'); return }
     if (!window.confirm(`Delete campaign "${c.name}"?`)) return
     try {
-      await api(`/api/campaigns/${c.id}`, { method: 'DELETE' })
+      await campaignsService.remove(c.id)
       setNotice('Campaign deleted.')
       await load()
     } catch (e) { handleError(e) }
@@ -646,7 +648,7 @@ export default function App() {
     if (!allowed) { setError('You do not have permission to delete this post.'); return }
     if (!confirm('Delete this post?')) return
     try {
-      await api(`/api/posts/${id}`, { method: 'DELETE' })
+      await postsService.remove(id)
       if (detailId === id) { setDetailId(null); setPage('Posts') }
       await load(); setNotice('Post deleted.')
     } catch (e) { handleError(e) }
@@ -671,7 +673,7 @@ export default function App() {
     const allowed = page === 'Feed' ? canMarketing('feed.edit') : canMarketing('posts.edit')
     if (!allowed) { setError('You do not have permission to edit this post.'); return }
     if (EDITABLE.includes(p.status)) {
-      try { const full = await api(`/api/posts/${p.id}`); setEditor(full); setError('') } catch(e) { handleError(e) }
+      try { const full = await postsService.detail(p.id); setEditor(full); setError('') } catch(e) { handleError(e) }
     } else openPost(p.id)
   }
 
@@ -679,8 +681,8 @@ export default function App() {
     const allowed = page === 'Feed' ? canMarketing('feed.assign_campaign') : canMarketing('posts.assign_campaign')
     if (!allowed) { setError('You do not have permission to assign this post to a campaign.'); return }
     try {
-      await api(`/api/posts/${postId}`, { method: 'PATCH', body: JSON.stringify({ campaign_id: campaignId }) })
-      setNotice('Campaign updated.'); setError(''); if (detailId === postId) setSelectedPost(await api(`/api/posts/${postId}`))
+      await postsService.update(postId, { campaign_id: campaignId })
+      setNotice('Campaign updated.'); setError(''); if (detailId === postId) setSelectedPost(await postsService.detail(postId))
       await load()
     } catch (e) { handleError(e) }
   }
@@ -761,7 +763,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
             {key && <div className="communication-buttons"><button className="communication-button" aria-label="Open chat" title="Chat" onClick={() => setChatOpenRequest((value) => value + 1)}><MessageCircle size={17} /></button><NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />{isAdministrator && <button className="communication-button" aria-label="Open settings" title="Settings" onClick={() => setPage('Admin Settings')}><Settings size={17} /></button>}</div>}
             <div className="connection-dot" /> <span>Local workspace</span>
           <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}><span className="account-full">{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</span><span className="account-mobile">{profile.sales_code || profile.first_name || 'Account'}</span></button>
-            {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
+            {key && <button className="text-button" onClick={() => { void disconnectKey() }}>Log out</button>}
           </div>
         )}
         {!isPlatformPage && (
@@ -794,7 +796,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
               {key && <div className="communication-buttons"><button className="communication-button" aria-label="Open chat" title="Chat" onClick={() => setChatOpenRequest((value) => value + 1)}><MessageCircle size={17} /></button><NotificationCentre enabled channels={notificationChannels} onNavigate={openNotificationTarget} onError={setError} />{isAdministrator && <button className="communication-button" aria-label="Open settings" title="Settings" onClick={() => setPage('Admin Settings')}><Settings size={17} /></button>}</div>}
               <div className="connection-dot" /> <span>Local workspace</span>
               <button className="account-link" onClick={() => { setPage('Account'); void loadProfile() }}><span className="account-full">{profile.sales_code ? `${profile.sales_code} - ` : ''}{profile.first_name || profile.email || 'My account'}{integrations.some((i) => i.status === 'connected') ? ' · Connected' : ''}</span><span className="account-mobile">{profile.sales_code || profile.first_name || 'Account'}</span></button>
-              {key && <button className="text-button" onClick={() => { void api('/api/sales-desk/auth/logout', { method: 'POST' }).catch(() => undefined); void disconnectKey() }}>Log out</button>}
+              {key && <button className="text-button" onClick={() => { void disconnectKey() }}>Log out</button>}
             </div>
           </>
         )}
@@ -927,15 +929,15 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
             disconnectInstagram={disconnectInstagram}
             campaignTypes={campaignTypes}
             addCampaignType={async (name) => {
-              try { await api('/api/campaign-types', { method: 'POST', body: JSON.stringify({ name }) }); await load(); setNotice('Campaign type added.'); return true }
+              try { await campaignsService.addType(name); await load(); setNotice('Campaign type added.'); return true }
               catch (e) { handleError(e); return false }
             }}
             deleteCampaignType={async (name) => {
-              try { await api('/api/campaign-types/' + encodeURIComponent(name), { method: 'DELETE' }); await load(); setNotice('Campaign type removed.'); return true }
+              try { await campaignsService.removeType(name); await load(); setNotice('Campaign type removed.'); return true }
               catch (e) { handleError(e); return false }
             }}
             reorderCampaignTypes={async (names) => {
-              try { await api('/api/campaign-types/order', { method: 'PUT', body: JSON.stringify({ names }) }); await load(); setNotice('Campaign types reordered.'); return true }
+              try { await campaignsService.reorderTypes(names); await load(); setNotice('Campaign types reordered.'); return true }
               catch (e) { handleError(e); return false }
             }}
             setNotice={setNotice}
@@ -1166,7 +1168,7 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
                     {i.provider === 'instagram' && i.token_type && <p><strong>Token type:</strong> {i.token_type}</p>}
                     {i.provider === 'instagram' && i.expires_at && <p><strong>Token expires:</strong> {new Date(i.expires_at * 1000).toLocaleString()}</p>}
                     {i.provider === 'instagram' && i.data_access_expires_at && <p><strong>Data access expires:</strong> {new Date(i.data_access_expires_at * 1000).toLocaleString()}</p>}
-                    {i.provider === 'instagram' && i.granted_permissions?.length > 0 && <p><strong>Granted permissions:</strong> {i.granted_permissions.join(', ')}</p>}
+                    {i.provider === 'instagram' && !!i.granted_permissions?.length && <p><strong>Granted permissions:</strong> {i.granted_permissions?.join(', ')}</p>}
                     {i.provider === 'instagram' && i.connection_source && <p><strong>Connection method:</strong> {i.connection_source === 'oauth' ? 'Meta OAuth' : i.connection_source}</p>}
                     {i.provider === 'facebook' && i.last_checked_at && <p><strong>Last checked:</strong> {new Date(i.last_checked_at).toLocaleString()}</p>}
                     {i.provider === 'facebook' && i.last_success_at && <p><strong>Last successful check:</strong> {new Date(i.last_success_at).toLocaleString()}</p>}
@@ -1174,8 +1176,8 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
                     {i.provider === 'facebook' && i.expires_at && <p><strong>Token expires:</strong> {new Date(i.expires_at * 1000).toLocaleString()}</p>}
                     {i.provider === 'facebook' && i.data_access_expires_at && <p><strong>Data access expires:</strong> {new Date(i.data_access_expires_at * 1000).toLocaleString()}</p>}
                     {i.provider === 'facebook' && i.status === 'connected' && !i.expires_at && <p>Page token does not expire. Reconnect when data access expires.</p>}
-                    {i.provider === 'facebook' && i.granted_permissions?.length > 0 && <p><strong>Granted permissions:</strong> {i.granted_permissions.join(', ')}</p>}
-                    {i.provider === 'facebook' && i.missing_permissions?.length > 0 && <p><strong>Missing permissions:</strong> {i.missing_permissions.join(', ')}</p>}
+                    {i.provider === 'facebook' && !!i.granted_permissions?.length && <p><strong>Granted permissions:</strong> {i.granted_permissions?.join(', ')}</p>}
+                    {i.provider === 'facebook' && !!i.missing_permissions?.length && <p><strong>Missing permissions:</strong> {i.missing_permissions?.join(', ')}</p>}
                     {i.provider === 'facebook' && i.diagnostic_note && <p>{i.diagnostic_note}</p>}
                     {i.provider === 'facebook' && i.token_warning && <p className="token-warning"><strong>Token warning:</strong> {i.token_warning}</p>}
                     {i.provider === 'facebook' && i.connection_source && <p><strong>Connection method:</strong> {i.connection_source === 'oauth' ? 'Meta OAuth' : 'Backend environment token'}</p>}
@@ -1212,13 +1214,13 @@ const isSalesDeskPage = page === 'RFQs' || page === 'RFQ Roadmap'
               onDragStart={setDraggedCampaignType}
               onAdd={async () => {
                 if (!newCampaignType.trim()) return
-                try { await api('/api/campaign-types', { method: 'POST', body: JSON.stringify({ name: newCampaignType }) }); setNewCampaignType(''); await load() } catch (e) { handleError(e) }
+                try { await campaignsService.addType(newCampaignType); setNewCampaignType(''); await load() } catch (e) { handleError(e) }
               }}
               onDelete={async (name) => {
-                try { await api('/api/campaign-types/' + encodeURIComponent(name), { method: 'DELETE' }); await load() } catch (e) { handleError(e) }
+                try { await campaignsService.removeType(name); await load() } catch (e) { handleError(e) }
               }}
               onReorder={async (names) => {
-                try { await api('/api/campaign-types/order', { method: 'PUT', body: JSON.stringify({ names }) }); await load() } catch (e) { handleError(e) }
+                try { await campaignsService.reorderTypes(names); await load() } catch (e) { handleError(e) }
               }}
             />}
             <div className="security-note">
@@ -1363,7 +1365,7 @@ function CampaignTypeConfiguration({ types, draft, onDraftChange, dragged, onDra
   </div>
 }
 
-function PostPivot({ summary, campaignTypes }: { summary: any[]; campaignTypes: string[] }) {
+function PostPivot({ summary, campaignTypes }: { summary: PostSummary[]; campaignTypes: string[] }) {
   const [selectedType, setSelectedType] = useState('all')
   const rows = summary.filter(row => selectedType === 'all' || row.campaign_type === selectedType)
   const totals = rows.reduce((a, r) => ({ label: 'Total', posts: a.posts + Number(r.posts), likes: a.likes + Number(r.likes), comments: a.comments + Number(r.comments), shares: a.shares + Number(r.shares), clicks: a.clicks + Number(r.clicks) }), { label: 'Total', posts: 0, likes: 0, comments: 0, shares: 0, clicks: 0 })

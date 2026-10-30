@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { describeFieldChange } from './returnsTypes'
+import { createReturnsService, type Claim, type ClaimForm, type ClaimAttachment, type ClaimField } from './returnsService'
+import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, Download, Eye, Plus, Trash2, X } from "lucide-react";
-import { API, api, supabase, supabaseConfigured } from "./lib";
+import { supabaseConfigured } from "./supabase";
 import { CLAIM_FILE_ACCEPT, validateClaimFiles } from './returnsAttachments';
 import './returnsclaims.css';
 import ReturnSupplierWorkflow from './ReturnSupplierWorkflow';
@@ -21,51 +23,7 @@ type Props = {
   setNotice: (m: string) => void;
   setError: (m: string) => void;
 };
-async function req<T>(
-  token: string,
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  if (supabaseConfigured) return api(path, init) as Promise<T>;
-  const h = new Headers(init?.headers || {});
-  h.set("Authorization", `Bearer ${token}`);
-  if (init?.body && !(init.body instanceof FormData))
-    h.set("Content-Type", "application/json");
-  let r;
-  try {
-    r = await fetch(API + path, { ...init, headers: h });
-  } catch {
-    throw new Error(`Cannot reach the Impala Hub API at ${API}.`);
-  }
-  const b = await r.json().catch(() => ({}));
-  if (!r.ok)
-    throw new Error(
-      typeof b.detail === "string" ? b.detail : JSON.stringify(b.detail || b),
-    );
-  return b;
-}
-export default function ReturnsClaims({ token, setNotice, setError }: Props) {
-  const [rows, setRows] = useState<any[]>([]),
-    [panel, setPanel] = useState(false),
-    [readOnly, setReadOnly] = useState(false),
-    [form, setForm] = useState<any>({}),
-    [search, setSearch] = useState(""),
-    [statusFilter, setStatusFilter] = useState(""),
-    [outcomeFilter, setOutcomeFilter] = useState(""),
-    [companyFilter, setCompanyFilter] = useState(""),
-    [reasonFilter, setReasonFilter] = useState(""),
-    [dateFrom, setDateFrom] = useState(''),
-    [dateTo, setDateTo] = useState(''),
-    [slaFilter, setSlaFilter] = useState(''),
-    [today, setToday] = useState(johannesburgDate()),
-    [originalRecord, setOriginalRecord] = useState<Record<string, any> | null>(null),
-    [exporting, setExporting] = useState(false),
-    [busy, setBusy] = useState(false),
-    [detailLoading, setDetailLoading] = useState(false),
-    [preview, setPreview] = useState<{ url: string; name: string; type: string } | null>(null);
-  const statusReasonRequired = Boolean(originalRecord && form.status !== originalRecord.status &&
-    (form.status === 'Rejected' || ['Completed','Rejected'].includes(originalRecord.status)));
-  const blank = () => ({
+const blank = (): ClaimForm => ({
     date: johannesburgDate(),
     company: "Warehouse",
     rfc_book_number: "",
@@ -89,9 +47,32 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     sla_days: 7,
     status_change_reason: '',
   });
+export default function ReturnsClaims({ token, setNotice, setError }: Props) {
+  const service = useMemo(() => createReturnsService(token), [token]);
+  const [rows, setRows] = useState<Claim[]>([]),
+    [panel, setPanel] = useState(false),
+    [readOnly, setReadOnly] = useState(false),
+    [form, setForm] = useState<ClaimForm>(blank),
+    [search, setSearch] = useState(""),
+    [statusFilter, setStatusFilter] = useState(""),
+    [outcomeFilter, setOutcomeFilter] = useState(""),
+    [companyFilter, setCompanyFilter] = useState(""),
+    [reasonFilter, setReasonFilter] = useState(""),
+    [dateFrom, setDateFrom] = useState(''),
+    [dateTo, setDateTo] = useState(''),
+    [slaFilter, setSlaFilter] = useState(''),
+    [today, setToday] = useState(johannesburgDate()),
+    [originalRecord, setOriginalRecord] = useState<Claim | null>(null),
+    [exporting, setExporting] = useState(false),
+    [busy, setBusy] = useState(false),
+    [detailLoading, setDetailLoading] = useState(false),
+    [preview, setPreview] = useState<{ url: string; name: string; type: string } | null>(null);
+  const statusReasonRequired = Boolean(originalRecord && form.status !== originalRecord.status &&
+    (form.status === 'Rejected' || ['Completed','Rejected'].includes(originalRecord.status)));
+
   const load = async () => {
     try {
-      setRows(await req<any[]>(token, "/api/returns-claims"));
+      setRows(await service.list());
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -104,7 +85,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     const timer = window.setInterval(() => setToday(johannesburgDate()), 60000);
     return () => window.clearInterval(timer);
   }, []);
-  const open = async (row?: any) => {
+  const open = async (row?: Claim) => {
     setReadOnly(false);
     setPreview(null);
     setForm(row ? { ...row } : blank());
@@ -113,7 +94,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     if (row?.id && supabaseConfigured) {
       setDetailLoading(true);
       try {
-        const loaded = await req<any>(token, `/api/returns-claims/${row.id}`);
+        const loaded = await service.detail(row.id);
         setForm(loaded);
         setOriginalRecord(loaded);
       } catch (e) {
@@ -124,21 +105,20 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
       }
     } else setForm(row ? { ...row } : blank());
   };
-  const openStored = async (a: any, download = false) => {
-    if (!supabase || !a.storage_path) return;
+  const openStored = async (a: ClaimAttachment, download = false) => {
+    if (!a.storage_path) return;
     const imageWindow = !download && a.content_type?.startsWith('image/') ? window.open('about:blank', '_blank') : null;
     if (imageWindow) imageWindow.opener = null;
     try {
-      const result = await supabase.storage.from('returns-claim-attachments').createSignedUrl(a.storage_path, 300, download ? { download: a.original_name } : undefined);
-      if (result.error || !result.data?.signedUrl) throw new Error(result.error?.message || 'Unable to open attachment.');
+      const signedUrl = await service.attachmentUrl(a, download);
       if (imageWindow) {
-        imageWindow.location.href = result.data.signedUrl;
+        imageWindow.location.href = signedUrl;
       } else if (!download && a.content_type?.startsWith('image/')) {
         throw new Error('Allow pop-ups for this site to open images in a new tab.');
       } else if (!download) {
-        setPreview({ url: result.data.signedUrl, name: a.original_name, type: a.content_type });
+        setPreview({ url: signedUrl, name: a.original_name, type: a.content_type });
       } else {
-        const response = await fetch(result.data.signedUrl);
+        const response = await fetch(signedUrl);
         if (!response.ok) throw new Error('Unable to download attachment.');
         const url = URL.createObjectURL(await response.blob());
         const link = document.createElement('a');
@@ -151,13 +131,13 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
       setError((e as Error).message);
     }
   };
-  const deleteStored = async (attachment: any) => {
+  const deleteStored = async (attachment: ClaimAttachment) => {
     if (!window.confirm(`Permanently delete ${attachment.original_name}? This removes the file and its database entry. The audit history is retained.`)) return;
     setBusy(true);
     try {
-      await req(token, `/api/returns-claims/${form.id}/attachments/${attachment.id}`, { method: 'DELETE' });
-      const updated = await req<any>(token, `/api/returns-claims/${form.id}`);
-      setForm((current: any) => ({ ...current, stored_attachments: updated.stored_attachments, audit_history: updated.audit_history }));
+      await service.deleteAttachment(form.id!, attachment.id);
+      const updated = await service.detail(form.id!);
+      setForm((current) => ({ ...current, stored_attachments: updated.stored_attachments, audit_history: updated.audit_history }));
       setPreview(null);
       setNotice('Attachment permanently deleted.');
     } catch (e) { setError((e as Error).message); }
@@ -175,7 +155,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
         });
         return { name: file.name, size: file.size, type: file.type, data_url };
       }));
-      setForm((current: any) => ({ ...current, attachments: [...(current.attachments || []), ...items] }));
+      setForm((current) => ({ ...current, attachments: [...(current.attachments || []), ...items] }));
     } catch (e) { setError((e as Error).message); }
   };
   const save = async () => {
@@ -183,8 +163,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     try {
       const editing = Boolean(form.id);
       const files = (form.attachments || [])
-        .filter((a: any) => a.file)
-        .map((a: any) => a.file);
+        .flatMap(a => a.file ? [a.file] : []);
       const body = { ...form };
       if (supabaseConfigured) {
         validateClaimStatus(originalRecord, form);
@@ -194,25 +173,16 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
         delete body.audit_history;
         validateClaimFiles(files, (form.stored_attachments || []).length);
       }
-      const saved: any = await req(
-        token,
-        editing ? `/api/returns-claims/${form.id}` : "/api/returns-claims",
-        { method: editing ? "PATCH" : "POST", body: JSON.stringify(body) },
-      );
+      const saved = form.id ? await service.update(form.id, body) : await service.create(body);
       if (supabaseConfigured) {
         setOriginalRecord(saved);
         // Retain the saved ID and remove each successful file, making retries safe.
-        setForm((current: any) => ({ ...current, id: saved.id, claim_no: saved.claim_no }));
+        setForm((current) => ({ ...current, id: saved.id, claim_no: saved.claim_no }));
         for (const file of files) {
-          const fd = new FormData();
-          fd.append("file", file);
-          const attachment: any = await req(token, `/api/returns-claims/${saved.id}/attachments`, {
-            method: "POST",
-            body: fd,
-          });
-          setForm((current: any) => ({ ...current,
+          const attachment = await service.uploadAttachment(saved.id, file);
+          setForm((current) => ({ ...current,
             stored_attachments: [...(current.stored_attachments || []), attachment],
-            attachments: (current.attachments || []).filter((item: any) => item.file !== file),
+            attachments: (current.attachments || []).filter((item) => item.file !== file),
           }));
         }
       }
@@ -225,10 +195,10 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
       setBusy(false);
     }
   };
-  const del = async (row: any) => {
+  const del = async (row: Claim) => {
     if (!confirm(`Delete ${row.claim_no || row.id}?`)) return;
     try {
-      await req(token, `/api/returns-claims/${row.id}`, { method: "DELETE" });
+      await service.archive(row.id);
       await load();
       setNotice("Record deleted.");
     } catch (e) {
@@ -269,7 +239,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     } catch (e) { setError((e as Error).message); }
     finally { setExporting(false); }
   };
-  const field = (n: string, l: string, type = "text", required = false) => (
+  const field = (n: ClaimField, l: string, type = "text", required = false) => (
     <label className="editor-field">
       <span>
         {l}
@@ -510,7 +480,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                     }}
                   />
                 </label>
-                {(form.stored_attachments || []).map((a: any) => (
+                {(form.stored_attachments || []).map((a) => (
                   <div className="attachment-row" key={a.id}>
                     <span>{a.original_name}</span>
                     <small>{Math.round(a.size / 1024)} KB · {a.uploader_name || 'Employee'} · {new Date(a.created_at).toLocaleString()}</small>
@@ -524,7 +494,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                   {preview.type === 'application/pdf' ? <iframe title={`Preview of ${preview.name}`} src={preview.url} /> : <img src={preview.url} alt={preview.name} />}
                   <p className="hint">If the preview expires or your browser cannot display it, reopen it or use Download.</p>
                 </div>}
-                {(form.attachments || []).map((a: any, i: number) => (
+                {(form.attachments || []).map((a, i) => (
                   <div className="attachment-row" key={a.name + i}>
                     {a.data_url ? <a href={a.data_url} download={a.name}>{a.name}</a> : <span>{a.name}</span>}
                     <small>
@@ -538,8 +508,8 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                       onClick={() =>
                         setForm({
                           ...form,
-                          attachments: form.attachments.filter(
-                            (_: any, j: number) => j !== i,
+                          attachments: (form.attachments || []).filter(
+                            (_, j) => j !== i,
                           ),
                         })
                       }
@@ -614,14 +584,14 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                   <p className="hint">Default: 7 calendar days from the claim date. Warning in the final 2 days. Closed-claim age stops at closure. Reopen closed claims to In Progress and record a reason.</p>
                 </>}
               </div>
-              {supabaseConfigured && <ReturnSupplierWorkflow form={form} disabled={busy || detailLoading || readOnly} onChange={changes => setForm((current: any) => ({ ...current, ...changes }))} />}
+              {supabaseConfigured && <ReturnSupplierWorkflow form={form} disabled={busy || detailLoading || readOnly} onChange={changes => setForm((current) => ({ ...current, ...changes }))} />}
               {form.id && <div className="editor-section sd-history">
                 <h3>Record history</h3>
-                {detailLoading ? <p>Loading history…</p> : !(form.audit_history || []).length ? <p>No history recorded.</p> : form.audit_history.map((h: any) => <p key={h.id}>
+                {detailLoading ? <p>Loading history…</p> : !(form.audit_history || []).length ? <p>No history recorded.</p> : (form.audit_history || []).map((h) => <p key={h.id}>
                   <b>{new Date(h.created_at).toLocaleString()}</b> · {h.actor_name || 'Former employee'} · {h.action.replaceAll('_', ' ')}
                   {h.changes?.file && <span> · {h.changes.file}</span>}
-                  {h.changes?.changed?.length > 0 && <span> · Fields: {h.changes.changed.map((field: string) => field.replaceAll('_', ' ')).join(', ')}</span>}
-                  {h.action === 'supplier_workflow_updated' && <span> · {Object.entries(h.changes || {}).map(([field, change]: [string, any]) => `${field.replaceAll('_', ' ')}: ${change.from ?? '—'} → ${change.to ?? '—'}`).join('; ')}</span>}
+                  {!!h.changes?.changed?.length && <span> · Fields: {h.changes.changed?.map((field: string) => field.replaceAll('_', ' ')).join(', ')}</span>}
+                  {h.action === 'supplier_workflow_updated' && <span> · {Object.entries(h.changes || {}).map(([field, change]) => `${field.replaceAll('_', ' ')}: ${describeFieldChange(change)}`).join('; ')}</span>}
                   {(h.action === 'status_changed' || h.action === 'sla_changed') && <span> · {h.changes.from} → {h.changes.to}{h.changes.reason ? ` · ${h.changes.reason}` : ''}</span>}
                 </p>)}
               </div>}

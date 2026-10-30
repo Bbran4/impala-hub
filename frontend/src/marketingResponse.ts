@@ -1,9 +1,9 @@
 export async function readMarketingResponse(response: Response, action: string) {
   const raw = await response.text()
-  let result: any
+  let result: unknown
   try { result = JSON.parse(raw) } catch { /* Deployment errors can be plain text or HTML. */ }
   if (!response.ok) {
-    if (typeof result?.detail === 'string') throw new Error(result.detail)
+    if (result && typeof result === 'object' && 'detail' in result && typeof result.detail === 'string') throw new Error(result.detail)
     const incident = response.headers.get('x-vercel-id')
     const reason = raw.includes('FUNCTION_INVOCATION_FAILED') ? 'The server function failed to start.'
       : raw.includes('FUNCTION_INVOCATION_TIMEOUT') || response.status === 504 ? 'The server request timed out.'

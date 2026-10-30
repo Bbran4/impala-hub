@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { createRfqService, type RfqService, type Rfq, type RfqCreate, type RfqValues, type RfqConfig, type SalesDeskUser, type RfqDashboard, type RfqAnalytics, type RfqAudit, type RfqAttachment, type SalesCode, type ConfigOption, type ConfigKind, type ConfigPatch } from './rfqService'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BarChart3, ClipboardList, Download, Eye, GripVertical, Megaphone, Paperclip, Percent, Plus, Settings, Tags, Trash2, Users, X } from 'lucide-react'
-import { API, api, supabase, supabaseConfigured } from './lib'
+import { supabaseConfigured } from './supabase'
 import CrossReference from './CrossReference'
 import './salesdesk.css'
 
@@ -26,13 +27,6 @@ const GP_COLORS = [
 
 
 
-function describeDetail(detail: unknown, status: number): string {
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((d: any) => d?.msg || 'Invalid value').join('; ')
-  return `Sales Desk request failed (${status})`
-}
-
-type Req = (path: string, init?: RequestInit) => Promise<any>
 type Props = {
   page: string
   embedded?: boolean
@@ -88,7 +82,7 @@ type Form = {
   query_information: string; received_at: string; claimed_at: string; sales_code_id: string
   status_id: string; remarks: string; document_number: string
 }
-const formFrom = (r: any): Form => ({
+const formFrom = (r: Rfq | null): Form => ({
   media_platform_id: r?.media_platform_id || '', customer_name: r?.customer_name || '',
   contact_number: r?.contact_number || '', email_address: r?.email_address || '',
   query_information: r?.query_information || '', received_at: toLocalInput(r?.received_at),
@@ -105,12 +99,12 @@ const shorten = (v: unknown) => {
   const text = v == null || v === '' ? '—' : String(v)
   return text.length > 60 ? text.slice(0, 57) + '…' : text
 }
-function describeHistory(h: any): string {
+function describeHistory(h: RfqAudit): string {
   const c = h.changes || {}
   if (h.action === 'updated' && Array.isArray(c.changed) && c.before && c.after) {
     return c.changed.map((key: string) => {
       const field = key === 'status_id' ? 'status' : key === 'media_platform_id' ? 'media_platform' : key
-      return `${CHANGE_LABELS[field] || field.replaceAll('_',' ')}: ${shorten(c.before[field])} -> ${shorten(c.after[field])}`
+      return `${CHANGE_LABELS[field] || field.replaceAll('_',' ')}: ${shorten(c.before?.[field])} -> ${shorten(c.after?.[field])}`
     }).join(' | ')
   }
   if (h.action === 'invoice_copy_created') return `Invoice copy created: ${c.to_rfq_no}`
@@ -124,10 +118,11 @@ function describeHistory(h: any): string {
     case 'attachment_added': return `Attachment added: ${c.file}`
     case 'attachment_deleted': return `Attachment deleted: ${c.file}`
     case 'updated':
-      return Object.entries(c).map(([k, v]: [string, any]) => {
+      return Object.entries(c).map(([k, v]) => {
         const stamp = k === 'received_at' || k === 'claimed_at'
         const show = (x: unknown) => (stamp && x ? fmtDate(String(x)) : shorten(x))
-        return `${CHANGE_LABELS[k] || k}: ${show(v.from)} → ${show(v.to)}`
+        const change = v && typeof v === 'object' ? v as { from?: unknown; to?: unknown } : {}
+        return `${CHANGE_LABELS[k] || k}: ${show(change.from)} → ${show(change.to)}`
       }).join(' · ')
     default: return h.action
   }
@@ -135,12 +130,12 @@ function describeHistory(h: any): string {
 
 // ---------------------------------------------------------------------------------------------
 // The RFQ side panel. Used for both "New RFQ" and viewing/editing an existing RFQ.
-function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChanged, setNotice, setError }: {
-  mode: 'create' | 'edit'; rfqId?: string; config: any; user: any; token: string; request: Req
+function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChanged, setNotice, setError }: {
+  mode: 'create' | 'edit'; rfqId?: string; config: RfqConfig; user: SalesDeskUser; token: string; service: RfqService
   onClose: () => void; onChanged: () => Promise<void>; setNotice: (m: string) => void; setError: (m: string) => void
 }) {
   const isSales = user?.role === 'salesperson'
-  const [rfq, setRfq] = useState<any>(null)
+  const [rfq, setRfq] = useState<Rfq | null>(null)
   const [initial, setInitial] = useState<Form>(() => ({ ...formFrom(null), received_at: toLocalInput(new Date().toISOString()) }))
   const [form, setForm] = useState<Form>(initial)
   const [files, setFiles] = useState<File[]>([])
@@ -150,16 +145,16 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
   const load = useCallback(async () => {
     if (mode !== 'edit' || !rfqId) return
     try {
-      const detail = await request(`/api/sales-desk/rfqs/${rfqId}`)
+      const detail = await service.detail(rfqId!)
       setRfq(detail); const f = formFrom(detail); setInitial(f); setForm(f)
     } catch (e) { setError((e as Error).message); onClose() } finally { setLoading(false) }
-  }, [mode, rfqId, request, setError, onClose])
+  }, [mode, rfqId, service, setError, onClose])
   useEffect(() => { void load() }, [load])
 
   // New RFQ: default to the first active media platform.
   useEffect(() => {
     if (mode !== 'create') return
-    const first = config.media_platforms.find((m: any) => m.is_active)?.id || ''
+    const first = config.media_platforms.find((m) => m.is_active)?.id || ''
     setInitial((i) => ({ ...i, media_platform_id: first })); setForm((f) => ({ ...f, media_platform_id: f.media_platform_id || first }))
   }, [mode, config.media_platforms])
 
@@ -179,8 +174,8 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
   }, [requestClose])
 
   const set = (changes: Partial<Form>) => setForm((f) => ({ ...f, ...changes }))
-  const newStatusId = config.statuses.find((s: any) => s.name.toLowerCase() === 'new' && s.is_active)?.id
-  const unclaimedId = config.statuses.find((s: any) => s.name.toLowerCase() === 'unclaimed')?.id
+  const newStatusId = config.statuses.find((s) => s.name.toLowerCase() === 'new' && s.is_active)?.id
+  const unclaimedId = config.statuses.find((s) => s.name.toLowerCase() === 'unclaimed')?.id
   function chooseSalesCode(id: string) {
     const changes: Partial<Form> = { sales_code_id: id }
     if (!id) changes.claimed_at = '' // no code, no claimed date
@@ -189,12 +184,11 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
   }
 
   async function uploadAll(id: string, list: File[]) {
-    let latest: any = null; const failed: string[] = []
+    let latest: Rfq | null = null; const failed: string[] = []
     for (const file of list) {
       if (file.size > 15 * 1024 * 1024) { failed.push(`${file.name}: maximum file size is 15 MB`); continue }
       if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(file.type)) { failed.push(`${file.name}: unsupported file type`); continue }
-      const fd = new FormData(); fd.append('file', file)
-      try { latest = await request(`/api/sales-desk/rfqs/${id}/attachments`, { method: 'POST', body: fd }) }
+      try { latest = await service.uploadAttachment(id, file) }
       catch (e) { failed.push(`${file.name}: ${(e as Error).message}`) }
     }
     return { latest, failed }
@@ -207,7 +201,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
       if (!form.received_at) throw new Error('Enter the received date.')
       if (mode === 'create') {
         if (!form.media_platform_id) throw new Error('Choose a media platform.')
-        const body: any = {
+        const body: RfqCreate = {
           media_platform_id: form.media_platform_id, customer_name: form.customer_name, contact_number: form.contact_number,
           email_address: form.email_address, query_information: form.query_information, remarks: form.remarks,
           document_number: form.document_number, received_at: toIso(form.received_at),
@@ -215,7 +209,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
         if (form.status_id) body.status_id = form.status_id
         if (form.sales_code_id) body.sales_code_id = form.sales_code_id
         if (form.claimed_at) body.claimed_at = toIso(form.claimed_at)
-        const created = await request('/api/sales-desk/rfqs', { method: 'POST', body: JSON.stringify(body) })
+        const created = await service.create(body)
         const { failed } = await uploadAll(created.id, files)
         await onChanged()
         if (failed.length) setError(`RFQ ${created.rfq_no} was created, but some files were not attached: ${failed.join('; ')}`)
@@ -224,7 +218,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
         return
       }
       // Edit: send only what changed, so an untouched sales code or claimed date is never rewritten.
-      const body: any = {}
+      const body: Partial<RfqValues> = {}
       for (const key of Object.keys(form) as (keyof Form)[]) {
         if (form[key] === initial[key]) continue
         if (isSales && !SALESPERSON_KEYS.includes(key)) continue
@@ -234,7 +228,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
         else body[key] = form[key]
       }
       if (!Object.keys(body).length) { setNotice('There are no changes to save.'); return }
-      const updated = await request(`/api/sales-desk/rfqs/${rfqId}`, { method: 'PATCH', body: JSON.stringify(body) })
+      const updated = await service.update(rfqId!, body)
       setRfq(updated); const f = formFrom(updated); setInitial(f); setForm(f)
       setNotice('RFQ changes saved.')
       await onChanged()
@@ -256,31 +250,22 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
     } finally { setBusy(false) }
   }
 
-  async function openAttachment(att: any, inline: boolean) {
+  async function openAttachment(att: RfqAttachment, inline: boolean) {
     const viewer = inline ? window.open('about:blank', '_blank') : null // opened first so the browser allows it
     try {
-      if (supabaseConfigured && supabase && att.storage_path) {
-        const signed = await supabase.storage.from('sales-desk-attachments').createSignedUrl(att.storage_path, 300)
-        if (signed.error || !signed.data?.signedUrl) throw new Error(signed.error?.message || 'Could not create a file link.')
-        if (viewer) viewer.location.href = signed.data.signedUrl
-        else { const a = document.createElement('a'); a.href = signed.data.signedUrl; a.download = att.original_name; document.body.appendChild(a); a.click(); a.remove() }
-        return
-      }
-      const res = await fetch(`${API}/api/sales-desk/rfqs/${rfqId}/attachments/${att.id}?inline=${inline}`, { headers: { Authorization: `Bearer ${token}` } })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `Could not open the file (${res.status})`)
-      const url = URL.createObjectURL(await res.blob())
+      const { url, temporary } = await service.attachmentUrl(rfqId!, att, inline)
       if (viewer) viewer.location.href = url
       else { const a = document.createElement('a'); a.href = url; a.download = att.original_name; document.body.appendChild(a); a.click(); a.remove() }
-      setTimeout(() => URL.revokeObjectURL(url), 120000)
+      if (temporary) setTimeout(() => URL.revokeObjectURL(url), 120000)
     } catch (e) { viewer?.close(); setError((e as Error).message) }
   }
 
-  async function deleteAttachment(att: any) {
+  async function deleteAttachment(att: RfqAttachment) {
     if (!window.confirm(`Permanently delete ${att.original_name}? This removes the file and its database entry. The audit history is retained.`)) return
     setBusy(true); setError('')
     try {
-      await request(`/api/sales-desk/rfqs/${rfqId}/attachments/${att.id}`, { method: 'DELETE' })
-      const updated = await request(`/api/sales-desk/rfqs/${rfqId}`)
+      await service.deleteAttachment(rfqId!, att.id)
+      const updated = await service.detail(rfqId!)
       setRfq(updated)
       await onChanged()
       setNotice('Attachment permanently deleted.')
@@ -291,7 +276,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
   async function claim() {
     setBusy(true); setError('')
     try {
-      const updated = await request(`/api/sales-desk/rfqs/${rfqId}/claim`, { method: 'POST' })
+      const updated = await service.claim(rfqId!)
       setRfq(updated); const f = formFrom(updated); setInitial(f); setForm(f)
       setNotice(`Claimed ${updated.rfq_no} for your sales code.`)
       await onChanged()
@@ -301,16 +286,16 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
   async function sendForApproval() {
     setBusy(true); setError('')
     try {
-      await request(`/api/sales-desk/rfqs/${rfqId}/send-for-approval`, { method: 'POST' })
+      await service.sendForApproval(rfqId!)
       setNotice('RFQ sent to the RFQ administrator for approval.')
       await onChanged()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
 
-  const codeLabel = (c: any) => `${c.code} · ${c.consultant_name || c.display_name}`
-  const mediaChoices = config.media_platforms.filter((m: any) => m.is_active || m.id === form.media_platform_id)
-  const statusChoices = config.statuses.filter((s: any) => s.is_active || s.id === form.status_id)
-  const codeChoices = config.sales_codes.filter((c: any) => c.is_active || c.id === form.sales_code_id)
+  const codeLabel = (c: SalesCode) => `${c.code} · ${c.consultant_name || c.display_name}`
+  const mediaChoices = config.media_platforms.filter((m) => m.is_active || m.id === form.media_platform_id)
+  const statusChoices = config.statuses.filter((s) => s.is_active || s.id === form.status_id)
+  const codeChoices = config.sales_codes.filter((c) => c.is_active || c.id === form.sales_code_id)
   const disabled = readOnly || busy
   const canSendForApproval = mode === 'edit' && !readOnly && Boolean(form.document_number.trim()) && Boolean(rfq?.attachments?.length) && String(rfq?.status || '').toLowerCase() === 'complete'
 
@@ -332,7 +317,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
             <label htmlFor="rfq-media">Media platform</label>
             <select id="rfq-media" disabled={disabled || lockedForSales} value={form.media_platform_id} onChange={(e) => set({ media_platform_id: e.target.value })}>
               <option value="">Choose platform</option>
-              {mediaChoices.map((m: any) => <option key={m.id} value={m.id}>{m.name}{m.is_active ? '' : ' (inactive)'}</option>)}
+              {mediaChoices.map((m) => <option key={m.id} value={m.id}>{m.name}{m.is_active ? '' : ' (inactive)'}</option>)}
             </select>
 
             <label htmlFor="rfq-customer">Customer name</label>
@@ -353,7 +338,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
             <label htmlFor="rfq-code">Sales code <span>{lockedForSales ? 'Only a manager or administrator can change this.' : 'Saved with the rest of the form when you press Save.'}</span></label>
             <select id="rfq-code" disabled={disabled || lockedForSales} value={form.sales_code_id} onChange={(e) => chooseSalesCode(e.target.value)}>
               <option value="">Unassigned</option>
-              {codeChoices.map((c: any) => <option key={c.id} value={c.id}>{codeLabel(c)}{c.is_active ? '' : ' (inactive)'}</option>)}
+              {codeChoices.map((c) => <option key={c.id} value={c.id}>{codeLabel(c)}{c.is_active ? '' : ' (inactive)'}</option>)}
             </select>
 
             <label htmlFor="rfq-claimed">Claimed date <span>{form.sales_code_id ? 'Editable. Leave blank on a new assignment to use the time of saving.' : 'Choose a sales code first.'}</span></label>
@@ -362,7 +347,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
             <label htmlFor="rfq-status">Status</label>
             <select id="rfq-status" disabled={disabled || lockedForSales} value={form.status_id} onChange={(e) => set({ status_id: e.target.value })}>
               {mode === 'create' && <option value="">Automatic ({form.sales_code_id ? 'New' : 'Unclaimed'})</option>}
-              {statusChoices.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.is_active ? '' : ' (inactive)'}</option>)}
+              {statusChoices.map((s) => <option key={s.id} value={s.id}>{s.name}{s.is_active ? '' : ' (inactive)'}</option>)}
             </select>
 
             <label htmlFor="rfq-remarks">Remarks</label>
@@ -387,7 +372,7 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
                   <button className="icon-button" aria-label={`Remove ${f.name} before saving`} onClick={() => setFiles((list) => list.filter((_, j) => j !== i))}><X size={14} /></button>
                 </li>
               ))}
-              {(rfq?.attachments || []).map((a: any) => (
+              {(rfq?.attachments || []).map((a) => (
                 <li key={a.id}>
                   <span className="sd-file-name">{a.original_name}</span>
                   <small>{fmtSize(a.size)} · {a.uploaded_by_name || 'Unknown'} · {fmtDate(a.created_at)}</small>
@@ -401,10 +386,10 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
               {!files.length && !(rfq?.attachments || []).length && <li className="sd-no-files">No attachments</li>}
             </ul>
 
-            {mode === 'edit' && rfq?.audit_history?.length > 0 && (
+            {mode === 'edit' && !!rfq?.audit_history?.length && (
               <div className="sd-history">
                 <h4>History</h4>
-                {rfq.audit_history.slice().reverse().map((h: any, i: number) => (
+                {rfq?.audit_history?.slice().reverse().map((h, i) => (
                   <p key={i}><b>{fmtDate(h.created_at)}</b> · {h.actor_name ? `${h.actor_name} · ` : ''}{describeHistory(h)}</p>
                 ))}
               </div>
@@ -424,18 +409,17 @@ function RfqPanel({ mode, rfqId, config, user, token, request, onClose, onChange
 
 // ---------------------------------------------------------------------------------------------
 export default function SalesDesk({ page, embedded = false, token, setNotice, setError, openRfqId, onOpenRfqHandled }: Props) {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<SalesDeskUser | null>(null)
   const [busy, setBusy] = useState(false)
-  const [rfqs, setRfqs] = useState<any[]>([])
-  const [config, setConfig] = useState<any>({ media_platforms: [], sales_codes: [], statuses: [] })
-  const [dashboard, setDashboard] = useState<any>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
-  const [analytics, setAnalytics] = useState<any>({ totals: {}, series: [] })
+  const [rfqs, setRfqs] = useState<Rfq[]>([])
+  const [config, setConfig] = useState<RfqConfig>({ media_platforms: [], sales_codes: [], statuses: [] })
+  const [dashboard, setDashboard] = useState<RfqDashboard>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 })
+  const [analytics, setAnalytics] = useState<RfqAnalytics>({ totals: {}, series: [] })
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'year' | 'month' | 'week'>('year')
   const [analyticsYear, setAnalyticsYear] = useState(() => Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Johannesburg', year: 'numeric' }).format(new Date())))
   const [analyticsMonth, setAnalyticsMonth] = useState(() => Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Johannesburg', month: 'numeric' }).format(new Date())))
   const [analyticsWeek, setAnalyticsWeek] = useState(1)
   const [view, setView] = useState<'dashboard' | 'rfqs' | 'analytics' | 'cross-reference'>('dashboard')
-  const [users, setUsers] = useState<any[]>([])
   const [panel, setPanel] = useState<{ mode: 'create' | 'edit'; id?: string } | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
   const [codeFilter, setCodeFilter] = useState('')
@@ -444,7 +428,6 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
   const [sort, setSort] = useState('received_asc')
   const [newMedia, setNewMedia] = useState('')
   const [newStatus, setNewStatus] = useState({ name: '', closed: false, category: 'other' })
-  const [newUser, setNewUser] = useState({ display_name: '', username: '', password: '', role: 'salesperson' })
   const [gpMilestones, setGpMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
   const [newMilestone, setNewMilestone] = useState('')
   const [gpPercentMilestones, setGpPercentMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_percent_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
@@ -463,33 +446,20 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
   useEffect(() => { localStorage.setItem('sales_desk_gp_percent_milestones', JSON.stringify(gpPercentMilestones)) }, [gpPercentMilestones])
   useEffect(() => { localStorage.setItem('sales_desk_gp_percent_colors', JSON.stringify(gpPercentColors)) }, [gpPercentColors])
   useEffect(() => { localStorage.setItem('sales_desk_gp_milestone_colors', JSON.stringify(milestoneColors)) }, [milestoneColors])
-  const request: Req = useCallback(async (path, init = {}) => {
-    if (supabaseConfigured) return api(path, init)
-    const headers = new Headers(init.headers || {})
-    if (token) headers.set('Authorization', `Bearer ${token}`)
-    if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-    let res: Response
-    try { res = await fetch(`${API}${path}`, { ...init, headers }) }
-    catch { throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL.`) }
-    const body = res.status === 204 ? null : await res.json().catch(() => ({}))
-    if (res.status === 401 && token) { throw new Error('Your Impala Hub session has expired. Please sign in again.') }
-    if (!res.ok) throw new Error(describeDetail(body?.detail, res.status))
-    return body
-  }, [token])
+  const service = useMemo(() => createRfqService(token), [token])
 
   const load = useCallback(async () => {
     if (!token) return
     try {
       const [me, cfg, list, dash, analyticsResult] = await Promise.all([
-        request('/api/sales-desk/auth/me'), request('/api/sales-desk/config'),
-        page === 'RFQs' && view === 'rfqs' ? request('/api/sales-desk/rfqs') : Promise.resolve({ items: [] }),
-        page === 'RFQs' && view === 'dashboard' ? request('/api/sales-desk/dashboard') : Promise.resolve({}),
-        page === 'RFQs' && view === 'analytics' ? request('/api/sales-desk/analytics?period=' + analyticsPeriod + '&month=' + analyticsMonth + '&week=' + analyticsWeek + '&year=' + analyticsYear) : Promise.resolve({ totals: {}, series: [] }),
+        service.me(), service.configuration(),
+        page === 'RFQs' && view === 'rfqs' ? service.list() : Promise.resolve({ items: [] }),
+        page === 'RFQs' && view === 'dashboard' ? service.dashboard() : Promise.resolve<RfqDashboard>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 }),
+        page === 'RFQs' && view === 'analytics' ? service.analytics({ period: analyticsPeriod, month: analyticsMonth, week: analyticsWeek, year: analyticsYear }) : Promise.resolve({ totals: {}, series: [] }),
       ])
       setUser(me); setConfig(cfg); setRfqs(list.items || []); setDashboard(dash); setAnalytics(analyticsResult)
-      if (me.role === 'administrator') setUsers(await request('/api/sales-desk/auth/users'))
     } catch (e) { setError((e as Error).message) }
-  }, [token, request, setError, analyticsPeriod, analyticsMonth, analyticsWeek, analyticsYear, page, view])
+  }, [token, service, setError, analyticsPeriod, analyticsMonth, analyticsWeek, analyticsYear, page, view])
   useEffect(() => { void load() }, [load, page])
 
   async function act(work: () => Promise<unknown>, success?: string) {
@@ -499,29 +469,32 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
     finally { setBusy(false) }
   }
 
-  const convert = (r: any) => {
+  const convert = (r: Rfq) => {
     if (!window.confirm(`Create an invoice copy of ${r.rfq_no}? The original quote will remain unchanged and the new invoice will be numbered ${r.rfq_no}INV.`)) return
-    void act(() => request(`/api/sales-desk/rfqs/${r.id}/convert-to-invoice`, { method: 'POST' }), `Invoice ${r.rfq_no}INV created. The original quote was kept.`)
+    void act(() => service.convertToInvoice(r.id), `Invoice ${r.rfq_no}INV created. The original quote was kept.`)
   }
-  const claim = (r: any) => void act(() => request(`/api/sales-desk/rfqs/${r.id}/claim`, { method: 'POST' }), `Claimed ${r.rfq_no} for your sales code.`)
-  const removeRfq = (r: any) => {
+  const claim = (r: Rfq) => void act(() => service.claim(r.id), `Claimed ${r.rfq_no} for your sales code.`)
+  const removeRfq = (r: Rfq) => {
     if (!window.confirm(`Delete ${r.rfq_no}? It will be removed from active Sales Desk lists but retained for audit purposes.`)) return
-    void act(() => request(`/api/sales-desk/rfqs/${r.id}`, { method: 'DELETE' }), `RFQ ${r.rfq_no} deleted.`)
+    void act(() => service.archive(r.id), `RFQ ${r.rfq_no} deleted.`)
   }
 
   async function reorder(kind: 'media-platforms' | 'statuses', key: 'media_platforms' | 'statuses', ids: string[]) {
-    const byId = new Map<string, any>(config[key].map((o: any) => [o.id, o]))
-    setConfig((c: any) => ({ ...c, [key]: ids.map((id) => byId.get(id)).filter(Boolean) })) // show the new order immediately
-    try { await request(`/api/sales-desk/config/${kind}/order`, { method: 'PUT', body: JSON.stringify({ ids }) }); setNotice('Order saved.') }
+    const ordered = <T extends { id: string }>(items: T[]) => {
+      const byId = new Map(items.map(item => [item.id, item]))
+      return ids.flatMap(id => { const option = byId.get(id); return option ? [option] : [] })
+    }
+    setConfig(c => key === 'statuses' ? { ...c, statuses: ordered(c.statuses) } : { ...c, media_platforms: ordered(c.media_platforms) }) // show the new order immediately
+    try { await service.reorder(kind, ids); setNotice('Order saved.') }
     catch (e) { setError((e as Error).message) }
     await load()
   }
-  const removeOption = (kind: 'media-platforms' | 'statuses', o: any, label: string) => {
+  const removeOption = (kind: 'media-platforms' | 'statuses', o: ConfigOption, label: string) => {
     if (!window.confirm(`Delete the ${label} "${o.name}"? This cannot be undone.`)) return
-    void act(() => request(`/api/sales-desk/config/${kind}/${o.id}`, { method: 'DELETE' }), `${label[0].toUpperCase() + label.slice(1)} deleted.`)
+    void act(() => service.removeOption(kind, o.id), `${label[0].toUpperCase() + label.slice(1)} deleted.`)
   }
-  const patchOption = (path: string, body: object, success = 'Configuration saved.') =>
-    act(() => request(path, { method: 'PATCH', body: JSON.stringify(body) }), success)
+  const patchOption = (kind: ConfigKind, id: string, body: ConfigPatch, success = 'Configuration saved.') =>
+    act(() => service.updateOption(kind, id, body), success)
 
   const isStaff = user?.role === 'administrator' || user?.role === 'manager'
   const isAdmin = user?.role === 'administrator'
@@ -544,7 +517,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
   const sortedGpPercentMilestones = [...gpPercentMilestones].sort((a, b) => a - b)
   const reachedGpPercent = sortedGpPercentMilestones.filter((point) => monthlyGpPercent >= point).pop()
   const gpPercentColor = reachedGpPercent ? (gpPercentColors[String(reachedGpPercent)] || 'dark-blue') : 'red'
-  const canConvert = (r: any) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
+  const canConvert = (r: Rfq) => r.rfq_type === 'quotation' && r.status_is_closed && (isStaff || (user?.role === 'salesperson' && r.sales_code && r.sales_code === user.sales_code))
 
   return (
     <section className={`rfq-workspace${embedded ? ' sales-desk-settings' : ''}`}>
@@ -570,8 +543,8 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                 <div className="sd-gp-progress"><div className={`sd-gp-fill ${progressColor}`} style={{ width: Math.min(100, monthlySales / Math.max(...gpMilestones, 1) * 100) + '%' }} />{[...gpMilestones].sort((a, b) => a - b).map((point, index, points) => <span key={point} className={`${milestoneColors[String(point)] || (index === points.length - 1 ? 'dark-blue' : index === 0 ? 'grey' : 'light-blue')}${index === points.length - 1 ? ' final' : ''}`} style={{ left: (point / Math.max(...points, 1) * 100) + '%' }} title={'R' + point.toLocaleString()}>{'R' + point.toLocaleString()}</span>)}</div>
                 <div className="sd-gp-scale"><span>R0</span><span>R{Math.max(...gpMilestones, 0).toLocaleString()}</span></div>
               </div>
-              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Verified sales for the current Johannesburg business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{(dashboard.daily_sales || []).map((row: any) => <tr className="rfq-data-row" key={row.sales_person}><td>{row.sales_person}</td><td>{formatRand(Number(row.total_sales))}</td><td>{formatRand(Number(row.total_credits))}</td><td className={Number(row.gross_sales) === Math.max(...(dashboard.daily_sales || []).map((item: any) => Number(item.gross_sales))) ? 'sd-highlight-value' : ''}>{formatRand(Number(row.gross_sales))}</td><td className={Number(row.gp_percent) === Math.max(...(dashboard.daily_sales || []).map((item: any) => Number(item.gp_percent))) ? 'sd-highlight-value' : ''}>{Number(row.gp_percent).toFixed(2)}%</td></tr>)}</tbody></table></div></div>
-              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>RFQ performance</h3><p>Lifecycle workload by sales person.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>In progress</th><th>Complete</th><th>Dropped</th><th>Scrapped</th><th>Irrelevant</th><th>Total</th><th>Bonus points</th><th>Response time</th><th>Score</th></tr></thead><tbody>{rfqPerformance.map((row: any) => <tr className="rfq-data-row" key={row.id || row.sales_person}><td>{row.sales_person}</td><td>{row.in_progress || 0}</td><td>{row.complete || 0}</td><td>{row.dropped || 0}</td><td>{row.scrapped || 0}</td><td>{row.irrelevant || 0}</td><td>{row.total || 0}</td><td>{row.bonus_points ?? '—'}</td><td>{row.response_time || '—'}</td><td>{row.score ?? '—'}</td></tr>)}</tbody></table></div></div>
+              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>Daily sales</h3><p>Verified sales for the current Johannesburg business day.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>Total sales</th><th>Total credits</th><th>Gross sales</th><th>GP %</th></tr></thead><tbody>{(dashboard.daily_sales || []).map((row) => <tr className="rfq-data-row" key={row.sales_person}><td>{row.sales_person}</td><td>{formatRand(Number(row.total_sales))}</td><td>{formatRand(Number(row.total_credits))}</td><td className={Number(row.gross_sales) === Math.max(...(dashboard.daily_sales || []).map((item) => Number(item.gross_sales))) ? 'sd-highlight-value' : ''}>{formatRand(Number(row.gross_sales))}</td><td className={Number(row.gp_percent) === Math.max(...(dashboard.daily_sales || []).map((item) => Number(item.gp_percent))) ? 'sd-highlight-value' : ''}>{Number(row.gp_percent).toFixed(2)}%</td></tr>)}</tbody></table></div></div>
+              <div className="sd-dashboard-card"><div className="sd-dashboard-card-head"><div><h3>RFQ performance</h3><p>Lifecycle workload by sales person.</p></div></div><div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Sales Person</th><th>In progress</th><th>Complete</th><th>Dropped</th><th>Scrapped</th><th>Irrelevant</th><th>Total</th><th>Bonus points</th><th>Response time</th><th>Score</th></tr></thead><tbody>{rfqPerformance.map((row) => <tr className="rfq-data-row" key={row.id || row.sales_person}><td>{row.sales_person}</td><td>{row.in_progress || 0}</td><td>{row.complete || 0}</td><td>{row.dropped || 0}</td><td>{row.scrapped || 0}</td><td>{row.irrelevant || 0}</td><td>{row.total || 0}</td><td>{row.bonus_points ?? '—'}</td><td>{row.response_time || '—'}</td><td>{row.score ?? '—'}</td></tr>)}</tbody></table></div></div>
               
             </div>
           ) : page === 'RFQs' && view === 'analytics' ? (
@@ -583,7 +556,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                 <label>ISO week<input disabled={analyticsPeriod !== 'week'} type="number" min="1" max="53" value={analyticsWeek} onChange={(e) => setAnalyticsWeek(Number(e.target.value) || 1)} /></label>
               </div>
               <div className="sd-dashboard-grid">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <div className="sd-metric" key={key}><span>{key[0].toUpperCase() + key.slice(1)}</span><strong>{analytics.totals?.[key] || 0}</strong></div>)}</div>
-              <div className="sd-chart"><h3>Current RFQ outcomes by received date</h3><p className="hint">Johannesburg dates; ISO weeks run Monday to Sunday. Claimed means currently assigned. Outcomes reflect current status, not status-change dates.</p>{(analytics.series || []).map((point: any) => <div className="sd-chart-row" key={point.label}><b>{point.label}</b><div className="sd-chart-bars">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <span className={key} key={key} style={{ width: Math.max(2, ((point[key] || 0) / Math.max(1, ...((analytics.series || []).map((p: any) => Math.max(p.claimed || 0, p.scrapped || 0, p.dropped || 0, p.completed || 0, p.invoiced || 0))))) * 100) + '%' }}>{point[key] || 0}</span>)}</div></div>)}{!analytics.series?.length && <p className="hint">No RFQ data for this period.</p>}</div>
+              <div className="sd-chart"><h3>Current RFQ outcomes by received date</h3><p className="hint">Johannesburg dates; ISO weeks run Monday to Sunday. Claimed means currently assigned. Outcomes reflect current status, not status-change dates.</p>{(analytics.series || []).map((point) => <div className="sd-chart-row" key={point.label}><b>{point.label}</b><div className="sd-chart-bars">{(['claimed', 'scrapped', 'dropped', 'completed', 'invoiced'] as const).map((key) => <span className={key} key={key} style={{ width: Math.max(2, ((point[key] || 0) / Math.max(1, ...((analytics.series || []).map((p) => Math.max(p.claimed || 0, p.scrapped || 0, p.dropped || 0, p.completed || 0, p.invoiced || 0))))) * 100) + '%' }}>{point[key] || 0}</span>)}</div></div>)}{!analytics.series?.length && <p className="hint">No RFQ data for this period.</p>}</div>
             </div>
           ) : page === 'RFQs' ? (
             <>
@@ -593,8 +566,8 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                 ))}
               </div>
               <div className="rfq-toolbar">
-                <label>Filter by status<select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="">All statuses</option>{config.statuses.filter((s: any) => s.is_active).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-                <label>Filter by sales code<select value={codeFilter} onChange={(e) => setCodeFilter(e.target.value)} disabled={user?.role === 'salesperson'}><option value="">All salespeople</option>{config.sales_codes.map((s: any) => <option key={s.id} value={s.id}>{s.code} · {s.consultant_name || s.display_name}</option>)}</select></label>
+                <label>Filter by status<select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="">All statuses</option>{config.statuses.filter((s) => s.is_active).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+                <label>Filter by sales code<select value={codeFilter} onChange={(e) => setCodeFilter(e.target.value)} disabled={user?.role === 'salesperson'}><option value="">All salespeople</option>{config.sales_codes.map((s) => <option key={s.id} value={s.id}>{s.code} · {s.consultant_name || s.display_name}</option>)}</select></label>
                 <label>Type<select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Quotes and invoices</option><option value="quotation">Quotes</option><option value="invoice">Invoices</option></select></label>
                 <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
                 <label>Sort by<select value={sort} onChange={(e) => setSort(e.target.value)}><option value="received_asc">Oldest received</option><option value="received_desc">Newest received</option><option value="customer">Customer name</option><option value="rfq_no">RFQ number</option></select></label>
@@ -602,9 +575,9 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
               </div>
               <div className="rfq-table-wrap"><table className="rfq-table">
                 <thead><tr><th>RFQ No.</th><th>Type</th><th>Received</th><th>Customer</th><th>Media platform</th><th>Sales code</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody>{rows.length ? rows.map((r: any) => (
+                <tbody>{rows.length ? rows.map((r) => (
                   <tr key={r.id} className="rfq-data-row">
-                    <td>{r.rfq_no}{r.attachment_count > 0 && <span className="sd-clip" title={`${r.attachment_count} attachment(s)`}><Paperclip size={12} /></span>}</td>
+                    <td>{r.rfq_no}{(r.attachment_count || 0) > 0 && <span className="sd-clip" title={`${r.attachment_count} attachment(s)`}><Paperclip size={12} /></span>}</td>
                     <td><span className={`sd-type ${r.rfq_type}`}>{r.rfq_type === 'invoice' ? 'Invoice' : 'Quote'}</span></td>
                     <td>{fmtDate(r.received_at)}</td><td>{r.customer_name}</td><td>{r.media_platform || '—'}</td>
                     <td>{r.sales_code || 'Unclaimed'}</td><td>{r.status}</td>
@@ -627,14 +600,14 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                   <div className="section-head"><div><h2>Media platforms</h2><p>Manage enquiry sources. Drag rows to set their display order.</p></div><Megaphone size={19} /></div>
                   <div className="sd-config-add">
                     <input placeholder="New platform name" value={newMedia} onChange={(e) => setNewMedia(e.target.value)} />
-                    <button className="primary" disabled={busy || !newMedia.trim()} onClick={() => void act(async () => { await request('/api/sales-desk/config/media-platforms', { method: 'POST', body: JSON.stringify({ name: newMedia }) }); setNewMedia('') }, 'Media platform added.')}>Add</button>
+                    <button className="primary" disabled={busy || !newMedia.trim()} onClick={() => void act(async () => { await service.addOption('media-platforms', { name: newMedia }); setNewMedia('') }, 'Media platform added.')}>Add</button>
                   </div>
                   <Sortable items={config.media_platforms} onReorder={(ids) => void reorder('media-platforms', 'media_platforms', ids)}>
-                    {(m: any) => (<>
+                    {(m) => (<>
                       <div className="sd-option-text"><b>{m.name}</b><small>{m.is_active ? 'Active' : 'Inactive'} · {m.rfq_count} RFQ{m.rfq_count === 1 ? '' : 's'}</small></div>
                       <div className="sd-actions">
-                        <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/media-platforms/${m.id}`, { is_active: !m.is_active })}>{m.is_active ? 'Deactivate' : 'Activate'}</button>
-                        <button className="secondary" onClick={() => { const name = window.prompt('Rename media platform', m.name); if (name?.trim()) void patchOption(`/api/sales-desk/config/media-platforms/${m.id}`, { name }) }}>Rename</button>
+                        <button className="secondary" onClick={() => void patchOption('media-platforms', m.id, { is_active: !m.is_active })}>{m.is_active ? 'Deactivate' : 'Activate'}</button>
+                        <button className="secondary" onClick={() => { const name = window.prompt('Rename media platform', m.name); if (name?.trim()) void patchOption('media-platforms', m.id, { name }) }}>Rename</button>
                         {(m.rfq_count === 0 || m.rfq_count == null) && <button className="icon-button" aria-label={`Delete ${m.name}`} title="Delete" onClick={() => removeOption('media-platforms', m, 'media platform')}><Trash2 size={16} /></button>}
                       </div>
                     </>)}
@@ -648,16 +621,16 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                     <input placeholder="New status name" value={newStatus.name} onChange={(e) => setNewStatus({ ...newStatus, name: e.target.value })} />
                     <label>Analytics category<select value={newStatus.category} onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                     <label className="sd-inline-check"><input type="checkbox" checked={newStatus.closed} onChange={(e) => setNewStatus({ ...newStatus, closed: e.target.checked })} /> Closed status</label>
-                    <button className="primary" disabled={busy || !newStatus.name.trim()} onClick={() => void act(async () => { await request('/api/sales-desk/config/statuses', { method: 'POST', body: JSON.stringify({ name: newStatus.name, is_closed: newStatus.closed, metric_category: newStatus.category }) }); setNewStatus({ name: '', closed: false, category: 'other' }) }, 'Status added.')}>Add</button>
+                    <button className="primary" disabled={busy || !newStatus.name.trim()} onClick={() => void act(async () => { await service.addOption('statuses', { name: newStatus.name, is_closed: newStatus.closed, metric_category: newStatus.category as ConfigPatch['metric_category'] }); setNewStatus({ name: '', closed: false, category: 'other' }) }, 'Status added.')}>Add</button>
                   </div>
                   <Sortable items={config.statuses} onReorder={(ids) => void reorder('statuses', 'statuses', ids)}>
-                    {(s: any) => (<>
+                    {(s) => (<>
                       <div className="sd-option-text"><b>{s.name}</b><small>{s.is_closed ? 'Closed' : 'Open'} · {s.is_active ? 'Active' : 'Inactive'} · {s.rfq_count} RFQ{s.rfq_count === 1 ? '' : 's'}</small></div>
                       <div className="sd-actions">
-                        <label>Analytics category<select value={s.metric_category || 'other'} onChange={(e) => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { metric_category: e.target.value })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                        <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { is_closed: !s.is_closed })}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button>
-                        <button className="secondary" onClick={() => void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { is_active: !s.is_active })}>{s.is_active ? 'Deactivate' : 'Activate'}</button>
-                        <button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void patchOption(`/api/sales-desk/config/statuses/${s.id}`, { name }) }}>Rename</button>
+                        <label>Analytics category<select value={s.metric_category || 'other'} onChange={(e) => void patchOption('statuses', s.id, { metric_category: e.target.value as ConfigPatch['metric_category'] })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                        <button className="secondary" onClick={() => void patchOption('statuses', s.id, { is_closed: !s.is_closed })}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button>
+                        <button className="secondary" onClick={() => void patchOption('statuses', s.id, { is_active: !s.is_active })}>{s.is_active ? 'Deactivate' : 'Activate'}</button>
+                        <button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void patchOption('statuses', s.id, { name }) }}>Rename</button>
                         {(s.rfq_count === 0 || s.rfq_count == null) && s.name.toLowerCase() !== 'unclaimed' && <button className="icon-button" aria-label={`Delete ${s.name}`} title="Delete" onClick={() => removeOption('statuses', s, 'status')}><Trash2 size={16} /></button>}
                       </div>
                     </>)}
@@ -681,11 +654,11 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
               <div className="admin-settings-panel sd-settings-card">
                 <div className="section-head"><div><h2>Sales codes</h2><p>Manage the employee codes available for RFQ assignment.</p></div><Users size={19} /></div>
                 {config.sales_codes.length === 0 && <p className="hint">No sales codes yet. Create a salesperson account to generate one.</p>}
-                {config.sales_codes.map((c: any) => (
+                {config.sales_codes.map((c) => (
                   <div className="sd-config-row" key={c.id}>
                     <div><b>{c.code} · {c.consultant_name || c.display_name}</b><small>{c.rfq_count} RFQ{c.rfq_count === 1 ? '' : 's'}</small></div>
                     <label className="sd-inline-check">Status
-                      <select value={c.is_active ? 'active' : 'inactive'} onChange={(e) => void patchOption(`/api/sales-desk/config/sales-codes/${c.id}`, { is_active: e.target.value === 'active' })}>
+                      <select value={c.is_active ? 'active' : 'inactive'} onChange={(e) => void patchOption('sales-codes', c.id, { is_active: e.target.value === 'active' })}>
                         <option value="active">Active</option><option value="inactive">Inactive</option>
                       </select>
                     </label>
@@ -698,8 +671,8 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
 
       {panel && token && (
         <RfqPanel
-          key={`${panel.mode}-${panel.id || 'new'}`} mode={panel.mode} rfqId={panel.id} config={config} user={user || { role: 'salesperson' }}
-          token={token} request={request} onClose={closePanel} onChanged={load} setNotice={setNotice} setError={setError}
+          key={`${panel.mode}-${panel.id || 'new'}`} mode={panel.mode} rfqId={panel.id} config={config} user={user || { id: '', display_name: '', sales_code: null, role: 'salesperson' }}
+          token={token} service={service} onClose={closePanel} onChanged={load} setNotice={setNotice} setError={setError}
         />
       )}
     </section>

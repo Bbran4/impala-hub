@@ -1,3 +1,4 @@
+import type { PostWriteStatus } from './marketingTypes'
 import { useState } from 'react'
 import { EDITABLE, fmt, headingOf, isFuture, mediaSrc, type Campaign, type Post } from './lib'
 
@@ -16,7 +17,7 @@ type Props = {
   posts: Post[]
   campaigns: Campaign[]
   onOpen: (id: string) => void
-  onMove: (id: string, status: string) => void
+  onMove: (id: string, status: PostWriteStatus) => void
   onError: (message: string) => void
   canEdit: boolean
 }
@@ -25,6 +26,7 @@ export default function PostBoard({ posts, campaigns, onOpen, onMove, onError, c
   const [over, setOver] = useState<string | null>(null)
 
   function move(post: Post, target: string) {
+    if (target !== 'draft' && target !== 'awaiting_approval' && target !== 'scheduled') return
     if (post.status === target) return
     if (!EDITABLE.includes(post.status)) return onError(`A ${post.status} post cannot be moved.`)
     if (target === 'scheduled' && !isFuture(post.publish_at)) {

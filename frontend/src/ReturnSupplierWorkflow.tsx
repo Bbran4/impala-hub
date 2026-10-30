@@ -1,7 +1,8 @@
-type Props = { form: Record<string, any>; onChange: (changes: Record<string, any>) => void; disabled: boolean }
+import type { SupplierWorkflow } from './returnsTypes'
+type Props = { form: SupplierWorkflow; onChange: (changes: Partial<SupplierWorkflow>) => void; disabled: boolean }
 
 export default function ReturnSupplierWorkflow({ form, onChange, disabled }: Props) {
-  const field = (name: string, label: string, type = 'text') => <label className="editor-field">
+  const field = (name: keyof SupplierWorkflow, label: string, type = 'text') => <label className="editor-field">
     <span>{label}</span><input type={type} disabled={disabled} value={form[name] ?? ''}
       min={type === 'number' ? 0 : undefined} step={name === 'credit_amount' ? '0.01' : type === 'number' ? '1' : undefined}
       onChange={event => onChange({ [name]: event.target.value })} />

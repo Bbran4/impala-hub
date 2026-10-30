@@ -1,6 +1,7 @@
+import { postsService } from './postsService'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, CalendarClock, ImagePlus, Lock, Pencil, Trash2, X } from 'lucide-react'
-import { api, EDITABLE, fmt, mediaSrc, metric, type Campaign, type HistoryEntry, type Post } from './lib'
+import { EDITABLE, fmt, mediaSrc, metric, type Campaign, type HistoryEntry, type Post } from './lib'
 
 type Props = {
   post: Post
@@ -56,14 +57,14 @@ export default function PostDetail({ post, campaigns, onBack, onEdit, onReschedu
   useEffect(() => {
     let live = true
     setHistory(null)
-    api(`/api/posts/${post.id}/history`).then((h) => { if (live) { setHistory(h); setMoreHistory(h.length === 50) } }).catch(onError)
+    postsService.history(post.id).then((h) => { if (live) { setHistory(h); setMoreHistory(h.length === 50) } }).catch(onError)
     return () => { live = false }
   }, [post.id, post.updated_at])
 
   async function earlierHistory() {
     if (!history?.length || historyBusy) return
     setHistoryBusy(true)
-    try { const rows = await api(`/api/posts/${post.id}/history?before=${history[history.length-1].id}`); setHistory(current => [...(current || []), ...rows]); setMoreHistory(rows.length===50) } catch(e) { onError(e) } finally { setHistoryBusy(false) }
+    try { const rows = await postsService.history(post.id, history[history.length-1].id); setHistory(current => [...(current || []), ...rows]); setMoreHistory(rows.length===50) } catch(e) { onError(e) } finally { setHistoryBusy(false) }
   }
 
   async function saveCampaign() {
