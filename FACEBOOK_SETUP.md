@@ -8,10 +8,11 @@ Configure these server variables for the deployment environment:
 
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - `META_APP_ID`, `META_APP_SECRET`
-- `META_TOKEN_ENCRYPTION_KEY`: a private random encryption secret; keep it stable while encrypted connections exist.
+- `META_TOKEN_ENCRYPTION_KEY`: a private base64-encoded 32-byte encryption key; keep it stable while encrypted connections exist.
 - `FACEBOOK_OAUTH_REDIRECT_URI`: the exact deployed `/api/marketing/facebook/callback` URL registered in Meta.
 - `FRONTEND_URL`: the application URL to return to after authorization.
 - `CRON_SECRET`: authorizes the scheduled publishing handler.
+- Optional `FACEBOOK_API_VERSION`: one Graph version override shared by every Marketing handler. Its default is pinned in `frontend/api/_lib/facebook.ts`.
 
 The UI also needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Private credentials must never use the `VITE_` prefix. Redeploy after changing deployment configuration.
 

@@ -6,8 +6,7 @@
     "rootDir": "."
   },
   "include": [
-    "api/marketing/facebook/sync.ts",
-    "api/marketing/facebook/publish.ts",
-    "api/marketing/facebook/publish-due.ts"
+    "api/marketing/**/*.ts",
+    "api/_lib/**/*.ts"
   ]
 }
