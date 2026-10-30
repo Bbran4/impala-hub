@@ -1,3 +1,4 @@
+import { startVisiblePolling } from './visiblePolling'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, CheckCheck, ChevronDown, FileText, MessageCircle, Minus, Paperclip, Search, Send, X } from 'lucide-react'
 import { supabase } from './supabase'
@@ -103,7 +104,7 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
     })
     setLoading(false)
   }, [active, onError])
-  const refreshConversations = useCallback(() => { void loadConversations(true) }, [loadConversations])
+  const refreshConversations = useCallback(() => { if (document.visibilityState === 'visible') void loadConversations(true) }, [loadConversations])
 
   useEffect(() => {
     if (!active) {
@@ -111,11 +112,7 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
       dismissedUnread.current = {}
       return
     }
-    void loadConversations()
-    const timer = window.setInterval(() => void loadConversations(true), 8_000)
-    const focus = () => void loadConversations(true)
-    window.addEventListener('focus', focus)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', focus) }
+    return startVisiblePolling((initial) => loadConversations(!initial), 8_000)
   }, [active, loadConversations])
 
   useEffect(() => {
@@ -248,9 +245,7 @@ function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, o
 
   useEffect(() => {
     if (minimized) return
-    void loadMessages()
-    const timer = window.setInterval(() => void loadMessages(true), 3_000)
-    return () => window.clearInterval(timer)
+    return startVisiblePolling((initial) => loadMessages(!initial), 3_000)
   }, [minimized, loadMessages])
 
   useEffect(() => { if (!minimized) bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, minimized])

@@ -1,3 +1,4 @@
+import { startVisiblePolling } from './visiblePolling'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CheckCheck, RefreshCw, X } from "lucide-react";
 import { supabase } from "./supabase";
@@ -138,14 +139,10 @@ export default function NotificationCentre({
       setOpen(false);
       return;
     }
-    void load(true);
-    const timer = window.setInterval(() => void load(true), 30_000);
-    const refresh = () => void load(true);
-    window.addEventListener("focus", refresh);
+    const stopPolling = startVisiblePolling(() => load(true), 30_000);
     return () => {
       loadGeneration.current += 1;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
+      stopPolling();
     };
   }, [active, load]);
 

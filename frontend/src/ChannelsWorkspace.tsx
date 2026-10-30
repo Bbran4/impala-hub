@@ -1,3 +1,4 @@
+import { startVisiblePolling } from './visiblePolling'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FileText, MessageCircle, Paperclip, Plus, Send, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { supabase } from './supabase'
@@ -37,7 +38,7 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
     else setChats((chatResult.data || []) as Conversation[])
   }, [setError])
 
-  useEffect(() => { if (!supabase) return; const client = supabase; void client.auth.getUser().then(async ({ data }) => { const id = data.user?.id || null; setUserId(id); if (id) { const profile = await client.from('profiles').select('avatar_url').eq('id', id).maybeSingle(); setMyAvatar(profile.data?.avatar_url || null) } }); void loadLists() }, [loadLists])
+  useEffect(() => { if (!supabase) return; const client = supabase; void client.auth.getUser().then(async ({ data }) => { const id = data.user?.id || null; setUserId(id); if (id) { const profile = await client.from('profiles').select('avatar_url').eq('id', id).maybeSingle(); setMyAvatar(profile.data?.avatar_url || null) } }) }, [])
 
   const selectedTitle = useMemo(() => selected?.kind === 'channel' ? channels.find((item) => item.channel_id === selected.id)?.name : chats.find((item) => item.conversation_id === selected?.id)?.other_display_name, [selected, channels, chats])
 
@@ -57,7 +58,17 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
     else setMembers((result.data || []) as Member[])
   }, [selected, setError])
 
-  useEffect(() => { setMessages([]); setMembers([]); void loadMessages(); void loadMembers(); const timer = window.setInterval(() => void loadMessages(), 4000); return () => window.clearInterval(timer) }, [loadMessages, loadMembers])
+  useEffect(() => startVisiblePolling(() => loadLists(), undefined), [loadLists])
+
+  useEffect(() => {
+    setMessages([]); setMembers([])
+    if (!selected) return
+    return startVisiblePolling(async (initial) => {
+      await loadMessages()
+      // Membership is refreshed on selection.
+      if (initial) await loadMembers()
+    }, 4_000)
+  }, [selected, loadMessages, loadMembers])
 
   useEffect(() => {
     if (!supabase || selected?.kind !== 'channel' || !memberPickerOpen) return
