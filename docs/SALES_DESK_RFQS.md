@@ -1,5 +1,8 @@
 # Sales Desk: RFQs
 
+> Historical specification/evidence. The former Python web application was retired on 2026-10-30. References to its files and endpoints describe earlier Git revisions, not current setup instructions. See README.md and docs/TYPED_SERVICES.md for the supported Supabase/Vercel application.
+
+
 ## Scope and architectural fit
 
 The first Sales Desk release is the RFQ workspace only. It remains inside the existing Impala Hub application shell and uses the current FastAPI backend, SQLite database/migration approach, React + TypeScript frontend, and shared configuration/navigation conventions. Do not create a separate application or replace the marketing workspace.

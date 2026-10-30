@@ -2,7 +2,6 @@ import { describeFieldChange } from './returnsTypes'
 import { createReturnsService, type Claim, type ClaimForm, type ClaimAttachment, type ClaimField } from './returnsService'
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, Download, Eye, Plus, Trash2, X } from "lucide-react";
-import { supabaseConfigured } from "./supabase";
 import { CLAIM_FILE_ACCEPT, validateClaimFiles } from './returnsAttachments';
 import './returnsclaims.css';
 import ReturnSupplierWorkflow from './ReturnSupplierWorkflow';
@@ -48,7 +47,7 @@ const blank = (): ClaimForm => ({
     status_change_reason: '',
   });
 export default function ReturnsClaims({ token, setNotice, setError }: Props) {
-  const service = useMemo(() => createReturnsService(token), [token]);
+  const service = useMemo(() => createReturnsService(), [token]);
   const [rows, setRows] = useState<Claim[]>([]),
     [panel, setPanel] = useState(false),
     [readOnly, setReadOnly] = useState(false),
@@ -91,7 +90,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
     setForm(row ? { ...row } : blank());
     setOriginalRecord(row || null);
     setPanel(true);
-    if (row?.id && supabaseConfigured) {
+    if (row?.id) {
       setDetailLoading(true);
       try {
         const loaded = await service.detail(row.id);
@@ -146,45 +145,32 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
   const addFiles = async (selected: File[]) => {
     try {
       validateClaimFiles(selected, (form.stored_attachments || []).length + (form.attachments || []).length);
-      const items = await Promise.all(selected.map(async file => {
-        if (supabaseConfigured) return { name: file.name, size: file.size, type: file.type, file };
-        const data_url = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Could not read file.'));
-          reader.readAsDataURL(file);
-        });
-        return { name: file.name, size: file.size, type: file.type, data_url };
-      }));
+      const items = selected.map(file => ({ name: file.name, size: file.size, type: file.type, file }));
       setForm((current) => ({ ...current, attachments: [...(current.attachments || []), ...items] }));
     } catch (e) { setError((e as Error).message); }
   };
   const save = async () => {
     setBusy(true);
     try {
-      const editing = Boolean(form.id);
       const files = (form.attachments || [])
         .flatMap(a => a.file ? [a.file] : []);
       const body = { ...form };
-      if (supabaseConfigured) {
-        validateClaimStatus(originalRecord, form);
-        body.sla_days = Number(form.sla_days ?? 7);
-        delete body.attachments;
-        delete body.stored_attachments;
-        delete body.audit_history;
-        validateClaimFiles(files, (form.stored_attachments || []).length);
-      }
+      validateClaimStatus(originalRecord, form);
+      body.sla_days = Number(form.sla_days ?? 7);
+      delete body.attachments;
+      delete body.stored_attachments;
+      delete body.audit_history;
+      validateClaimFiles(files, (form.stored_attachments || []).length);
       const saved = form.id ? await service.update(form.id, body) : await service.create(body);
-      if (supabaseConfigured) {
-        setOriginalRecord(saved);
-        // Retain the saved ID and remove each successful file, making retries safe.
-        setForm((current) => ({ ...current, id: saved.id, claim_no: saved.claim_no }));
-        for (const file of files) {
-          const attachment = await service.uploadAttachment(saved.id, file);
-          setForm((current) => ({ ...current,
-            stored_attachments: [...(current.stored_attachments || []), attachment],
-            attachments: (current.attachments || []).filter((item) => item.file !== file),
-          }));
-        }
+      setOriginalRecord(saved);
+      // Retain the saved ID and remove each successful file, making retries safe.
+      setForm((current) => ({ ...current, id: saved.id, claim_no: saved.claim_no }));
+      for (const file of files) {
+        const attachment = await service.uploadAttachment(saved.id, file);
+        setForm((current) => ({ ...current,
+          stored_attachments: [...(current.stored_attachments || []), attachment],
+          attachments: (current.attachments || []).filter((item) => item.file !== file),
+        }));
       }
       setPanel(false);
       setNotice("Returns & Claims record saved.");
@@ -496,7 +482,7 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                 </div>}
                 {(form.attachments || []).map((a, i) => (
                   <div className="attachment-row" key={a.name + i}>
-                    {a.data_url ? <a href={a.data_url} download={a.name}>{a.name}</a> : <span>{a.name}</span>}
+                    <span>{a.name}</span>
                     <small>
                       {a.size
                         ? `${Math.round(a.size / 1024)} KB · pending upload`
@@ -539,9 +525,9 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                 {field("returned_by", "Returned by")}
                 {field("received_by", "Received By")}
                 <label className="editor-field">
-                  <span>Credit/Replacement Received from Supplier {supabaseConfigured && '(tracked below)'}</span>
+                  <span>Credit/Replacement Received from Supplier (tracked below)</span>
                   <input
-                    disabled={readOnly || supabaseConfigured}
+                    disabled
                     type="checkbox"
                     checked={!!form.credit_received_on || !!form.replacement_received_on || form.supplier_received === "Yes"}
                     onChange={(e) =>
@@ -572,19 +558,19 @@ export default function ReturnsClaims({ token, setNotice, setError }: Props) {
                     value={form.status}
                     onChange={(e) => setForm({ ...form, status: e.target.value, status_change_reason: '' })}
                   >
-                    {(supabaseConfigured ? allowedClaimStatuses(originalRecord?.status) : statuses).map((x) => (
+                    {allowedClaimStatuses(originalRecord?.status).map((x) => (
                       <option key={x}>{x}</option>
                     ))}
                   </select>
                 </label>
-                {supabaseConfigured && <>
+                {<>
                   <label className="editor-field"><span>Reason for rejection / reopening{statusReasonRequired && <b className="required-mark"> *</b>}</span><textarea disabled={busy || detailLoading || !statusReasonRequired} value={form.status_change_reason || ''} onChange={event => setForm({ ...form, status_change_reason: event.target.value })} /></label>
                   <label className="editor-field"><span>SLA target (calendar days)</span><input type="number" min="1" max="365" disabled={busy || detailLoading} value={form.sla_days ?? 7} onChange={event => setForm({ ...form, sla_days: event.target.value })} /></label>
                   {form.date && <p><b>{claimTiming(form, today).label}</b> · {claimTiming(form, today).age_days} calendar days old · due {claimTiming(form, today).due_on}</p>}
                   <p className="hint">Default: 7 calendar days from the claim date. Warning in the final 2 days. Closed-claim age stops at closure. Reopen closed claims to In Progress and record a reason.</p>
                 </>}
               </div>
-              {supabaseConfigured && <ReturnSupplierWorkflow form={form} disabled={busy || detailLoading || readOnly} onChange={changes => setForm((current) => ({ ...current, ...changes }))} />}
+              {<ReturnSupplierWorkflow form={form} disabled={busy || detailLoading || readOnly} onChange={changes => setForm((current) => ({ ...current, ...changes }))} />}
               {form.id && <div className="editor-section sd-history">
                 <h3>Record history</h3>
                 {detailLoading ? <p>Loading history…</p> : !(form.audit_history || []).length ? <p>No history recorded.</p> : (form.audit_history || []).map((h) => <p key={h.id}>

@@ -1,8 +1,8 @@
 # Impala Hub Marketing Roadmap
 
-Updated: 2026-10-29
+Updated: 2026-10-30
 
-This workspace tracks parity between the Odoo Social Marketing workflow and the current Supabase/Vercel Impala Hub deployment. Older FastAPI provider routes are legacy implementation evidence and are not treated as active hosted capabilities.
+This workspace tracks parity between the Odoo Social Marketing workflow and the current Supabase/Vercel Impala Hub deployment. The original Python web application has been retired; hosted provider operations use Vercel functions and Supabase.
 
 ## Current priorities
 

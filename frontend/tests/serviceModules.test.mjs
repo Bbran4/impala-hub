@@ -86,7 +86,7 @@ test("RFQ commands use transactional RPCs; errors and conversion cardinality are
       return success({ id: "quote", rfq_no: "Q1" });
     },
   };
-  const service = createRfqService("", client);
+  const service = createRfqService(client);
   const values = {
     customer_name: "Customer",
     media_platform_id: "email",
@@ -118,7 +118,7 @@ test("RFQ commands use transactional RPCs; errors and conversion cardinality are
 
 test("RFQ display metadata is cached across concurrent service calls", async () => {
   let requests = 0;
-  const service = createRfqService("", {
+  const service = createRfqService({
     auth,
     async rpc(name) {
       assert.equal(name, "sales_desk_session_context");
@@ -138,7 +138,7 @@ test("RFQ list stays complete under response caps and normalizes joined fields",
     sales_code: { code: "AB" },
   }));
   const ranges = [];
-  const service = createRfqService("", {
+  const service = createRfqService({
     auth,
     from(table) {
       assert.equal(table, "sales_desk_rfqs");
@@ -168,7 +168,7 @@ test("RFQ list stays complete under response caps and normalizes joined fields",
 
 test("claim writes exclude identities, history and browser metadata; normalize supplier receipts", async () => {
   const writes = [];
-  const service = createReturnsService("", {
+  const service = createReturnsService({
     auth,
     from(table) {
       assert.equal(table, "returns_claims");
@@ -238,7 +238,7 @@ test("a failed attachment insert cleans up its uploaded object and returns the f
       );
     },
   };
-  const service = createReturnsService("", client);
+  const service = createReturnsService(client);
   await assert.rejects(
     service.uploadAttachment(
       "claim",
@@ -335,29 +335,31 @@ test("campaign creation uses the signed-in owner and type reordering stays atomi
   ]);
 });
 
-test("legacy fallback sends typed operations to real HTTP endpoints once", async () => {
-  const originalFetch = globalThis.fetch,
-    requests = [];
-  globalThis.fetch = async (url, options) => {
-    requests.push([String(url), options]);
-    return new Response(JSON.stringify({ id: "quote", rfq_no: "Q1" }));
+test("missing Supabase configuration fails before any network request", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    throw new Error("Network must not be used");
   };
   try {
-    const service = createRfqService("legacy-token", null);
-    await service.update("quote", { remarks: "saved" });
-    assert.ok(requests[0][0].endsWith("/api/sales-desk/rfqs/quote"));
-    assert.equal(
-      requests[0][1].headers.get("Authorization"),
-      "Bearer legacy-token",
+    for (const service of [
+      createRfqService(null),
+      createReturnsService(null),
+      createPostsService(null),
+      createCampaignsService(null),
+    ]) {
+      await assert.rejects(service.list(), /Supabase is not configured/);
+    }
+    await assert.rejects(
+      createRfqService(null).claim("quote"),
+      /Supabase is not configured/,
     );
-    assert.equal(requests[0][1].method, "PATCH");
-    assert.deepEqual(JSON.parse(requests[0][1].body), { remarks: "saved" });
-    globalThis.fetch = async () => {
-      requests.push([]);
-      throw new Error("offline");
-    };
-    await assert.rejects(service.claim("quote"), /Cannot reach/);
-    assert.equal(requests.length, 2);
+    await assert.rejects(
+      createReturnsService(null).create({}),
+      /Supabase is not configured/,
+    );
+    assert.equal(calls, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

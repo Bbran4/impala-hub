@@ -1,5 +1,8 @@
 # Smart Stock Control: Step 1 Evidence Record
 
+> Historical specification/evidence. The former Python web application was retired on 2026-10-30. References to its files and endpoints describe earlier Git revisions, not current setup instructions. See README.md and docs/TYPED_SERVICES.md for the supported Supabase/Vercel application.
+
+
 ## Scope and handling
 
 This record describes the Smart Stock Control implementation in the `impala-hub-marketing` repository as inspected on 2026-10-26. The inspection was read-only. No application target was launched, no account or hosted service was accessed, and no tests or builds were run because they can update caches or generated files.

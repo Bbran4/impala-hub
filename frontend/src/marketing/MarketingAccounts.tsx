@@ -177,7 +177,7 @@ export default function MarketingAccounts({
                       <strong>Connection method:</strong>{" "}
                       {i.connection_source === "oauth"
                         ? "Meta OAuth"
-                        : "Backend environment token"}
+                        : "Saved connection"}
                     </p>
                   )}
                 </div>
@@ -288,8 +288,8 @@ export default function MarketingAccounts({
             <p>
               Connect Facebook to authorize through Meta, then select the Page
               Impala Hub should manage. Page access tokens are encrypted before
-              being stored by the backend. Keep your Meta app secret and
-              encryption key private in backend/.env.
+              being stored securely. Manage server credentials in the Vercel
+              project settings.
             </p>
           </div>
         </div>

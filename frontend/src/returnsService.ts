@@ -1,26 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
-import {
-  resultData,
-  checkError,
-  legacyRequest,
-  jsonBody,
-  AuthError,
-} from "./serviceTransport";
-import { loadAllRows } from "./pagedRows.ts";
-import { claimFileType } from "./returnsAttachments";
-import { deleteRecordAttachment } from "./recordAttachments";
-import {
-  supplierWorkflowFields,
-  prepareSupplierWorkflow,
-} from "./returnsWorkflow";
 import { safeMarketingFilename } from "./marketingPosts.ts";
+import { loadAllRows } from "./pagedRows.ts";
+import { deleteRecordAttachment } from "./recordAttachments";
+import { claimFileType } from "./returnsAttachments";
 import type {
   Claim,
-  ClaimInput,
   ClaimAttachment,
   ClaimAudit,
+  ClaimInput,
 } from "./returnsTypes";
+import {
+  prepareSupplierWorkflow,
+  supplierWorkflowFields,
+} from "./returnsWorkflow";
+import { AuthError, checkError, resultData } from "./serviceTransport";
+import { requireSupabase, supabase } from "./supabase";
 export type * from "./returnsTypes";
 const claimFields = [
   "date",
@@ -55,26 +49,21 @@ export function claimWriteValues(values: ClaimInput) {
     ...prepareSupplierWorkflow(values),
   };
 }
-export function createReturnsService(
-  token = "",
-  client: SupabaseClient | null = supabase,
-) {
-  const http = <T>(path: string, init?: RequestInit) =>
-    legacyRequest<T>(`/api/returns-claims${path}`, init, token);
+export function createReturnsService(client: SupabaseClient | null = supabase) {
   // Authorization is enforced by the database policies and transactional triggers.
   const currentUser = async () => {
-    if (!client) throw new Error("Supabase is not configured.");
-    const { data, error } = await client.auth.getSession();
+    const dbClient = requireSupabase(client);
+    const { data, error } = await dbClient.auth.getSession();
     if (error || !data.session?.user)
       throw new AuthError("Sign in again to open Returns & Claims.");
     return data.session.user;
   };
   return {
     async list(): Promise<Claim[]> {
-      if (!client) return http("");
+      const dbClient = requireSupabase(client);
       return (
         await loadAllRows<Claim>((from, to) =>
-          client
+          dbClient
             .from("returns_claims")
             .select("*", { count: "exact" })
             .is("deleted_at", null)
@@ -86,16 +75,16 @@ export function createReturnsService(
       ).data;
     },
     async detail(id: string): Promise<Claim> {
-      if (!client) return http(`/${id}`);
+      const dbClient = requireSupabase(client);
       const [record, attachments, audit, people] = await Promise.all([
-        client
+        dbClient
           .from("returns_claims")
           .select("*")
           .eq("id", id)
           .is("deleted_at", null)
           .single(),
         loadAllRows<ClaimAttachment>((from, to) =>
-          client
+          dbClient
             .from("returns_claim_attachments")
             .select(
               "id,original_name,storage_path,content_type,size,uploaded_by,created_at",
@@ -107,7 +96,7 @@ export function createReturnsService(
             .range(from, to),
         ),
         loadAllRows<Omit<ClaimAudit, "actor_name">>((from, to) =>
-          client
+          dbClient
             .from("returns_claims_audit")
             .select("id,action,changes,actor_user_id,created_at", {
               count: "exact",
@@ -116,12 +105,15 @@ export function createReturnsService(
             .order("id", { ascending: false })
             .range(from, to),
         ),
-        client.rpc("returns_claim_people", { target_claim_id: id }),
+        dbClient.rpc("returns_claim_people", { target_claim_id: id }),
       ]);
       const names = new Map(
-        resultData<{ id: string; display_name: string }[]>(people).map(
-          (person) => [person.id, person.display_name],
-        ),
+        resultData<
+          {
+            id: string;
+            display_name: string;
+          }[]
+        >(people).map((person) => [person.id, person.display_name]),
       );
       return {
         ...resultData<Claim>(record),
@@ -137,10 +129,10 @@ export function createReturnsService(
       };
     },
     async create(values: ClaimInput): Promise<Claim> {
-      if (!client) return http("", { method: "POST", ...jsonBody(values) });
+      const dbClient = requireSupabase(client);
       const user = await currentUser();
       return resultData(
-        await client
+        await dbClient
           .from("returns_claims")
           .insert({
             ...claimWriteValues(values),
@@ -152,11 +144,10 @@ export function createReturnsService(
       );
     },
     async update(id: string, values: ClaimInput): Promise<Claim> {
-      if (!client)
-        return http(`/${id}`, { method: "PATCH", ...jsonBody(values) });
+      const dbClient = requireSupabase(client);
       const user = await currentUser();
       return resultData(
-        await client
+        await dbClient
           .from("returns_claims")
           .update({
             ...claimWriteValues(values),
@@ -169,13 +160,10 @@ export function createReturnsService(
       );
     },
     async archive(id: string): Promise<void> {
-      if (!client) {
-        await http(`/${id}`, { method: "DELETE" });
-        return;
-      }
+      const dbClient = requireSupabase(client);
       const user = await currentUser();
       checkError(
-        await client
+        await dbClient
           .from("returns_claims")
           .update({
             deleted_at: new Date().toISOString(),
@@ -189,14 +177,10 @@ export function createReturnsService(
       );
     },
     async uploadAttachment(id: string, file: File): Promise<ClaimAttachment> {
-      if (!client) {
-        const body = new FormData();
-        body.append("file", file);
-        return http(`/${id}/attachments`, { method: "POST", body });
-      }
+      const dbClient = requireSupabase(client);
       const user = await currentUser(),
         contentType = claimFileType(file);
-      const count = await client
+      const count = await dbClient
         .from("returns_claim_attachments")
         .select("id", { count: "exact", head: true })
         .eq("claim_id", id);
@@ -205,11 +189,11 @@ export function createReturnsService(
         throw new Error("A claim can have at most 10 attachments.");
       const path = `${user.id}/${id}/${crypto.randomUUID()}-${safeMarketingFilename(file.name)}`;
       checkError(
-        await client.storage
+        await dbClient.storage
           .from("returns-claim-attachments")
           .upload(path, file, { contentType }),
       );
-      const row = await client
+      const row = await dbClient
         .from("returns_claim_attachments")
         .insert({
           claim_id: id,
@@ -222,7 +206,7 @@ export function createReturnsService(
         .select()
         .single();
       if (row.error) {
-        await client.storage.from("returns-claim-attachments").remove([path]);
+        await dbClient.storage.from("returns-claim-attachments").remove([path]);
         throw new Error(row.error.message);
       }
       return resultData(row);
@@ -231,8 +215,8 @@ export function createReturnsService(
       attachment: ClaimAttachment,
       download = false,
     ): Promise<string> {
-      if (!client) throw new Error("Stored attachments require Supabase.");
-      const signed = await client.storage
+      const dbClient = requireSupabase(client);
+      const signed = await dbClient.storage
         .from("returns-claim-attachments")
         .createSignedUrl(
           attachment.storage_path,
@@ -245,11 +229,8 @@ export function createReturnsService(
       return signed.data.signedUrl;
     },
     async deleteAttachment(id: string, attachmentId: string): Promise<void> {
-      if (!client) {
-        await http(`/${id}/attachments/${attachmentId}`, { method: "DELETE" });
-        return;
-      }
-      await deleteRecordAttachment(client, "return", id, attachmentId);
+      const dbClient = requireSupabase(client);
+      await deleteRecordAttachment(dbClient, "return", id, attachmentId);
     },
   };
 }

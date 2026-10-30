@@ -18,8 +18,8 @@ export default function SignInPage({ session }: { session: HubSession }) {
       <section className="key-panel">
         <h2>Sign in to Impala Hub</h2>
         <p>
-          Use your employee account to open the App Dashboard. Sessions persist
-          securely across refreshes until they expire or you log out.
+          Use your employee account to open the App Dashboard. Sessions are
+          scoped to this browser tab.
         </p>
         {mfaChallengeId ? (
           <div className="mfa-form">
@@ -50,8 +50,8 @@ export default function SignInPage({ session }: { session: HubSession }) {
           <div className="inline-form">
             <input
               aria-label="Email"
-              type={supabaseConfigured ? "email" : "text"}
-              placeholder={supabaseConfigured ? "Email address" : "Username"}
+              type="email"
+              placeholder="Email address"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
@@ -65,13 +65,17 @@ export default function SignInPage({ session }: { session: HubSession }) {
                 if (e.key === "Enter") void signIn();
               }}
             />
-            <button className="primary" onClick={() => void signIn()}>
+            <button
+              className="primary"
+              disabled={!supabaseConfigured}
+              onClick={() => void signIn()}
+            >
               Sign in
             </button>
-            {supabaseConfigured && (
-              <p className="hint">
-                Authentication is provided by Supabase. Marketing and Sales Desk
-                data migration is still in progress.
+            {!supabaseConfigured && (
+              <p className="error" role="alert">
+                Sign-in is unavailable because this deployment is not
+                configured. Contact your administrator.
               </p>
             )}
           </div>

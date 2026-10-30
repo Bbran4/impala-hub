@@ -6,7 +6,7 @@ const OAUTH_REASONS: Record<string, string> = {
   no_pages_selected:
     "You did not tick any Page in the Facebook dialog. Click Connect Facebook again and select your Page.",
   no_pages:
-    "Meta returned no Pages for this account. Check that you have a role on the Page and on the Meta app. If the Page is in a Business Portfolio, set FACEBOOK_REQUEST_BUSINESS_MANAGEMENT=true in backend/.env and restart the API.",
+    "Meta returned no Pages for this account. Confirm you have access to the Page and selected it during authorization. Ask your administrator to check the Meta app permissions if it is still missing.",
   missing_permissions:
     "Not all required permissions were granted. Connect again and accept every permission.",
   page_token_unavailable:
@@ -14,9 +14,10 @@ const OAUTH_REASONS: Record<string, string> = {
   invalid_state: "The login session expired. Try again.",
   authorization_cancelled: "Authorization was cancelled.",
   missing_code: "Meta did not return an authorization code. Try again.",
-  setup: "Facebook OAuth is not fully configured in backend/.env.",
+  setup:
+    "Facebook connection setup is incomplete. Ask your administrator to check the Vercel project settings.",
   meta_request_failed:
-    "A request to Meta failed. Check META_APP_ID and META_APP_SECRET in backend/.env.",
+    "Meta could not complete the connection. Ask your administrator to check the Meta app and Vercel settings.",
 };
 
 export function useMarketingConnections({

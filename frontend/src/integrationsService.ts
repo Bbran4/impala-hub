@@ -1,5 +1,4 @@
-import { supabase } from "./supabase";
-import { legacyRequest, marketingRequest, jsonBody } from "./serviceTransport";
+import { jsonBody, marketingRequest } from "./serviceTransport";
 export type Integration = {
   provider: string;
   label?: string;
@@ -35,10 +34,13 @@ export type SyncResult = {
   syncedAt?: string;
   audience?: number;
 };
-export type FacebookPage = { id: string; name: string; category?: string };
+export type FacebookPage = {
+  id: string;
+  name: string;
+  category?: string;
+};
 export const integrationsService = {
   async list(): Promise<Integration[]> {
-    if (!supabase) return legacyRequest("/api/integrations");
     const result = await marketingRequest<{
       providers: Record<string, Omit<Integration, "provider">>;
     }>("/api/marketing/status", "Load provider connections");
@@ -47,9 +49,10 @@ export const integrationsService = {
       ...(result.providers?.[provider] || { status: "not_connected" }),
     }));
   },
-  async sync(): Promise<{ facebook: SyncResult; instagram: SyncResult }> {
-    if (!supabase)
-      return legacyRequest("/api/integrations/sync", { method: "POST" });
+  async sync(): Promise<{
+    facebook: SyncResult;
+    instagram: SyncResult;
+  }> {
     return {
       facebook: await marketingRequest(
         "/api/marketing/facebook/sync",
@@ -63,82 +66,66 @@ export const integrationsService = {
     pages: FacebookPage[];
     connected_page_id?: string;
   }> {
-    return supabase
-      ? marketingRequest("/api/marketing/facebook/pages", "Load Facebook Pages")
-      : legacyRequest("/api/integrations/facebook/pages");
+    return marketingRequest(
+      "/api/marketing/facebook/pages",
+      "Load Facebook Pages",
+    );
   },
-  async connectFacebook(): Promise<{ url: string }> {
-    const result = supabase
-      ? await marketingRequest<{ url: string }>(
-          "/api/marketing/facebook/oauth-url",
-          "Facebook authorization",
-          { method: "POST" },
-        )
-      : await legacyRequest<{ url: string }>(
-          "/api/integrations/facebook/oauth-url",
-          { method: "POST" },
-        );
+  async connectFacebook(): Promise<{
+    url: string;
+  }> {
+    const result = await marketingRequest<{
+      url: string;
+    }>("/api/marketing/facebook/oauth-url", "Facebook authorization", {
+      method: "POST",
+    });
     if (typeof result.url !== "string")
       throw new Error(
         "Facebook authorization endpoint returned no authorization URL.",
       );
     return result;
   },
-  async selectFacebookPage(
-    pageId: string,
-  ): Promise<{ page_id: string; page_name: string }> {
-    return supabase
-      ? marketingRequest(
-          "/api/marketing/facebook/select-page",
-          "Save Facebook Page",
-          { method: "POST", ...jsonBody({ page_id: pageId }) },
-        )
-      : legacyRequest("/api/integrations/facebook/select-page", {
-          method: "POST",
-          ...jsonBody({ page_id: pageId }),
-        });
+  async selectFacebookPage(pageId: string): Promise<{
+    page_id: string;
+    page_name: string;
+  }> {
+    return marketingRequest(
+      "/api/marketing/facebook/select-page",
+      "Save Facebook Page",
+      { method: "POST", ...jsonBody({ page_id: pageId }) },
+    );
   },
-  async checkFacebook(): Promise<{ page_id: string; page_name: string }> {
-    return supabase
-      ? marketingRequest(
-          "/api/marketing/facebook/connection",
-          "Facebook connection check",
-          { method: "POST" },
-        )
-      : legacyRequest("/api/integrations/facebook/check", { method: "POST" });
+  async checkFacebook(): Promise<{
+    page_id: string;
+    page_name: string;
+  }> {
+    return marketingRequest(
+      "/api/marketing/facebook/connection",
+      "Facebook connection check",
+      { method: "POST" },
+    );
   },
   async disconnectFacebook(): Promise<void> {
-    if (supabase)
-      await marketingRequest(
-        "/api/marketing/facebook/connection",
-        "Facebook disconnect",
-        { method: "DELETE" },
-      );
-    else
-      await legacyRequest("/api/integrations/facebook/disconnect", {
-        method: "POST",
-      });
+    await marketingRequest(
+      "/api/marketing/facebook/connection",
+      "Facebook disconnect",
+      { method: "DELETE" },
+    );
   },
-  async connectInstagram(): Promise<{ url: string }> {
-    if (supabase)
-      throw new Error(
-        "Instagram OAuth is the next provider migration and is not enabled yet.",
-      );
-    return legacyRequest("/api/integrations/instagram/oauth-url", {
-      method: "POST",
-    });
+  async connectInstagram(): Promise<{
+    url: string;
+  }> {
+    throw new Error("Instagram connectivity is not enabled yet.");
   },
-  async checkInstagram(): Promise<{ username?: string; account_id: string }> {
-    if (supabase)
-      throw new Error("Instagram connection checks are not enabled yet.");
-    return legacyRequest("/api/integrations/instagram/check", {
-      method: "POST",
-    });
+  async checkInstagram(): Promise<{
+    username?: string;
+    account_id: string;
+  }> {
+    throw new Error("Instagram connection checks are not enabled yet.");
   },
-  async disconnectInstagram(): Promise<{ posts_removed: number }> {
-    if (supabase) throw new Error("Instagram connections are not enabled yet.");
-    return legacyRequest("/api/integrations/instagram/disconnect", {
-      method: "POST",
-    });
+  async disconnectInstagram(): Promise<{
+    posts_removed: number;
+  }> {
+    throw new Error("Instagram connections are not enabled yet.");
   },
 };

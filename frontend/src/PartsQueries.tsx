@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ClipboardList, Plus, Trash2, X } from 'lucide-react'
-import { API, supabase, supabaseConfigured } from './lib'
+import { requireSupabase } from './supabase'
 import {
   STOCK_QUERY_STATUSES, archiveStockPartsQuery, createStockDevelopmentStatus, createStockPartsQuery,
   loadStockPartsQueryHistory, loadStockPartsQueryWorkspace, matchesStockQuery, prepareStockQueryPayload,
@@ -10,25 +10,13 @@ import {
 
 type Props = { token: string; setNotice: (message: string) => void; setError: (message: string) => void }
 
-async function legacyRequest<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers || {})
-  headers.set('Authorization', `Bearer ${token}`)
-  if (init?.body) headers.set('Content-Type', 'application/json')
-  let response: Response
-  try { response = await fetch(API + path, { ...init, headers }) }
-  catch { throw new Error(`Cannot reach the Impala Hub API at ${API}. Start the backend and check VITE_API_URL.`) }
-  const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : body.detail ? JSON.stringify(body.detail) : 'Parts Query request failed')
-  return body
-}
-
 const blankSupplier = (): StockSupplier => ({ supplier: '', qty: 1, cost: '', msrp: '', notes: '' })
 
 export default function PartsQueries({ token, setNotice, setError }: Props) {
   const [queries, setQueries] = useState<StockPartsQuery[]>([])
   const [salesCodes, setSalesCodes] = useState<any[]>([])
   const [developmentStatuses, setDevelopmentStatuses] = useState<string[]>([])
-  const [access, setAccess] = useState<StockAccess>({ canEdit: !supabaseConfigured, isAdmin: !supabaseConfigured })
+  const [access, setAccess] = useState<StockAccess>({ canEdit: false, isAdmin: false })
   const [search, setSearch] = useState('')
   const [developmentFilter, setDevelopmentFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -41,18 +29,8 @@ export default function PartsQueries({ token, setNotice, setError }: Props) {
 
   const load = async () => {
     try {
-      if (supabaseConfigured && supabase) {
-        const workspace = await loadStockPartsQueryWorkspace(supabase)
-        setQueries(workspace.queries); setDevelopmentStatuses(workspace.statuses); setSalesCodes(workspace.salesCodes); setAccess(workspace.access)
-      } else {
-        const [rows, statuses, config] = await Promise.all([
-          legacyRequest<any[]>(token, '/api/parts-queries'),
-          legacyRequest<string[]>(token, '/api/parts-queries/development-statuses'),
-          legacyRequest<any>(token, '/api/sales-desk/config'),
-        ])
-        setQueries(rows.map((row) => ({ ...row, reference: row.id })) as StockPartsQuery[])
-        setDevelopmentStatuses(statuses); setSalesCodes(config.sales_codes || [])
-      }
+      const workspace = await loadStockPartsQueryWorkspace(requireSupabase())
+      setQueries(workspace.queries); setDevelopmentStatuses(workspace.statuses); setSalesCodes(workspace.salesCodes); setAccess(workspace.access)
       setError('')
     } catch (error) { setError((error as Error).message) }
   }
@@ -66,9 +44,9 @@ export default function PartsQueries({ token, setNotice, setError }: Props) {
       status: 'In Progress', suppliers: [blankSupplier()],
     })
     setHistory([]); setPanel(true); setError('')
-    if (record && supabaseConfigured && supabase) {
+    if (record) {
       setHistoryLoading(true)
-      try { setHistory(await loadStockPartsQueryHistory(supabase, record.id)) }
+      try { setHistory(await loadStockPartsQueryHistory(requireSupabase(), record.id)) }
       catch (error) { setError((error as Error).message) }
       finally { setHistoryLoading(false) }
     }
@@ -78,11 +56,8 @@ export default function PartsQueries({ token, setNotice, setError }: Props) {
     setBusy(true)
     try {
       const payload = prepareStockQueryPayload(form)
-      if (supabaseConfigured && supabase) {
-        if (existingRecord) await updateStockPartsQuery(supabase, form.id, payload)
-        else await createStockPartsQuery(supabase, payload)
-      } else if (existingRecord) await legacyRequest(token, `/api/parts-queries/${form.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
-      else await legacyRequest(token, '/api/parts-queries', { method: 'POST', body: JSON.stringify(payload) })
+      if (existingRecord) await updateStockPartsQuery(requireSupabase(), form.id, payload)
+      else await createStockPartsQuery(requireSupabase(), payload)
       setPanel(false); setNotice(existingRecord ? 'Parts Query updated.' : 'Parts Query saved.'); await load()
     } catch (error) { setError((error as Error).message) }
     finally { setBusy(false) }
@@ -91,9 +66,8 @@ export default function PartsQueries({ token, setNotice, setError }: Props) {
   const archiveQuery = async (query: StockPartsQuery) => {
     if (!access.canEdit || !window.confirm(`Archive Parts Query ${query.reference}? Its audit history will be retained.`)) return
     try {
-      if (supabaseConfigured && supabase) await archiveStockPartsQuery(supabase, query.id)
-      else await legacyRequest(token, `/api/parts-queries/${query.id}`, { method: 'DELETE' })
-      setNotice(supabaseConfigured ? 'Parts Query archived.' : 'Parts Query deleted.'); await load()
+      await archiveStockPartsQuery(requireSupabase(), query.id)
+      setNotice('Parts Query archived.'); await load()
     } catch (error) { setError((error as Error).message) }
   }
 
@@ -102,9 +76,7 @@ export default function PartsQueries({ token, setNotice, setError }: Props) {
     const entered = window.prompt('New Development status')?.trim()
     if (!entered) return
     try {
-      const result = supabaseConfigured && supabase
-        ? await createStockDevelopmentStatus(supabase, entered)
-        : await legacyRequest<any>(token, '/api/parts-queries/development-statuses', { method: 'POST', body: JSON.stringify({ name: entered }) })
+      const result = await createStockDevelopmentStatus(requireSupabase(), entered)
       const name = typeof result === 'string' ? result : entered
       setDevelopmentStatuses((current) => [...new Set([...current, name])].sort())
       setForm((current: any) => ({ ...current, development_status: name }))

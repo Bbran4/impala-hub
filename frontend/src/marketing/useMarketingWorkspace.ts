@@ -359,8 +359,8 @@ export function useMarketingWorkspace({
         setNotice(
           status === "scheduled"
             ? facebookLive
-              ? "Post scheduled. It will be published to Facebook at the chosen time while the API is running."
-              : "Post saved as scheduled. Connect Facebook in Configuration so it can be published."
+              ? "Post scheduled. Facebook publishing follows the publishing schedule configured for this deployment."
+              : "Post saved as scheduled. Connect Facebook in Settings so it can be published."
             : "Draft saved.",
         );
       }

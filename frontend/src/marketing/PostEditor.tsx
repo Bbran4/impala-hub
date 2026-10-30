@@ -174,7 +174,7 @@ export default function PostEditor({ model }: { model: MarketingModel }) {
               />
               <p className="hint">
                 Scheduled posts are published to the connected Facebook Page by
-                a background worker while the API is running.
+                the publishing schedule configured for this deployment.
               </p>
             </div>
             <footer className="editor-foot">

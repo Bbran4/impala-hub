@@ -65,8 +65,7 @@ export type PendingClaimAttachment = {
   name: string;
   size: number;
   type: string;
-  file?: File;
-  data_url?: string;
+  file: File;
 };
 export type Claim = Omit<
   ClaimValues,

@@ -7,3 +7,8 @@ __pycache__/
 backend/data/
 backend/uploads/
 supabase/.temp/
+
+# Local Vercel/Supabase settings and secrets
+.env.*
+!.env.example
+.vercel/

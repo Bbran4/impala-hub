@@ -1,6 +1,6 @@
 # Smart Stock Control Roadmap
 
-Updated: 2026-10-29
+Updated: 2026-10-30
 
 ## Supabase migration status
 
@@ -17,9 +17,9 @@ Updated: 2026-10-29
 | 9 | Automated Google Sheets ingestion | Retired; disabled by migration 0045 |
 | 10 | Historical SQLite reconciliation and real external data | Deferred |
 | 11 | Frontend and database tests for current manual workflows | Implemented; hosted smoke testing remains |
-| 12 | Production cutover and retirement of Smart Stock FastAPI routes | Planned |
+| 12 | Legacy Python web application retirement | Implemented; hosted workflow smoke checks remain |
 
-The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sql`. Current Parts Query, Stock Booking, Stock Reordering, import and configuration screens use Supabase. Legacy FastAPI retirement remains a final cutover task after hosted verification.
+The foundation is defined in `supabase/migrations/0037_smart_stock_foundation.sql`. Current Parts Query, Stock Booking, Stock Reordering, import and configuration screens use Supabase. The legacy Python web application and its frontend fallbacks have been retired. Hosted workflow smoke checks remain part of release validation.
 
 Stage 3 is defined in `supabase/migrations/0038_smart_stock_parts_queries.sql` and the `PartsQueries` frontend. It moves Parts Query reads, atomic create/update with complete supplier replacement, audited archival, active Sales Code selection, role-aware editing and named history to Supabase.
 

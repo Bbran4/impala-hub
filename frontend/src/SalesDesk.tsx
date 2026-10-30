@@ -1,7 +1,6 @@
 import { createRfqService, type RfqService, type Rfq, type RfqCreate, type RfqValues, type RfqConfig, type SalesDeskUser, type RfqDashboard, type RfqAnalytics, type RfqAudit, type RfqAttachment, type SalesCode, type ConfigOption, type ConfigKind, type ConfigPatch } from './rfqService'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BarChart3, ClipboardList, Download, Eye, GripVertical, Megaphone, Paperclip, Percent, Plus, Settings, Tags, Trash2, Users, X } from 'lucide-react'
-import { supabaseConfigured } from './supabase'
 import CrossReference from './CrossReference'
 import './salesdesk.css'
 
@@ -253,10 +252,9 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   async function openAttachment(att: RfqAttachment, inline: boolean) {
     const viewer = inline ? window.open('about:blank', '_blank') : null // opened first so the browser allows it
     try {
-      const { url, temporary } = await service.attachmentUrl(rfqId!, att, inline)
+      const url = await service.attachmentUrl(att)
       if (viewer) viewer.location.href = url
       else { const a = document.createElement('a'); a.href = url; a.download = att.original_name; document.body.appendChild(a); a.click(); a.remove() }
-      if (temporary) setTimeout(() => URL.revokeObjectURL(url), 120000)
     } catch (e) { viewer?.close(); setError((e as Error).message) }
   }
 
@@ -357,7 +355,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
             <input id="rfq-doc" disabled={disabled} maxLength={120} value={form.document_number} onChange={(e) => set({ document_number: e.target.value })} />
 
             <div className="editor-label-row">
-              <label id="lbl-attach">Attachments <span>Images, PDF, Word or Excel, up to 15 MB each.{supabaseConfigured ? ' Files can be permanently deleted; audit history is retained.' : ''}</span></label>
+              <label id="lbl-attach">Attachments <span>Images, PDF, Word or Excel, up to 15 MB each. Files can be permanently deleted; audit history is retained.</span></label>
               {!readOnly && (
                 <label className="upload-button">
                   <Paperclip size={16} /> Add files
@@ -380,7 +378,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
                     <button className="secondary" onClick={() => void openAttachment(a, true)}><Eye size={14} /> View</button>
                   )}
                   <button className="secondary" onClick={() => void openAttachment(a, false)}><Download size={14} /> Download</button>
-                  {supabaseConfigured && !readOnly && (user?.role === 'administrator' || user?.role === 'manager' || isSales) && <button className="secondary" disabled={busy} onClick={() => void deleteAttachment(a)}><Trash2 size={14} /> Delete</button>}
+                  {!readOnly && (user?.role === 'administrator' || user?.role === 'manager' || isSales) && <button className="secondary" disabled={busy} onClick={() => void deleteAttachment(a)}><Trash2 size={14} /> Delete</button>}
                 </li>
               ))}
               {!files.length && !(rfq?.attachments || []).length && <li className="sd-no-files">No attachments</li>}
@@ -446,7 +444,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
   useEffect(() => { localStorage.setItem('sales_desk_gp_percent_milestones', JSON.stringify(gpPercentMilestones)) }, [gpPercentMilestones])
   useEffect(() => { localStorage.setItem('sales_desk_gp_percent_colors', JSON.stringify(gpPercentColors)) }, [gpPercentColors])
   useEffect(() => { localStorage.setItem('sales_desk_gp_milestone_colors', JSON.stringify(milestoneColors)) }, [milestoneColors])
-  const service = useMemo(() => createRfqService(token), [token])
+  const service = useMemo(() => createRfqService(), [token])
 
   const load = useCallback(async () => {
     if (!token) return

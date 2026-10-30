@@ -1,3 +1,4 @@
+import {fileURLToPath} from 'node:url'
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
 import {emailBody,errorText,fileName,hubUrl,subjectFor} from '../api/reporting/_reportMail.ts'
@@ -71,7 +72,7 @@ test('write tables keep their parsed dimensions for row access checks',()=>{
 test('Vercel Hobby allows at most 12 functions per deployment',async()=>{
   const {readdirSync,statSync}=await import('node:fs')
   const walk=dir=>readdirSync(dir).flatMap(name=>{const path=`${dir}/${name}`;if(name.startsWith('_')||name.startsWith('.'))return [];return statSync(path).isDirectory()?walk(path):/\.(ts|js|mjs)$/.test(name)?[path]:[]})
-  const functions=walk(new URL('../api',import.meta.url).pathname)
+  const functions=walk(fileURLToPath(new URL('../api',import.meta.url)))
   assert.ok(functions.length<=12,`${functions.length} functions in api/: ${functions.join(', ')}`)
 })
 

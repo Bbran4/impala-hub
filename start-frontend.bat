@@ -4,7 +4,7 @@ cd /d "%~dp0frontend"
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo Node.js was not found. Install Node.js 20 or newer from nodejs.org.
+  echo Node.js was not found. Install Node.js 22 or newer from nodejs.org.
   pause
   exit /b 1
 )

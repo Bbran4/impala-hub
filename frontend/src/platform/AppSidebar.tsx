@@ -1,26 +1,26 @@
 import {
-BookMarked,
-BookOpen,
-ClipboardList,
-CloudDownload,
-Database,
-Gauge,
-History,
-LayoutDashboard,
-Map,
-Megaphone,
-MessageCircle,
-Network,
-PackageCheck,
-ServerCog,
-Settings,
-ShieldCheck,
-Upload,
-Users,
+  BookMarked,
+  BookOpen,
+  ClipboardList,
+  CloudDownload,
+  Database,
+  Gauge,
+  History,
+  LayoutDashboard,
+  Map,
+  Megaphone,
+  MessageCircle,
+  Network,
+  PackageCheck,
+  ServerCog,
+  Settings,
+  ShieldCheck,
+  Upload,
+  Users,
 } from "lucide-react";
-import NotificationCentre,{
-type NotificationChannel,
-type UserNotification,
+import NotificationCentre, {
+  type NotificationChannel,
+  type UserNotification,
 } from "../NotificationCentre";
 import type { HubAccount } from "./useAccount";
 import { pageContext } from "./workspaceNavigation";
@@ -120,7 +120,7 @@ export default function AppSidebar({
                 )}
               </div>
             )}
-            <div className="connection-dot" /> <span>Local workspace</span>
+            <div className="connection-dot" /> <span>Workspace session</span>
             <button
               className="account-link"
               onClick={() => {
@@ -259,7 +259,7 @@ export default function AppSidebar({
                   )}
                 </div>
               )}
-              <div className="connection-dot" /> <span>Local workspace</span>
+              <div className="connection-dot" /> <span>Workspace session</span>
               <button
                 className="account-link"
                 onClick={() => {

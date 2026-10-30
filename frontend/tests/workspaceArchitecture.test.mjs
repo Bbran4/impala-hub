@@ -21,6 +21,7 @@ const bundled = await build({
     export { default as MarketingPosts } from './src/marketing/MarketingPosts.tsx'
     export { default as MarketingDialogs } from './src/marketing/MarketingDialogs.tsx'
     export { default as AppSidebar } from './src/platform/AppSidebar.tsx'
+    export { default as SignInPage } from './src/platform/SignInPage.tsx'
   `,
     resolveDir: root,
     loader: "tsx",
@@ -256,4 +257,24 @@ test("the extracted post details and paged list render real conditional content"
     }),
     "",
   );
+});
+
+test("an unconfigured deployment offers no alternate sign-in backend", () => {
+  const html = render(ui.SignInPage, {
+    session: {
+      username: "",
+      password: "",
+      mfaCode: "",
+      mfaChallengeId: "",
+      setUsername: no,
+      setPassword: no,
+      setMfaCode: no,
+      signIn: no,
+      verifyMfaLogin: no,
+    },
+  });
+  assert.match(html, /deployment is not configured/);
+  assert.match(html, /type="email"/);
+  assert.match(html, /<button[^>]*disabled/);
+  assert.doesNotMatch(html, /Username|data migration|127\.0\.0\.1/);
 });

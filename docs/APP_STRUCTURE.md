@@ -21,3 +21,5 @@ Status filters apply to tables with a `Status` or `Current Impala Hub status` co
 The Vite development server allows the repository root so it can resolve these explicitly imported files outside `frontend/`. Other documentation is not bundled. No database migration is required.
 
 Validation includes rendering the actual documents, documentation-only edits, status filtering, safe Markdown handling, workspace permissions, navigation, and the extracted Marketing list/detail/dialog components. Existing sign-in/MFA and notification flows keep their prior operations; no live credentials are needed for the automated rendering tests.
+
+The application is Supabase/Vercel-only. Services reject missing Supabase configuration rather than selecting a second API implementation, and sign-in is disabled when the browser configuration is absent.

@@ -21,22 +21,13 @@ The project and GitHub Actions both use the pinned Supabase CLI version from `fr
 
 ## Production sequence
 
-1. Confirm the branch contains only reviewed source, migration, test and documentation changes. Generated files such as `frontend/tsconfig.tsbuildinfo` must not be committed.
-2. Confirm a current Supabase backup is available.
-3. Preview pending migrations:
+1. Confirm the branch contains only reviewed changes and that a current Supabase backup is available.
+2. For schema changes, inspect the Supabase GitHub integration's migration results for the intended branch. Confirm required migrations are applied before relying on the new frontend. Do not run a competing manual migration deployment when the integration owns this workflow.
+3. Push the tested branch and inspect GitHub Actions and Vercel deployment results.
+4. Configure the browser's Supabase URL and publishable key and the private server variables described in `frontend/.env.example` in the Vercel project settings. Private values must not have a `VITE_` prefix.
+5. Run the appropriate hosted checks below. The application has no separate web-server process; the Reporting sync agent is a separate supported component.
 
-   ```powershell
-   npx.cmd --no-install --prefix frontend supabase db push --dry-run
-   ```
-
-4. Apply the database migration before deploying code that depends on it:
-
-   ```powershell
-   npx.cmd --no-install --prefix frontend supabase db push
-   ```
-
-5. Push the tested branch to GitHub. Verify GitHub Actions passes and allow Vercel to deploy the intended branch or production commit.
-6. Verify Vercel contains the production Supabase URL and publishable browser key. Never expose or configure the service-role key in the frontend.
+Local UI development uses Vite and Supabase. Use the linked Vercel project with `vercel dev` when testing `/api/marketing/` or `/api/reporting/` functions locally. See `README.md` and `FACEBOOK_SETUP.md` for setup.
 
 ## Returns & Claims smoke checks
 
@@ -51,7 +42,7 @@ The project and GitHub Actions both use the pinned Supabase CLI version from `fr
 
 ## Smart Stock foundation checks
 
-Migration `0037_smart_stock_foundation.sql` creates the Smart Stock data boundary but does not switch the existing Smart Stock screens away from FastAPI.
+Smart Stock uses Supabase for Parts Queries, Booking, Reordering, imports and shared configuration. The former Python web application is retired.
 
 - Confirm the migration seeds `10 — Warehouse`, `ERBAKKIE` and `PTABAKKIE` location mappings, the four development statuses and shared mover thresholds of `2` and `10`.
 - Administrator: confirm configuration and import foundation rows are writable.
@@ -60,7 +51,7 @@ Migration `0037_smart_stock_foundation.sql` creates the Smart Stock data boundar
 - Sales, unrelated-role, inactive and signed-out users: confirm direct table requests return no Smart Stock rows and all writes are rejected.
 - Confirm Parts Query and supplier actors are assigned by the database and corresponding audit records are created automatically.
 - Confirm staged snapshot rows are visible only to administrators and become visible to Stock/Management users only after their import batch is validated and activated.
-- Do not remove the FastAPI Smart Stock routes until stages 3–8 have passed their production smoke checks.
+- Verify the active Supabase workflows below; there is no Python web-server fallback.
 
 ### Parts Query cutover checks
 
