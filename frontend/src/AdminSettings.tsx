@@ -29,6 +29,7 @@ type AccessRow = {
 type CampaignDropTarget = { type: string; edge: 'before' | 'after' }
 
 type Props = {
+  stockControlConfiguration: ReactNode
   salesDeskConfiguration: ReactNode
   integrations: any[]
   facebookPages: Array<{ id: string; name: string }>
@@ -234,6 +235,7 @@ export default function AdminSettings(props: Props) {
           </>}
 
           {selectedAppId === 'sales_desk' && props.salesDeskConfiguration}
+          {selectedAppId === 'stock_control' && props.stockControlConfiguration}
 
           <section className="admin-settings-panel app-access-panel">
             <div className="section-head"><div><h2>Who can open this app</h2><p>Grant application access to active employee accounts. Administrators and platform-wide roles are inherited.</p></div><ShieldCheck size={20} /></div>

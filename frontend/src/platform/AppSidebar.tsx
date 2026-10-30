@@ -165,7 +165,6 @@ export default function AppSidebar({
                     ...(isAdministrator
                       ? [
                           ["Stock Data Import", Upload] as const,
-                          ["Stock Control Configuration", Settings] as const,
                         ]
                       : []),
                     ["Stock Control Roadmap", Map],

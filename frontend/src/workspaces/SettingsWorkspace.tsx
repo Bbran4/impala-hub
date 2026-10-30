@@ -1,5 +1,6 @@
 import AdminSettings from "../AdminSettings";
 import SalesDesk from "../SalesDesk";
+import StockConfiguration from "../StockConfiguration";
 import { campaignsService } from "../campaignsService";
 import type { MarketingConnections } from "../marketing/useMarketingConnections";
 export default function SettingsWorkspace({
@@ -34,6 +35,7 @@ export default function SettingsWorkspace({
     <>
       {" "}
       <AdminSettings
+        stockControlConfiguration={<StockConfiguration setNotice={setNotice} setError={setError} />}
         salesDeskConfiguration={
           <SalesDesk
             page="App Settings"

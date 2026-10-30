@@ -429,8 +429,7 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 @media(max-width:760px){.admin-settings-panel .integration{grid-template-columns:1fr}.admin-settings-panel .integration-actions{width:100%;align-items:flex-start;padding-left:52px}.admin-settings-panel .facebook-page-picker{width:min(100%,320px)}.admin-settings-panel .facebook-page-picker .secondary{align-self:flex-start}}
 @media(max-width:680px){.admin-settings-apps{grid-template-columns:1fr}.admin-settings-heading{align-items:flex-start}.admin-app-status{font-size:0;padding:5px;width:10px;height:10px}.app-access-toolbar{align-items:stretch;flex-direction:column}.app-access-reason{display:none}.admin-settings-panel{padding:15px}}
 @media(max-width:800px){.permission-editor{grid-template-columns:1fr}.permission-users{max-height:330px;overflow:auto}}
-.stock-config-form { flex-wrap: wrap; align-items: stretch; gap: 10px; }
-.stock-config-form input, .stock-config-select { min-width: 190px; flex: 1 1 190px; }
+.stock-config-select { min-width: 190px; flex: 1 1 190px; }
 .stock-config-form > .primary, .stock-config-form > .secondary { flex: 0 0 auto; margin-top: 4px; }
 .stock-config-form > .primary { margin-right: 100%; }
 .stock-config-select { appearance: none; border: 1px solid var(--line, #d7dce5); border-radius: 8px; background: #fff; color: inherit; padding: 10px 34px 10px 12px; font: inherit; line-height: 1.2; background-image: linear-gradient(45deg, transparent 50%, #687386 50%), linear-gradient(135deg, #687386 50%, transparent 50%); background-position: calc(100% - 17px) 50%, calc(100% - 11px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
@@ -526,3 +525,24 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .roadmap-document td[data-roadmap-status="Implemented"]{color:#19734c}
 .roadmap-document td[data-roadmap-status="Missing"]{color:#aa3838}
 .roadmap-document td[data-roadmap-status="Partial"],.roadmap-document td[data-roadmap-status="Planned"]{color:#9b681f}
+
+/* Stock configuration inside App Settings. */
+.stock-control-settings{display:grid;gap:17px;min-width:0}
+.stock-control-settings .section-head{margin:0 0 17px;align-items:flex-start}
+.stock-control-settings .section-head h2{font:800 15px Manrope,sans-serif;color:#304456;margin:0 0 5px}
+.stock-control-settings .section-head p{font-size:11px;line-height:1.6;color:#778692;margin:0;max-width:none}
+.stock-config-form{display:grid;gap:12px;align-items:end;padding:14px;background:#f7f9fb;border:1px solid #e8edf1;border-radius:9px}
+.stock-threshold-form{grid-template-columns:repeat(2,minmax(0,1fr)) auto}
+.stock-location-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+.stock-status-form{grid-template-columns:minmax(0,1fr) auto}
+.stock-config-form label{display:flex;flex-direction:column;gap:6px;font-size:10px;color:#71808d;min-width:0}
+.stock-config-form input,.stock-config-form select{width:100%;min-width:0;box-sizing:border-box;background:#fff;border:1px solid #d8e1e7;border-radius:7px;padding:9px 10px;font:inherit;font-size:11px;color:#304456;min-height:35px}
+.stock-control-settings .primary,.stock-control-settings .secondary{font-size:10px;padding:8px 11px;min-height:35px;white-space:nowrap}
+.stock-location-form>.primary,.stock-location-form>.secondary{justify-self:start;align-self:end}
+.stock-control-settings .config-row{gap:14px;border-color:#edf0f3;font-size:12px}
+.stock-control-settings .config-row>span{min-width:0;overflow-wrap:anywhere}
+.stock-control-settings .config-row small{font-size:10px}
+.stock-control-settings .stock-color-field input{width:50px;min-width:50px;height:35px;min-height:35px;padding:3px;flex:none}
+.stock-config-empty{font-size:11px;color:#778692}
+@media(max-width:900px){.stock-threshold-form{grid-template-columns:repeat(2,minmax(0,1fr))}.stock-threshold-form>.primary{justify-self:start}}
+@media(max-width:600px){.stock-config-form{grid-template-columns:minmax(0,1fr)}.stock-control-settings .config-row{align-items:flex-start;flex-direction:column}.stock-config-actions{flex-wrap:wrap}.stock-location-form>.primary,.stock-location-form>.secondary{justify-self:stretch}}

@@ -88,7 +88,10 @@ export default function App() {
   ];
   useEffect(() => {
     if (!profileLoaded) return;
-    if (page === "Configuration" && isAdministrator) {
+    if (
+      ["Configuration", "Stock Control Configuration"].includes(page) &&
+      isAdministrator
+    ) {
       setPage("Admin Settings");
       return;
     }

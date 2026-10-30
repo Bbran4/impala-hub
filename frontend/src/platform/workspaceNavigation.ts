@@ -6,7 +6,6 @@ export const stockPages = [
   "Stock Booking",
   "Stock Reordering",
   "Stock Data Import",
-  "Stock Control Configuration",
   "Stock Control Roadmap",
 ];
 export const returnsPages = ["Returns & Claims", "Returns & Claims Roadmap"];

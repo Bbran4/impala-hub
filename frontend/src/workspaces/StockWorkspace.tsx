@@ -1,6 +1,5 @@
 import PartsQueries from "../PartsQueries";
 import StockBooking from "../StockBookingSupabase";
-import StockControlConfig from "../StockControlConfig";
 import StockImport from "../StockImport";
 import StockReordering from "../StockReorderingSupabase";
 import RoadmapPage from "./WorkspaceRoadmap";
@@ -15,8 +14,6 @@ export default function StockWorkspace({ page, ...props }: WorkspaceProps) {
       return <PartsQueries {...props} />;
     case "Stock Data Import":
       return <StockImport {...props} />;
-    case "Stock Control Configuration":
-      return <StockControlConfig {...props} />;
     case "Stock Control Roadmap":
       return <RoadmapPage document="stock" />;
     default:
