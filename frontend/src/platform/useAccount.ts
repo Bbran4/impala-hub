@@ -1,11 +1,13 @@
-import { useEffect,useState } from "react";
+import { useEffect, useState } from "react";
 import type { MarketingPermission } from "../marketingPermissions";
+import { clearRfqSession } from "../rfqService";
 import { supabase } from "../supabase";
 export function useAccount(
   sessionKey: string,
   setNotice: (message: string) => void,
   setError: (message: string) => void,
   handleError: (error: unknown) => void,
+  onAccessChanged: () => void,
 ) {
   const [profile, setProfile] = useState({
     first_name: "",
@@ -15,6 +17,9 @@ export function useAccount(
     sales_code: "",
   });
   const [profileBusy, setProfileBusy] = useState(false);
+  const [isAdministratorAccount, setIsAdministratorAccount] = useState(false);
+  const [normalUserView, setNormalUserView] = useState(false);
+  const [viewBusy, setViewBusy] = useState(false);
   const [isAdministrator, setIsAdministrator] = useState(false);
   const [assignedRoles, setAssignedRoles] = useState<string[]>([]);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -45,18 +50,15 @@ export function useAccount(
       .select("first_name,surname,email,avatar_url,sales_code")
       .eq("id", user.id)
       .maybeSingle();
-    const roles = await supabase
-      .from("profile_roles")
-      .select("role_id")
-      .eq("profile_id", user.id);
-    setIsAdministrator(
-      (roles.data || []).some(
-        (role: { role_id: string }) => role.role_id === "administrator",
-      ),
-    );
-    const roleIds = (roles.data || []).map(
-      (role: { role_id: string }) => role.role_id,
-    );
+    const access = await supabase.rpc("my_account_access");
+    if (access.error || !access.data)
+      throw new Error(
+        access.error?.message || "Unable to load account access.",
+      );
+    const roleIds: string[] = access.data.roles || [];
+    setIsAdministratorAccount(access.data.is_administrator_account === true);
+    setNormalUserView(access.data.normal_user_view === true);
+    setIsAdministrator(roleIds.includes("administrator"));
     setAssignedRoles(roleIds);
     const permissions = await supabase.rpc("my_marketing_permissions");
     setMarketingPermissions((permissions.data || []) as MarketingPermission[]);
@@ -80,6 +82,25 @@ export function useAccount(
       sales_code: data?.sales_code || "",
     });
     setProfileLoaded(true);
+  }
+  async function changeNormalUserView(enabled: boolean) {
+    if (!supabase || viewBusy) return;
+    setViewBusy(true);
+    setError("");
+    try {
+      const result = await supabase.rpc("set_my_normal_user_view", {
+        p_enabled: enabled,
+      });
+      if (result.error) throw new Error(result.error.message);
+      // Remount the workspace to discard privileged rows, open editors and
+      // cached session metadata without losing the in-memory sign-in session.
+      clearRfqSession();
+      onAccessChanged();
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setViewBusy(false);
+    }
   }
   async function saveProfile() {
     if (!supabase) return;
@@ -217,6 +238,14 @@ export function useAccount(
       setAssignedRoles([]);
       setMarketingPermissions([]);
       setIsAdministrator(false);
+      setIsAdministratorAccount(false);
+      setNormalUserView(false);
+      setReportingAccess({
+        admin: false,
+        builder: false,
+        catalogue: false,
+        apps: 0,
+      });
       setProfileLoaded(false);
     }
   }, [sessionKey]);
@@ -250,6 +279,10 @@ export function useAccount(
     profile,
     profileBusy,
     isAdministrator,
+    isAdministratorAccount,
+    normalUserView,
+    viewBusy,
+    changeNormalUserView,
     assignedRoles,
     profileLoaded,
     marketingPermissions,

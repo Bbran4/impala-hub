@@ -543,3 +543,10 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .stock-config-empty{font-size:11px;color:#778692}
 @media(max-width:900px){.stock-threshold-form{grid-template-columns:repeat(2,minmax(0,1fr))}.stock-threshold-form>.primary{justify-self:start}}
 @media(max-width:600px){.stock-config-form{grid-template-columns:minmax(0,1fr)}.stock-control-settings .config-row{align-items:flex-start;flex-direction:column}.stock-config-actions{flex-wrap:wrap}}
+
+.account-view-settings{grid-column:1/-1;border-top:1px solid #edf0f3;padding-top:16px}
+.account-view-settings label{display:flex;align-items:flex-start;gap:11px;cursor:pointer}
+.account-view-settings input[type=checkbox]{flex:none;width:16px;height:16px;padding:0;margin:2px 0;accent-color:#1d4668}
+.account-view-settings b{font-size:12px;color:#334656}
+.account-view-settings small{display:block;font-size:11px;line-height:1.6;color:#7a8994;margin-top:4px}
+.account-view-settings p{font-size:11px;color:#7a8994}

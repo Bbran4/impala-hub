@@ -21,6 +21,7 @@ const bundled = await build({
     export { default as MarketingPosts } from './src/marketing/MarketingPosts.tsx'
     export { default as MarketingDialogs } from './src/marketing/MarketingDialogs.tsx'
     export { default as AppSidebar } from './src/platform/AppSidebar.tsx'
+    export { default as AccountPage } from './src/platform/AccountPage.tsx'
     export { default as SignInPage } from './src/platform/SignInPage.tsx'
   `,
     resolveDir: root,
@@ -277,4 +278,31 @@ test("an unconfigured deployment offers no alternate sign-in backend", () => {
   assert.match(html, /type="email"/);
   assert.match(html, /<button[^>]*disabled/);
   assert.doesNotMatch(html, /Username|data migration|127\.0\.0\.1/);
+});
+
+
+test("only administrator accounts see the normal-view checkbox, including while previewing", () => {
+  const admin = account({ isAdministratorAccount: true, normalUserView: false, profileBusy: false });
+  const html = render(ui.AccountPage, { account: admin });
+  assert.match(html, /Use normal user view/);
+  assert.match(html, /type="checkbox"/);
+  assert.doesNotMatch(html, /type="checkbox"[^>]*checked/);
+  const preview = render(ui.AccountPage, { account: { ...admin, normalUserView: true, isAdministrator: false } });
+  assert.match(preview, /type="checkbox"[^>]*checked/);
+  assert.match(preview, /Untick this box to restore administrator access/);
+  assert.doesNotMatch(render(ui.AccountPage, { account: account() }), /Use normal user view|type="checkbox"/);
+});
+
+test("normal-view navigation uses assigned roles instead of administrator controls", () => {
+  const preview = account({ isAdministratorAccount: true, normalUserView: true, canAccessStock: true });
+  assert.equal(ui.canOpenPage("Stock Booking", preview), true);
+  assert.equal(ui.canOpenPage("RFQs", preview), false);
+  assert.equal(ui.canOpenPage("Admin Settings", preview), false);
+  const html = render(ui.AppSidebar, {
+    page: "Stock Booking", sessionKey: "session", account: preview, connected: false,
+    notificationChannels: ["stock_control"], onNavigate: no, openNotificationTarget: no,
+    setError: no, openChat: no, disconnectKey: async () => {},
+  });
+  assert.match(html, /Stock Booking/);
+  assert.doesNotMatch(html, /Stock Data Import|Open settings/);
 });

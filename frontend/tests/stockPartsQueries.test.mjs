@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { matchesStockQuery, prepareStockQueryPayload, stockSupplierUnitCost } from '../src/stockPartsQueries.ts'
+import { loadStockAccess, matchesStockQuery, prepareStockQueryPayload, stockSupplierUnitCost } from '../src/stockPartsQueries.ts'
 
 test('Parts Query payload trims fields and omits blank supplier rows', () => {
   assert.deepEqual(prepareStockQueryPayload({
@@ -43,3 +43,14 @@ test('Parts Query search covers references, sales codes and supplier notes', () 
   assert.equal(matchesStockQuery(query, 'uniquetoken'), true)
   assert.equal(matchesStockQuery(query, 'missing'), false)
 })
+
+
+test('stock access follows effective roles when administrators switch to normal view', async () => {
+  const client = (roles) => ({
+    auth: { getUser: async () => ({ data: { user: { id: 'employee' } } }) },
+    rpc: async (name) => { assert.equal(name, 'my_account_access'); return { data: { roles } }; },
+  });
+  assert.deepEqual(await loadStockAccess(client(['administrator'])), { isAdmin: true, canEdit: true });
+  assert.deepEqual(await loadStockAccess(client(['stock'])), { isAdmin: false, canEdit: true });
+  assert.deepEqual(await loadStockAccess(client([])), { isAdmin: false, canEdit: false });
+});

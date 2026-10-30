@@ -8,6 +8,10 @@ import { loadStockBookingWorkspace, loadStockBookingTransfer } from '../src/stoc
 function database(tables, cap = 113) {
   return {
     auth: { async getUser() { return { data: { user: { id: 'me' } } } } },
+    async rpc(name) {
+      assert.equal(name, 'my_account_access')
+      return { data: { roles: (tables.profile_roles || []).filter(row => row.profile_id === 'me').map(row => row.role_id) }, error: null }
+    },
     from(table) {
       let exact = false, from = 0, to = Infinity
       const filters = [], orders = []

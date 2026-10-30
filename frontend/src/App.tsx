@@ -28,7 +28,24 @@ import ReportingWorkspace from "./workspaces/ReportingWorkspace";
 import SettingsWorkspace from "./workspaces/SettingsWorkspace";
 
 export default function App() {
-  const [page, setPage] = useState("Apps");
+  const [accessRevision, setAccessRevision] = useState(0);
+  return (
+    <HubApp
+      key={accessRevision}
+      initialPage={accessRevision ? "Account" : "Apps"}
+      onAccessChanged={() => setAccessRevision((revision) => revision + 1)}
+    />
+  );
+}
+
+function HubApp({
+  initialPage,
+  onAccessChanged,
+}: {
+  initialPage: string;
+  onAccessChanged: () => void;
+}) {
+  const [page, setPage] = useState(initialPage);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [notificationRfqId, setNotificationRfqId] = useState<string | null>(
@@ -41,6 +58,7 @@ export default function App() {
     setNotice,
     setError,
     session.handleError,
+    onAccessChanged,
   );
   const { key } = session;
   const {

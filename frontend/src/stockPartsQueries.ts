@@ -108,9 +108,9 @@ export function matchesStockQuery(query: StockPartsQuery, search: string) {
 export async function loadStockAccess(client: SupabaseClient): Promise<StockAccess> {
   const user = (await client.auth.getUser()).data.user
   if (!user) throw new Error('Your session has expired. Sign in again.')
-  const roles = await client.from('profile_roles').select('role_id').eq('profile_id', user.id)
+  const roles = await client.rpc('my_account_access')
   if (roles.error) throw new Error(roles.error.message)
-  const roleIds = (roles.data || []).map((row: any) => row.role_id)
+  const roleIds: string[] = roles.data?.roles || []
   return { isAdmin: roleIds.includes('administrator'), canEdit: roleIds.includes('administrator') || roleIds.includes('stock') }
 }
 

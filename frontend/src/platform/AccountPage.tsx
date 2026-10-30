@@ -7,6 +7,10 @@ export default function AccountPage({ account }: { account: HubAccount }) {
   const {
     profile,
     profileBusy,
+    isAdministratorAccount,
+    normalUserView,
+    viewBusy,
+    changeNormalUserView,
     mfaCode,
     mfaQr,
     mfaSecret,
@@ -157,6 +161,29 @@ export default function AccountPage({ account }: { account: HubAccount }) {
                 </button>
               )}
             </div>
+            {isAdministratorAccount && (
+              <div className="account-view-settings">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={normalUserView}
+                    disabled={viewBusy}
+                    onChange={(event) =>
+                      void changeNormalUserView(event.target.checked)
+                    }
+                  />
+                  <span>
+                    <b>Use normal user view</b>
+                    <small>
+                      See the apps and data allowed by your assigned roles and
+                      permissions, without administrator access. Untick this box
+                      to restore administrator access.
+                    </small>
+                  </span>
+                </label>
+                {viewBusy && <p role="status">Updating your view…</p>}
+              </div>
+            )}
             <div className="account-actions">
               <button
                 className="primary"

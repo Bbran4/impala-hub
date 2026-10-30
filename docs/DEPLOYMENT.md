@@ -29,6 +29,16 @@ The project and GitHub Actions both use the pinned Supabase CLI version from `fr
 
 Local UI development uses Vite and Supabase. Use the linked Vercel project with `vercel dev` when testing `/api/marketing/` or `/api/reporting/` functions locally. See `README.md` and `FACEBOOK_SETUP.md` for setup.
 
+## Administrator normal user view
+
+Migration `0103_administrator_normal_user_view.sql` adds the **Use normal user view** checkbox to administrator accounts under **Profile and security**. The preference is saved on the account. It suppresses the administrator override in database role checks as well as in the UI; other assigned roles and explicit permission overrides continue to apply. It does not impersonate another employee or remove any role assignments.
+
+- Administrator with no other roles: enable normal view and confirm workspaces are unavailable, while the account profile remains accessible.
+- Administrator with employee roles: enable normal view and confirm only assigned workspaces, permissions and permitted data are available. Administrator settings and import controls should disappear.
+- Untick the checkbox from the profile and confirm full administrator access returns without signing out. Switching modes discards loaded workspace data and Sales Desk session metadata.
+- Ordinary and inactive accounts must not be able to change viewing mode through the RPC or direct profile updates.
+- The GitHub integration must apply migration 0103 before the matching frontend is used. The database regression suite is `supabase/tests/administrator_normal_user_view.test.sql`.
+
 ## Returns & Claims smoke checks
 
 - Signed out: the Apps Dashboard and Returns & Claims data are unavailable.

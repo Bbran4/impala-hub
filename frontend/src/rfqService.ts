@@ -28,6 +28,7 @@ const session = supabase ? createSalesDeskSessionCache(supabase) : null;
 supabase?.auth.onAuthStateChange((event, value) =>
   session?.authChanged(event, value),
 );
+export const clearRfqSession = () => session?.clear();
 export const normalizeRfq = (row: RawRfq): Rfq => ({
   ...row,
   media_platform: row.media_platform?.name || null,
