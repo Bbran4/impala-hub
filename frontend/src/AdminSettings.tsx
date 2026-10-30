@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  BarChart3, ClipboardList, Megaphone, PackageCheck, Search, Settings,
+  BarChart3, ClipboardList, Megaphone, MessageCircle, PackageCheck, Search, Settings,
   ShieldCheck, ShoppingCart, Tags, Truck, Users,
   type LucideIcon,
 } from 'lucide-react'
 import { supabase } from './supabase'
 import ApplicationPermissions from './ApplicationPermissions'
+import ChatSettings from './ChatSettings'
 
 type AppDefinition = {
   id: string
@@ -71,6 +72,7 @@ const ACCESS_REASON_LABELS: Record<string, string> = {
 
 export default function AdminSettings(props: Props) {
   const [selectedAppId, setSelectedAppId] = useState('marketing')
+  const [showChatSettings, setShowChatSettings] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
   const [accessRows, setAccessRows] = useState<AccessRow[]>([])
   const [accessLoading, setAccessLoading] = useState(true)
@@ -154,15 +156,16 @@ export default function AdminSettings(props: Props) {
           <div className="admin-settings-menu-head"><Settings size={18} /><div><b>Application settings</b><span>Choose an app to configure.</span></div></div>
           {APPS.map((app) => {
             const Icon = app.icon
-            return <button key={app.id} disabled={savingProfileId !== null} className={!showPermissions && selectedAppId === app.id ? 'active' : ''} onClick={() => { setShowPermissions(false); setSelectedAppId(app.id); setAccessSearch('') }}>
+            return <button key={app.id} disabled={savingProfileId !== null} className={!showChatSettings && !showPermissions && selectedAppId === app.id ? 'active' : ''} onClick={() => { setShowChatSettings(false); setShowPermissions(false); setSelectedAppId(app.id); setAccessSearch('') }}>
               <Icon size={18} /><span><b>{app.label}</b><small>{app.status === 'planned' ? 'Planned' : 'Available'}</small></span>
             </button>
           })}
-          <button className={`admin-settings-permissions-link ${showPermissions ? 'active' : ''}`} onClick={() => setShowPermissions(true)}><ShieldCheck size={18} /><span><b>Permissions</b><small>Users and actions</small></span></button>
+          <button className={`admin-settings-permissions-link ${showPermissions ? 'active' : ''}`} onClick={() => { setShowChatSettings(false); setShowPermissions(true) }}><ShieldCheck size={18} /><span><b>Permissions</b><small>Users and actions</small></span></button>
+          <button className={showChatSettings ? 'active' : ''} onClick={() => { setShowChatSettings(true); setShowPermissions(false) }}><MessageCircle size={18} /><span><b>Chat and channels</b><small>Users and colours</small></span></button>
         </nav>
 
         <div className="admin-settings-content">
-          {showPermissions ? <ApplicationPermissions setNotice={props.setNotice} setError={props.setError} /> : <>
+          {showChatSettings ? <ChatSettings setNotice={props.setNotice} setError={props.setError} /> : showPermissions ? <ApplicationPermissions setNotice={props.setNotice} setError={props.setError} /> : <>
           <div className="admin-settings-heading">
             <div className="admin-settings-app-icon"><selectedApp.icon size={24} /></div>
             <div><span className="eyebrow">APPLICATION SETTINGS</span><h2>{selectedApp.label}</h2><p>{selectedApp.description}</p></div>

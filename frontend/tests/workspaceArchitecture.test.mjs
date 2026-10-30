@@ -21,6 +21,7 @@ const bundled = await build({
     export { default as MarketingPosts } from './src/marketing/MarketingPosts.tsx'
     export { default as MarketingDialogs } from './src/marketing/MarketingDialogs.tsx'
     export { default as AppSidebar } from './src/platform/AppSidebar.tsx'
+    export { default as ColorPicker } from './src/ColorPicker.tsx'
     export { default as AccountPage } from './src/platform/AccountPage.tsx'
     export { default as SignInPage } from './src/platform/SignInPage.tsx'
   `,
@@ -305,4 +306,14 @@ test("normal-view navigation uses assigned roles instead of administrator contro
   });
   assert.match(html, /Stock Booking/);
   assert.doesNotMatch(html, /Stock Data Import|Open settings/);
+});
+
+
+test("shared colour controls show a wheel, RGB values and editable hex", () => {
+  const html = render(ui.ColorPicker, { label: 'Milestone colour', value: '#234e70', onChange: no });
+  assert.match(html, /type="color"/);
+  assert.match(html, /Milestone colour: hex/);
+  assert.match(html, /value="#234e70"/);
+  for (const channel of ['R','G','B']) assert.match(html, new RegExp('Milestone colour: '+channel));
+  for (const value of [35,78,112]) assert.match(html, new RegExp('value="'+value+'"'));
 });

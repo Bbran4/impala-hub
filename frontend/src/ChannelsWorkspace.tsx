@@ -1,6 +1,8 @@
 import { startVisiblePolling } from './visiblePolling'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FileText, MessageCircle, Paperclip, Plus, Send, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { chatNameColor } from './colorValues'
+import { emptyChatSettings, loadChatClientSettings } from './chatSettingsService'
 import { supabase } from './supabase'
 
 type Props = { setNotice: (message: string) => void; setError: (message: string) => void }
@@ -11,9 +13,9 @@ type Member = { user_id: string; display_name: string; email: string; avatar_url
 type Message = { message_id: string; sender_id: string; sender_name: string; body: string; created_at: string; read_by_recipient?: boolean; attachments: Attachment[] }
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?'
-const senderColor = (id: string) => `sender-color-${[...id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 8}`
 
 export default function ChannelsWorkspace({ setNotice, setError }: Props) {
+  const [chatSettings, setChatSettings] = useState(emptyChatSettings)
   const [channels, setChannels] = useState<Channel[]>([])
   const [chats, setChats] = useState<Conversation[]>([])
   const [selected, setSelected] = useState<{ kind: 'channel' | 'chat'; id: string } | null>(null)
@@ -31,7 +33,8 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
 
   const loadLists = useCallback(async () => {
     if (!supabase) return
-    const [channelResult, chatResult] = await Promise.all([supabase.rpc('chat_list_channels'), supabase.rpc('chat_list_conversations')])
+    const [channelResult, chatResult, settings] = await Promise.all([supabase.rpc('chat_list_channels'), supabase.rpc('chat_list_conversations'), loadChatClientSettings().catch((error: Error) => { setError(error.message); return emptyChatSettings })])
+    setChatSettings(settings)
     if (channelResult.error) setError(`Could not load channels: ${channelResult.error.message}`)
     else setChannels((channelResult.data || []) as Channel[])
     if (chatResult.error) setError(`Could not load chats: ${chatResult.error.message}`)
@@ -71,7 +74,7 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
   }, [selected, loadMessages, loadMembers])
 
   useEffect(() => {
-    if (!supabase || selected?.kind !== 'channel' || !memberPickerOpen) return
+    if (!supabase || selected?.kind !== 'channel' || !memberPickerOpen || !chatSettings.permissions.invite_users) return
     const query = memberQuery.trim()
     if (!query) { setMemberResults([]); return }
     const client = supabase
@@ -81,13 +84,20 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
       else setMemberResults((result.data || []).filter((user: Member) => !members.some((member) => member.user_id === user.user_id)) as Member[])
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [memberQuery, memberPickerOpen, members, selected, setError])
+  }, [memberQuery, memberPickerOpen, members, selected, setError, chatSettings.permissions.invite_users])
 
   async function addMember(user: Member) {
     if (!supabase || selected?.kind !== 'channel') return
     const result = await supabase.rpc('chat_add_channel_member', { target_channel_id: selected.id, target_user_id: user.user_id })
     if (result.error) setError(`Could not add channel member: ${result.error.message}`)
     else { await loadMembers(); setMemberQuery(''); setMemberResults([]); setNotice(`${user.display_name || user.email} added to the channel.`) }
+  }
+
+  async function removeMember(member: Member) {
+    if (!supabase || selected?.kind !== 'channel' || !window.confirm(`Remove ${member.display_name || member.email} from this channel?`)) return
+    const result = await supabase.rpc('chat_remove_channel_member', { target_channel_id: selected.id, target_user_id: member.user_id })
+    if (result.error) setError(result.error.message)
+    else { await loadMembers(); await loadLists(); setNotice('Channel member removed.') }
   }
 
   async function leaveChannel() {
@@ -146,16 +156,16 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
   return <section className="channels-workspace">
     <aside className="channels-sidebar">
       <div className="channels-sidebar-head"><div><span className="eyebrow">IMPALA HUB</span><h2>Channels</h2></div><Users size={21} /></div>
-      <div className="channels-section-title"><span>Channels</span><button className="icon-button" aria-label="Create channel" onClick={() => { const name = window.prompt('Channel name'); if (name) { setChannelDraft(name); void supabase?.rpc('chat_create_channel', { channel_name: name.trim(), channel_description: '' }).then(async ({ data, error }) => { if (error) setError(`Could not create channel: ${error.message}`); else { await loadLists(); setSelected({ kind: 'channel', id: data }); setNotice('Channel created.') } setChannelDraft('') }) } }}><Plus size={16} /></button></div>
+      <div className="channels-section-title"><span>Channels</span>{chatSettings.permissions.create_channels && <button className="icon-button" aria-label="Create channel" onClick={() => { const name = window.prompt('Channel name'); if (name) { setChannelDraft(name); void supabase?.rpc('chat_create_channel', { channel_name: name.trim(), channel_description: '' }).then(async ({ data, error }) => { if (error) setError(`Could not create channel: ${error.message}`); else { await loadLists(); setSelected({ kind: 'channel', id: data }); setNotice('Channel created.') } setChannelDraft('') }) } }}><Plus size={16} /></button>}</div>
       {channels.map((channel) => <button key={channel.channel_id} className={`channel-list-row ${selected?.kind === 'channel' && selected.id === channel.channel_id ? 'active' : ''}`} onClick={() => setSelected({ kind: 'channel', id: channel.channel_id })}><span className="channel-hash">#</span><span><b>{channel.name}</b><small>{channel.last_message || `${channel.member_count} members`}</small></span>{channel.unread_count > 0 && <em>{channel.unread_count}</em>}</button>)}
       <div className="channels-section-title"><span>Direct chats</span></div>
-      {chats.map((chat) => <button key={chat.conversation_id} className={`channel-list-row ${selected?.kind === 'chat' && selected.id === chat.conversation_id ? 'active' : ''}`} onClick={() => setSelected({ kind: 'chat', id: chat.conversation_id })}><Avatar name={chat.other_display_name || chat.other_email} url={chat.other_avatar_url} /><span><b>{chat.other_display_name || chat.other_email}<i className={`presence-dot ${chat.other_is_online ? 'online' : ''}`} title={chat.other_is_online ? 'Online' : 'Offline'} /></b><small>{chat.last_message || 'No messages yet'}</small></span>{chat.unread_count > 0 && <em>{chat.unread_count}</em>}</button>)}
+      {chats.map((chat) => <button key={chat.conversation_id} className={`channel-list-row ${selected?.kind === 'chat' && selected.id === chat.conversation_id ? 'active' : ''}`} onClick={() => setSelected({ kind: 'chat', id: chat.conversation_id })}><Avatar name={chat.other_display_name || chat.other_email} url={chat.other_avatar_url} /><span><b style={{ color: chatNameColor(chat.other_user_id, chatSettings.colors) }}>{chat.other_display_name || chat.other_email}<i className={`presence-dot ${chat.other_is_online ? 'online' : ''}`} title={chat.other_is_online ? 'Online' : 'Offline'} /></b><small>{chat.last_message || 'No messages yet'}</small></span>{chat.unread_count > 0 && <em>{chat.unread_count}</em>}</button>)}
     </aside>
     <main className="channels-main">
       {!selected ? <div className="channels-empty"><MessageCircle size={38} /><h2>Select a conversation</h2><p>Choose a channel or direct chat from the sidebar.</p></div> : <>
-        <header className="channels-main-head"><div>{selected.kind === 'channel' ? <span className="eyebrow">CHANNEL</span> : <span className="eyebrow">DIRECT CHAT <i className={`presence-dot ${chats.find((chat) => chat.conversation_id === selected.id)?.other_is_online ? 'online' : ''}`} /></span>}<h2>{selectedTitle}</h2>{selected.kind === 'channel' && <small>{members.length} member{members.length === 1 ? '' : 's'}</small>}</div>{selected.kind === 'channel' && <div className="channel-head-actions"><button className="secondary" onClick={() => setMemberPickerOpen((open) => !open)}><Users size={15} /> Members</button><button className="secondary" onClick={() => void leaveChannel()}>Leave</button><button className="secondary danger-button" onClick={() => void deleteChannel()}><Trash2 size={14} /> Delete</button></div>}</header>
-        {selected.kind === 'channel' && memberPickerOpen && <div className="channel-member-picker"><div className="channel-member-picker-head"><b>Channel members</b><button className="icon-button" onClick={() => setMemberPickerOpen(false)}><X size={16} /></button></div>{members.map((member) => <div className="channel-member-result" key={member.user_id}><span className={`presence-dot ${member.is_online ? 'online' : ''}`} /><span><b>{member.display_name || member.email}</b><small>{member.email}</small></span></div>)}<b className="channel-add-label">Add people</b><input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search by name or email" />{memberResults.map((user) => <button className="channel-member-result" key={user.user_id} onClick={() => void addMember(user)}><span className={`presence-dot ${user.is_online ? 'online' : ''}`} /><span><b>{user.display_name || user.email}</b><small>{user.email}</small></span><UserPlus size={15} /></button>)}{memberQuery && !memberResults.length && <small className="channel-member-empty">No available users found.</small>}</div>}
-        <div className="channels-messages">{messages.length ? messages.map((message) => { const member = members.find((item) => item.user_id === message.sender_id); const other = chats.find((chat) => chat.conversation_id === selected.id); const avatar = message.sender_id === userId ? myAvatar : selected.kind === 'chat' ? other?.other_avatar_url : member?.avatar_url; return <div className={`channels-message ${message.sender_id === userId ? 'mine' : ''}`} key={message.message_id}><div className="channel-message-author"><Avatar name={message.sender_name} url={avatar} /><b className={senderColor(message.sender_id)}>{message.sender_name}</b></div><span>{message.body}</span>{message.attachments?.map((attachment) => <ChannelAttachment key={attachment.id} attachment={attachment} />)}<time>{new Date(message.created_at).toLocaleString()}</time></div> }) : <div className="channels-empty"><MessageCircle size={30} /><p>No messages yet.</p></div>}</div>
+        <header className="channels-main-head"><div>{selected.kind === 'channel' ? <span className="eyebrow">CHANNEL</span> : <span className="eyebrow">DIRECT CHAT <i className={`presence-dot ${chats.find((chat) => chat.conversation_id === selected.id)?.other_is_online ? 'online' : ''}`} /></span>}<h2>{selectedTitle}</h2>{selected.kind === 'channel' && <small>{members.length} member{members.length === 1 ? '' : 's'}</small>}</div>{selected.kind === 'channel' && <div className="channel-head-actions"><button className="secondary" onClick={() => setMemberPickerOpen((open) => !open)}><Users size={15} /> Members</button><button className="secondary" onClick={() => void leaveChannel()}>Leave</button>{chatSettings.permissions.delete_channels && <button className="secondary danger-button" onClick={() => void deleteChannel()}><Trash2 size={14} /> Delete</button>}</div>}</header>
+        {selected.kind === 'channel' && memberPickerOpen && <div className="channel-member-picker"><div className="channel-member-picker-head"><b>Channel members</b><button className="icon-button" onClick={() => setMemberPickerOpen(false)}><X size={16} /></button></div>{members.map((member) => <div className="channel-member-result" key={member.user_id}><span className={`presence-dot ${member.is_online ? 'online' : ''}`} /><span><b style={{ color: chatNameColor(member.user_id, chatSettings.colors) }}>{member.display_name || member.email}</b><small>{member.email}</small></span>{chatSettings.permissions.remove_members && member.user_id !== userId && <button className="icon-button" aria-label={`Remove ${member.display_name || member.email}`} onClick={() => void removeMember(member)}><X size={14} /></button>}</div>)}{chatSettings.permissions.invite_users && <><b className="channel-add-label">Add people</b><input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search by name or email" />{memberResults.map((user) => <button className="channel-member-result" key={user.user_id} onClick={() => void addMember(user)}><span className={`presence-dot ${user.is_online ? 'online' : ''}`} /><span><b style={{ color: chatNameColor(user.user_id, chatSettings.colors) }}>{user.display_name || user.email}</b><small>{user.email}</small></span><UserPlus size={15} /></button>)}{memberQuery && !memberResults.length && <small className="channel-member-empty">No available users found.</small>}</>}</div>}
+        <div className="channels-messages">{messages.length ? messages.map((message) => { const member = members.find((item) => item.user_id === message.sender_id); const other = chats.find((chat) => chat.conversation_id === selected.id); const avatar = message.sender_id === userId ? myAvatar : selected.kind === 'chat' ? other?.other_avatar_url : member?.avatar_url; return <div className={`channels-message ${message.sender_id === userId ? 'mine' : ''}`} key={message.message_id}><div className="channel-message-author"><Avatar name={message.sender_name} url={avatar} /><b style={{ color: chatNameColor(message.sender_id, chatSettings.colors) }}>{message.sender_name}</b></div><span>{message.body}</span>{message.attachments?.map((attachment) => <ChannelAttachment key={attachment.id} attachment={attachment} />)}<time>{new Date(message.created_at).toLocaleString()}</time></div> }) : <div className="channels-empty"><MessageCircle size={30} /><p>No messages yet.</p></div>}</div>
         <footer className="channels-compose"><label className="icon-button" aria-label="Attach files"><Paperclip size={18} /><input type="file" multiple onChange={chooseFiles} /></label>{files.length > 0 && <div className="chat-file-chips">{files.map((file, index) => <button key={`${file.name}-${index}`} onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>{file.name} ×</button>)}</div>}<textarea rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={`Message ${selectedTitle || 'conversation'}…`} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } }} /><button className="primary" disabled={busy || (!draft.trim() && !files.length)} onClick={() => void send()}><Send size={16} /> Send</button></footer>
       </>}
     </main>

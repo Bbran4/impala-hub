@@ -1,6 +1,8 @@
 import { startVisiblePolling } from './visiblePolling'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, CheckCheck, ChevronDown, FileText, MessageCircle, Minus, Paperclip, Search, Send, X } from 'lucide-react'
+import { chatNameColor } from './colorValues'
+import { emptyChatSettings, loadChatClientSettings } from './chatSettingsService'
 import { supabase } from './supabase'
 
 type Conversation = {
@@ -54,6 +56,7 @@ const shortTime = (value: string) => new Intl.DateTimeFormat(undefined, {
 }).format(new Date(value))
 
 export default function ChatDock({ enabled, openRequest, onError, onOpenChannels }: Props) {
+  const [chatSettings, setChatSettings] = useState(emptyChatSettings)
   const [launcherOpen, setLauncherOpen] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [docked, setDocked] = useState<DockedChat[]>([])
@@ -80,7 +83,8 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
   const loadConversations = useCallback(async (quiet = false) => {
     if (!active || !supabase) return
     if (!quiet) setLoading(true)
-    const { data, error } = await supabase.rpc('chat_list_conversations')
+    const [{ data, error }, settings] = await Promise.all([supabase.rpc('chat_list_conversations'), loadChatClientSettings().catch(() => emptyChatSettings)])
+    setChatSettings(settings)
     if (error) {
       hadLoadError.current = true
       if (!quiet) onError(`Could not load chats: ${error.message}`)
@@ -181,16 +185,17 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
       <label className="chat-user-search"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="@name or email" aria-label="Find a user by name or email" /></label>
       <div className="chat-launcher-list">
         {query.trim() ? results.length ? results.map((user) => <button key={user.user_id} className="chat-person-row" onClick={() => void startChat(user)}>
-          <Avatar name={personName(user)} url={user.avatar_url} /><span><b>{personName(user)} <Presence online={user.is_online} /></b><small>{user.email}</small></span><MessageCircle size={16} />
+          <Avatar name={personName(user)} url={user.avatar_url} /><span><b style={{ color: chatNameColor(user.user_id, chatSettings.colors) }}>{personName(user)} <Presence online={user.is_online} /></b><small>{user.email}</small></span><MessageCircle size={16} />
         </button>) : <div className="chat-empty">{loading ? 'Searching…' : 'No users match that name or email.'}</div>
         : conversations.length ? conversations.map((conversation) => <button key={conversation.conversation_id} className="chat-person-row" onClick={() => openExisting(conversation.conversation_id)}>
-          <Avatar name={personName(conversation)} url={conversation.other_avatar_url} /><span><b>{personName(conversation)} <Presence online={conversation.other_is_online} /></b><small>{conversation.last_message || conversation.other_email}</small></span>{conversation.unread_count > 0 && <em>{conversation.unread_count > 99 ? '99+' : conversation.unread_count}</em>}
+          <Avatar name={personName(conversation)} url={conversation.other_avatar_url} /><span><b style={{ color: chatNameColor(conversation.other_user_id, chatSettings.colors) }}>{personName(conversation)} <Presence online={conversation.other_is_online} /></b><small>{conversation.last_message || conversation.other_email}</small></span>{conversation.unread_count > 0 && <em>{conversation.unread_count > 99 ? '99+' : conversation.unread_count}</em>}
         </button>) : <div className="chat-empty"><MessageCircle size={26} /><b>No chats yet</b><span>Type @ followed by a name or email to start one.</span></div>}
       </div>
     </section>}
 
     <div className="chat-dock" aria-label="Open chats">
       {dockRows.map(({ conversation, minimized }) => <ChatWindow
+        nameColors={chatSettings.colors}
         key={conversation!.conversation_id}
         conversation={conversation!}
         minimized={minimized}
@@ -214,7 +219,8 @@ function Presence({ online }: { online: boolean }) {
   return <i className={`chat-presence ${online ? 'online' : 'offline'}`} title={online ? 'Online' : 'Offline'} aria-label={online ? 'Online' : 'Offline'} />
 }
 
-function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, onError }: {
+function ChatWindow({ nameColors, conversation, minimized, onMinimize, onClose, onChanged, onError }: {
+  nameColors: Record<string, string>
   conversation: Conversation
   minimized: boolean
   onMinimize: () => void
@@ -282,7 +288,7 @@ function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, o
   return <section className={`chat-window ${minimized ? 'minimized' : ''}`}>
     <header onDoubleClick={onMinimize}>
       <Avatar name={personName(conversation)} url={conversation.other_avatar_url} />
-      <div><b>{personName(conversation)} <Presence online={conversation.other_is_online} /></b><small>{conversation.other_email}</small></div>
+      <div><b style={{ color: chatNameColor(conversation.other_user_id, nameColors) }}>{personName(conversation)} <Presence online={conversation.other_is_online} /></b><small>{conversation.other_email}</small></div>
       {conversation.unread_count > 0 && <em>{conversation.unread_count}</em>}
       <button className="icon-button" aria-label={minimized ? 'Restore chat' : 'Minimize chat'} onClick={onMinimize}>{minimized ? <ChevronDown size={16} /> : <Minus size={16} />}</button>
       <button className="icon-button" aria-label="Close chat" onClick={onClose}><X size={16} /></button>
@@ -291,7 +297,7 @@ function ChatWindow({ conversation, minimized, onMinimize, onClose, onChanged, o
       <div className="chat-messages">
         {messages.length ? messages.map((message) => {
           const mine = message.sender_id === currentUserId
-          return <div className={`chat-message ${mine ? 'mine' : 'theirs'}`} key={message.message_id}><span>{message.body}{message.attachments?.length > 0 && <span className="chat-attachments">{message.attachments.map((attachment) => <ChatAttachment key={attachment.id} attachment={attachment} />)}</span>}</span><time>{shortTime(message.created_at)}{mine && <span className="chat-delivery" title={message.read_by_recipient ? 'Read' : 'Sent'}>{message.read_by_recipient ? <CheckCheck size={12} /> : <Check size={12} />}</span>}</time></div>
+          return <div className={`chat-message ${mine ? 'mine' : 'theirs'}`} key={message.message_id}><span><b className="chat-message-name" style={{ color: chatNameColor(message.sender_id, nameColors) }}>{message.sender_name}</b>{message.body}{message.attachments?.length > 0 && <span className="chat-attachments">{message.attachments.map((attachment) => <ChatAttachment key={attachment.id} attachment={attachment} />)}</span>}</span><time>{shortTime(message.created_at)}{mine && <span className="chat-delivery" title={message.read_by_recipient ? 'Read' : 'Sent'}>{message.read_by_recipient ? <CheckCheck size={12} /> : <Check size={12} />}</span>}</time></div>
         }) : <div className="chat-empty"><MessageCircle size={24} /><span>This is the start of your chat with {personName(conversation)}.</span></div>}
         <div ref={bottomRef} />
       </div>

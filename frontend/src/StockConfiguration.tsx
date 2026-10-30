@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import ColorPicker from './ColorPicker'
 import { supabase } from './supabase'
 import {
   createStockDevelopmentStatus,
@@ -81,7 +82,7 @@ export default function StockConfiguration({ setNotice, setError }: Props) {
         <label>Supply branch<select aria-label="Supply branch" className="stock-config-select" value={locationForm.supply_branch} onChange={(event) => setLocationForm({ ...locationForm, supply_branch: event.target.value })}>
           <option value="">No branch supply mapping</option><option value="er">Highlights Supply ER</option><option value="pta">Highlights Supply PTA</option>
         </select></label>
-        <label className="stock-color-field">Highlight color<input type="color" value={locationForm.color} onChange={(event) => setLocationForm({ ...locationForm, color: event.target.value })} /></label>
+        <div className="stock-color-field"><span>Highlight colour</span><ColorPicker label="Location highlight colour" value={locationForm.color} disabled={saving} onChange={(color) => setLocationForm({ ...locationForm, color })} /></div>
         <div className="stock-location-form-actions">
           <button className="primary" disabled={saving} onClick={() => void saveLocation()}>{editingLocation ? 'Save changes' : <><Plus size={16} /> Add location</>}</button>
           {editingLocation && <button className="secondary" disabled={saving} onClick={() => { setEditingLocation(null); setLocationForm(blankLocation) }}><X size={16} /> Cancel</button>}
