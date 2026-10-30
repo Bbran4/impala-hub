@@ -82,8 +82,10 @@ export default function StockConfiguration({ setNotice, setError }: Props) {
           <option value="">No branch supply mapping</option><option value="er">Highlights Supply ER</option><option value="pta">Highlights Supply PTA</option>
         </select></label>
         <label className="stock-color-field">Highlight color<input type="color" value={locationForm.color} onChange={(event) => setLocationForm({ ...locationForm, color: event.target.value })} /></label>
-        <button className="primary" disabled={saving} onClick={() => void saveLocation()}>{editingLocation ? 'Save changes' : <><Plus size={16} /> Add location</>}</button>
-        {editingLocation && <button className="secondary" disabled={saving} onClick={() => { setEditingLocation(null); setLocationForm(blankLocation) }}><X size={16} /> Cancel</button>}
+        <div className="stock-location-form-actions">
+          <button className="primary" disabled={saving} onClick={() => void saveLocation()}>{editingLocation ? 'Save changes' : <><Plus size={16} /> Add location</>}</button>
+          {editingLocation && <button className="secondary" disabled={saving} onClick={() => { setEditingLocation(null); setLocationForm(blankLocation) }}><X size={16} /> Cancel</button>}
+        </div>
       </div>
       <div className="config-list">{locations.length === 0 && <p className="stock-config-empty">No locations configured.</p>}{locations.map((location) => <div className={`config-row${location.is_active ? '' : ' stock-config-inactive'}`} key={location.id}>
         <span><b>{location.name}</b>{location.description ? ` — ${location.description}` : ''}{location.vehicle_name ? ` · Vehicle: ${location.vehicle_name}` : ''}<small>{location.is_active ? 'Active' : 'Inactive'}{location.supply_branch ? ` · Supply ${location.supply_branch.toUpperCase()}` : ''}</small></span>

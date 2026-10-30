@@ -535,11 +535,11 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .stock-config-form .stock-config-select{flex:none;height:35px;min-height:35px;padding:8px 32px 8px 10px;appearance:none;line-height:normal;background-image:linear-gradient(45deg,transparent 50%,#687386 50%),linear-gradient(135deg,#687386 50%,transparent 50%);background-position:calc(100% - 15px) 50%,calc(100% - 11px) 50%;background-size:4px 4px;background-repeat:no-repeat}
 .stock-config-form .stock-config-select:focus-visible{outline:2px solid rgba(55,118,219,.22);outline-offset:1px;border-color:#3776db}
 .stock-control-settings .primary,.stock-control-settings .secondary{font-size:10px;padding:8px 11px;min-height:35px;white-space:nowrap}
-.stock-location-form>.primary,.stock-location-form>.secondary{justify-self:start;align-self:end}
+.stock-location-form-actions{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .stock-control-settings .config-row{gap:14px;border-color:#edf0f3;font-size:12px}
 .stock-control-settings .config-row>span{min-width:0;overflow-wrap:anywhere}
 .stock-control-settings .config-row small{font-size:10px}
 .stock-control-settings .stock-color-field input{width:50px;min-width:50px;height:35px;min-height:35px;padding:3px;flex:none}
 .stock-config-empty{font-size:11px;color:#778692}
 @media(max-width:900px){.stock-threshold-form{grid-template-columns:repeat(2,minmax(0,1fr))}.stock-threshold-form>.primary{justify-self:start}}
-@media(max-width:600px){.stock-config-form{grid-template-columns:minmax(0,1fr)}.stock-control-settings .config-row{align-items:flex-start;flex-direction:column}.stock-config-actions{flex-wrap:wrap}.stock-location-form>.primary,.stock-location-form>.secondary{justify-self:stretch}}
+@media(max-width:600px){.stock-config-form{grid-template-columns:minmax(0,1fr)}.stock-control-settings .config-row{align-items:flex-start;flex-direction:column}.stock-config-actions{flex-wrap:wrap}}
