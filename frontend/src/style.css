@@ -429,11 +429,6 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 @media(max-width:760px){.admin-settings-panel .integration{grid-template-columns:1fr}.admin-settings-panel .integration-actions{width:100%;align-items:flex-start;padding-left:52px}.admin-settings-panel .facebook-page-picker{width:min(100%,320px)}.admin-settings-panel .facebook-page-picker .secondary{align-self:flex-start}}
 @media(max-width:680px){.admin-settings-apps{grid-template-columns:1fr}.admin-settings-heading{align-items:flex-start}.admin-app-status{font-size:0;padding:5px;width:10px;height:10px}.app-access-toolbar{align-items:stretch;flex-direction:column}.app-access-reason{display:none}.admin-settings-panel{padding:15px}}
 @media(max-width:800px){.permission-editor{grid-template-columns:1fr}.permission-users{max-height:330px;overflow:auto}}
-.stock-config-select { min-width: 190px; flex: 1 1 190px; }
-.stock-config-form > .primary, .stock-config-form > .secondary { flex: 0 0 auto; margin-top: 4px; }
-.stock-config-form > .primary { margin-right: 100%; }
-.stock-config-select { appearance: none; border: 1px solid var(--line, #d7dce5); border-radius: 8px; background: #fff; color: inherit; padding: 10px 34px 10px 12px; font: inherit; line-height: 1.2; background-image: linear-gradient(45deg, transparent 50%, #687386 50%), linear-gradient(135deg, #687386 50%, transparent 50%); background-position: calc(100% - 17px) 50%, calc(100% - 11px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
-.stock-config-select:focus { outline: 2px solid rgba(55, 118, 219, .22); border-color: #3776db; }
 .stock-color-field { display: flex; align-items: center; gap: 8px; min-width: 150px; color: #687386; font-size: 12px; }
 .stock-color-field input { min-width: 42px; flex: 0 0 42px; width: 42px; height: 38px; padding: 3px; }
 .config-list { margin-top: 20px; border-top: 1px solid var(--line, #d7dce5); }
@@ -537,6 +532,8 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .stock-status-form{grid-template-columns:minmax(0,1fr) auto}
 .stock-config-form label{display:flex;flex-direction:column;gap:6px;font-size:10px;color:#71808d;min-width:0}
 .stock-config-form input,.stock-config-form select{width:100%;min-width:0;box-sizing:border-box;background:#fff;border:1px solid #d8e1e7;border-radius:7px;padding:9px 10px;font:inherit;font-size:11px;color:#304456;min-height:35px}
+.stock-config-form .stock-config-select{flex:none;height:35px;min-height:35px;padding:8px 32px 8px 10px;appearance:none;line-height:normal;background-image:linear-gradient(45deg,transparent 50%,#687386 50%),linear-gradient(135deg,#687386 50%,transparent 50%);background-position:calc(100% - 15px) 50%,calc(100% - 11px) 50%;background-size:4px 4px;background-repeat:no-repeat}
+.stock-config-form .stock-config-select:focus-visible{outline:2px solid rgba(55,118,219,.22);outline-offset:1px;border-color:#3776db}
 .stock-control-settings .primary,.stock-control-settings .secondary{font-size:10px;padding:8px 11px;min-height:35px;white-space:nowrap}
 .stock-location-form>.primary,.stock-location-form>.secondary{justify-self:start;align-self:end}
 .stock-control-settings .config-row{gap:14px;border-color:#edf0f3;font-size:12px}
