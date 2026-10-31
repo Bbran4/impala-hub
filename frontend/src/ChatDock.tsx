@@ -206,7 +206,7 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
   return <>
     {launcherOpen && <section className="chat-launcher" aria-label="Team chat">
       <header><div><span className="eyebrow">IMPALA HUB</span><h2>Team chat</h2></div><div className="chat-launcher-actions">{onOpenChannels && <button className="secondary" onClick={() => { setLauncherOpen(false); onOpenChannels() }}>Channels</button>}<button className="icon-button" aria-label="Close chat list" onClick={() => setLauncherOpen(false)}><X size={18} /></button></div></header>
-      <label className="chat-user-search"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && query.trim().startsWith('/')) { event.preventDefault(); void sendRfqUpdate() } }} placeholder="@name or email" aria-label="Find a user by name or email" /></label>
+      <label className="chat-user-search"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && query.trim().startsWith('/')) { event.preventDefault(); void sendRfqUpdate() } }} placeholder="@name or email or /command" aria-label="Find a user by name or email, or enter a command" /></label>
       <p className="hint">Send an RFQ update: /IMP26103101 Your message</p>
       {sentUpdate && <p role="status">{sentUpdate}</p>}
       <div className="chat-launcher-list">
