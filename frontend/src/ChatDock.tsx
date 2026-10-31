@@ -1,3 +1,5 @@
+import ChatCommandPicker from './ChatCommandPicker'
+import { chatInputMode } from './chatCommands'
 import RfqChatHeading from './RfqChatHeading'
 import { parseRfqCommand, type RfqChatLink } from './rfqChat'
 import { storageFileAccept, storageFileType } from './storageUploadRules'
@@ -65,6 +67,8 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [docked, setDocked] = useState<DockedChat[]>([])
   const [query, setQuery] = useState('')
+  const searchInput = useRef<HTMLInputElement>(null)
+  const inputMode = chatInputMode(query)
   const [results, setResults] = useState<UserResult[]>([])
   const [loading, setLoading] = useState(false)
   const [sendingUpdate, setSendingUpdate] = useState(false)
@@ -147,7 +151,7 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
 
   async function sendRfqUpdate() {
     const command = parseRfqCommand(query)
-    if (!supabase || !command || updateBusy.current) return
+    if (!supabase || inputMode !== 'rfq' || !command || updateBusy.current) return
     updateBusy.current = true; setSendingUpdate(true); setSentUpdate('')
     if (updateRetry.current?.query !== query) updateRetry.current = { query, id: crypto.randomUUID() }
     try {
@@ -206,10 +210,10 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
   return <>
     {launcherOpen && <section className="chat-launcher" aria-label="Team chat">
       <header><div><span className="eyebrow">IMPALA HUB</span><h2>Team chat</h2></div><div className="chat-launcher-actions">{onOpenChannels && <button className="secondary" onClick={() => { setLauncherOpen(false); onOpenChannels() }}>Channels</button>}<button className="icon-button" aria-label="Close chat list" onClick={() => setLauncherOpen(false)}><X size={18} /></button></div></header>
-      <label className="chat-user-search"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && query.trim().startsWith('/')) { event.preventDefault(); void sendRfqUpdate() } }} placeholder="@name or email or /command" aria-label="Find a user by name or email, or enter a command" /></label>
+      <label className="chat-user-search"><Search size={16} /><input ref={searchInput} autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && query.trim().startsWith('/')) { event.preventDefault(); if (inputMode === 'rfq') void sendRfqUpdate() } }} placeholder="@name or email or /command" aria-label="Find a user by name or email, or enter a command" /></label>
       {sentUpdate && <p role="status">{sentUpdate}</p>}
       <div className="chat-launcher-list">
-        {query.trim().startsWith('/') ? <div className="chat-empty"><b>{parseRfqCommand(query)?.rfqNo || 'RFQ update'}</b><span>{parseRfqCommand(query)?.body || 'Enter /RFQ-number followed by your message.'}</span><button className="primary" disabled={sendingUpdate || !parseRfqCommand(query)} onClick={() => void sendRfqUpdate()}><Send size={16} />{sendingUpdate ? 'Sending…' : 'Send RFQ update'}</button></div> : query.trim() ? results.length ? results.map((user) => <button key={user.user_id} className="chat-person-row" onClick={() => void startChat(user)}>
+        {inputMode === 'commands' ? <ChatCommandPicker onSelect={(prefix) => { setQuery(prefix); searchInput.current?.focus() }} /> : inputMode === 'rfq' ? <div className="chat-empty"><b>{parseRfqCommand(query)?.rfqNo || 'RFQ update'}</b><span>{parseRfqCommand(query)?.body || 'Enter the RFQ number after /IMP, followed by your message.'}</span><button className="primary" disabled={sendingUpdate || !parseRfqCommand(query)} onClick={() => void sendRfqUpdate()}><Send size={16} />{sendingUpdate ? 'Sending…' : 'Send RFQ update'}</button></div> : query.trim() ? results.length ? results.map((user) => <button key={user.user_id} className="chat-person-row" onClick={() => void startChat(user)}>
           <Avatar name={personName(user)} url={user.avatar_url} /><span><b style={{ color: chatNameColor(user.user_id, chatSettings.colors) }}>{personName(user)} <Presence online={user.is_online} /></b><small>{user.email}</small></span><MessageCircle size={16} />
         </button>) : <div className="chat-empty">{loading ? 'Searching…' : 'No users match that name or email.'}</div>
         : conversations.length ? conversations.map((conversation) => <button key={conversation.conversation_id} className="chat-person-row" onClick={() => openExisting(conversation.conversation_id)}>

@@ -15,3 +15,13 @@
 .chat-attachment-actions{display:flex;gap:8px;align-items:center;font-size:9px}.chat-attachment-actions>a{color:#315f83;text-decoration:underline}.channel-head-actions{display:flex;gap:6px;align-items:center}.channel-member-picker .channel-add-label{display:block;margin-top:12px;color:#526a7b;font-size:10px}
 
 .rfq-chat-link { display: block; border: 0; padding: 4px 0; background: transparent; color: var(--accent, #2563eb); font: inherit; font-weight: 700; text-align: left; text-decoration: underline; cursor: pointer; }
+
+.chat-command-picker { padding: 10px 0; }
+.chat-command-picker h3 { margin: 0; padding: 4px 16px 10px; font-size: 12px; color: #526372; }
+.chat-command-picker ul { list-style: none; padding: 0; margin: 0; }
+.chat-command-picker button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 0; background: transparent; text-align: left; color: #304456; }
+.chat-command-picker button:not(:disabled):hover { background: #edf3f7; }
+.chat-command-picker button:disabled { opacity: .55; cursor: not-allowed; }
+.chat-command-picker button > span { display: flex; align-items: center; gap: 10px; }
+.chat-command-picker code { background: #edf3f7; border-radius: 4px; padding: 3px 6px; font-size: 11px; }
+.chat-command-picker small { font-size: 10px; }

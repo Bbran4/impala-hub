@@ -113,7 +113,7 @@ Implementation endpoints use the existing namespace `/api/sales-desk` to keep RF
 
 ### RFQ chat updates and completion dates
 
-In Team chat's name/email field, enter `/IMP26103101 Your message` and press Enter or **Send RFQ update**. A manager sends to the active consultant assigned to that RFQ. A consultant sends to all active Sales Managers with **Receive RFQ notifications** enabled. Unassigned RFQs and unavailable recipients produce an error. Each recipient gets a direct chat with a linked RFQ heading and a notification containing the message and sender's name. Retries do not duplicate either record. Opening a link checks current Sales Desk access.
+In Team chat, type `/` to see commands. RFQ update is available; Claims and Parts query are disabled for now. Choose RFQ update or type `/IMP` to switch to the RFQ command. In the input, enter `/IMP26103101 Your message` and press Enter or **Send RFQ update**. A manager sends to the active consultant assigned to that RFQ. A consultant sends to all active Sales Managers with **Receive RFQ notifications** enabled. Unassigned RFQs and unavailable recipients produce an error. Each recipient gets a direct chat with a linked RFQ heading and a notification containing the message and sender's name. Retries do not duplicate either record. Opening a link checks current Sales Desk access.
 
 **Send RFQ chat updates** is configurable for roles and users under Sales Desk → Workspace. Approval notifications remain independent of general RFQ notification preferences.
 

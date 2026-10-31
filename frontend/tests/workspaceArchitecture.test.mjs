@@ -18,6 +18,7 @@ const bundled = await build({
     export { roadmapStatus } from './src/roadmaps/roadmapStatus.ts'
     export { pageContext, canOpenPage } from './src/platform/workspaceNavigation.ts'
     export { default as MarketingPostDetail } from './src/marketing/MarketingPostDetail.tsx'
+    export { default as ChatCommandPicker } from './src/ChatCommandPicker.tsx'
     export { default as MarketingRefresh } from './src/marketing/MarketingRefresh.tsx'
     export { default as MarketingPosts } from './src/marketing/MarketingPosts.tsx'
     export { default as MarketingDialogs } from './src/marketing/MarketingDialogs.tsx'
@@ -383,4 +384,12 @@ test('Marketing refresh button requires its own permission while last update rem
   assert.match(allowed,/<button[^>]*>Refresh<\/button>/);
   assert.doesNotMatch(allowed,/<button[^>]*disabled/);
   assert.match(render(ui.MarketingRefresh,{model:{...model,busy:true,canMarketing:()=>true}}),/<button[^>]*disabled/);
+});
+
+
+test('chat command picker offers RFQ updates and visibly disables Claims and Parts query', () => {
+ const html=render(ui.ChatCommandPicker,{onSelect:no});
+ assert.match(html,/Available chat commands/);
+ assert.match(html,/<button type="button"><span><b>RFQ update<\/b><code>\/IMP<\/code>/);
+ for (const label of ['Claims','Parts query']) assert.ok(html.includes(`<button type="button" disabled=""><span><b>${label}</b></span><small>Not available yet</small></button>`));
 });
