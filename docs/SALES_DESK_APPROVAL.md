@@ -44,3 +44,6 @@ role changes, inherited access and normal-view administrator recovery.
 
 
 Consultants see **Send for Approval** on their assigned RFQs even while requirements are missing. The approval panel explains whether they need a completed status, document number, uploaded document or request permission. They can change the status, document number and remarks and press **Send for Approval** directly. Their changes, approval request, audit and manager notifications commit together; if validation fails none of those changes are saved. Regular **Save changes** remains available for edits that are not ready for approval.
+
+
+Status setup uses **Outcome category**, which controls approvals and completion dates as well as analytics. Choosing **Completed** automatically makes the status closed. Migration 0137 classifies legacy statuses named exactly Complete or Completed when they were previously unclassified; explicitly configured dropped/scrapped/other outcomes are not inferred from names during RFQ processing. Other custom completion statuses must have their outcome category set to Completed.

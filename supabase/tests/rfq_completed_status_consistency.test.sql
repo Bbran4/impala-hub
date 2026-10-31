@@ -1,0 +1,18 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+set local search_path=public,extensions;
+select no_plan();
+insert into public.sales_desk_statuses(id,name,metric_category,is_closed) values('13700000-0000-0000-0000-000000000001','Completion consistency','completed',false),('13700000-0000-0000-0000-000000000002','Open consistency','other',false);
+select ok((select is_closed from public.sales_desk_statuses where id='13700000-0000-0000-0000-000000000001'),'new completed statuses are automatically closed');
+update public.sales_desk_statuses set is_closed=false where id='13700000-0000-0000-0000-000000000001';
+select ok((select is_closed from public.sales_desk_statuses where id='13700000-0000-0000-0000-000000000001'),'a completed status cannot drift back to open');
+select ok(not(select is_closed from public.sales_desk_statuses where id='13700000-0000-0000-0000-000000000002'),'noncompleted open statuses remain open');
+update public.sales_desk_statuses set metric_category='completed' where id='13700000-0000-0000-0000-000000000002';
+select ok((select is_closed from public.sales_desk_statuses where id='13700000-0000-0000-0000-000000000002'),'changing outcome to completed closes the status');
+update public.sales_desk_statuses set name='Renamed completion' where id='13700000-0000-0000-0000-000000000002';
+select is((select metric_category from public.sales_desk_statuses where id='13700000-0000-0000-0000-000000000002'),'completed','renaming a completed status retains completion semantics');
+update public.sales_desk_statuses set metric_category='in_progress',is_closed=false where id='13700000-0000-0000-0000-000000000002';
+select ok(not(select is_closed from public.sales_desk_statuses where id='13700000-0000-0000-0000-000000000002'),'changing to an open outcome permits an open status');
+select ok(not has_function_privilege('authenticated','public.close_completed_rfq_status()','execute'),'normal users cannot invoke the configuration trigger directly');
+select * from finish();
+rollback;

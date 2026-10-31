@@ -655,19 +655,19 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
               )}
               {isAdmin && (
                 <div className="admin-settings-panel sd-settings-card">
-                  <div className="section-head"><div><h2>RFQ statuses</h2><p>Manage workflow stages and analytics categories. Closed statuses allow invoice conversion.</p></div><Tags size={19} /></div>
+                  <div className="section-head"><div><h2>RFQ statuses</h2><p>Manage workflow stages and outcome categories. Completed statuses are always closed and allow approval requests.</p></div><Tags size={19} /></div>
                   <div className="sd-config-add sd-status-add">
                     <input placeholder="New status name" value={newStatus.name} onChange={(e) => setNewStatus({ ...newStatus, name: e.target.value })} />
-                    <label>Analytics category<select value={newStatus.category} onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label className="sd-inline-check"><input type="checkbox" checked={newStatus.closed} onChange={(e) => setNewStatus({ ...newStatus, closed: e.target.checked })} /> Closed status</label>
+                    <label>Outcome category<select value={newStatus.category} onChange={(e) => setNewStatus({ ...newStatus, category: e.target.value, closed: e.target.value === 'completed' || newStatus.closed })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                    <label className="sd-inline-check"><input type="checkbox" disabled={newStatus.category === 'completed'} checked={newStatus.category === 'completed' || newStatus.closed} onChange={(e) => setNewStatus({ ...newStatus, closed: e.target.checked })} /> Closed status</label>
                     <button className="primary" disabled={busy || !newStatus.name.trim()} onClick={() => void act(async () => { await service.addOption('statuses', { name: newStatus.name, is_closed: newStatus.closed, metric_category: newStatus.category as ConfigPatch['metric_category'] }); setNewStatus({ name: '', closed: false, category: 'other' }) }, 'Status added.')}>Add</button>
                   </div>
                   <Sortable items={config.statuses} onReorder={(ids) => void reorder('statuses', 'statuses', ids)}>
                     {(s) => (<>
                       <div className="sd-option-text"><b>{s.name}</b><small>{s.is_closed ? 'Closed' : 'Open'} · {s.is_active ? 'Active' : 'Inactive'} · {s.rfq_count} RFQ{s.rfq_count === 1 ? '' : 's'}</small></div>
                       <div className="sd-actions">
-                        <label>Analytics category<select value={s.metric_category || 'other'} onChange={(e) => void patchOption('statuses', s.id, { metric_category: e.target.value as ConfigPatch['metric_category'] })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                        <button className="secondary" onClick={() => void patchOption('statuses', s.id, { is_closed: !s.is_closed })}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button>
+                        <label>Outcome category<select value={s.metric_category || 'other'} onChange={(e) => void patchOption('statuses', s.id, { metric_category: e.target.value as ConfigPatch['metric_category'] })}>{METRIC_CATEGORIES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                        <button className="secondary" disabled={s.metric_category === 'completed'} title={s.metric_category === 'completed' ? 'Completed statuses are always closed.' : undefined} onClick={() => void patchOption('statuses', s.id, { is_closed: !s.is_closed })}>{s.is_closed ? 'Mark open' : 'Mark closed'}</button>
                         <button className="secondary" onClick={() => void patchOption('statuses', s.id, { is_active: !s.is_active })}>{s.is_active ? 'Deactivate' : 'Activate'}</button>
                         <button className="secondary" onClick={() => { const name = window.prompt('Rename status', s.name); if (name?.trim()) void patchOption('statuses', s.id, { name }) }}>Rename</button>
                         {(s.rfq_count === 0 || s.rfq_count == null) && s.name.toLowerCase() !== 'unclaimed' && <button className="icon-button" aria-label={`Delete ${s.name}`} title="Delete" onClick={() => removeOption('statuses', s, 'status')}><Trash2 size={16} /></button>}
