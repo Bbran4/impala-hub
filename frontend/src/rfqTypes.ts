@@ -84,6 +84,7 @@ export type RfqValues = {
   query_information: string;
   received_at: string;
   claimed_at: string | null;
+  completed_at?: string | null;
   sales_code_id: string | null;
   status_id: string;
   remarks: string;

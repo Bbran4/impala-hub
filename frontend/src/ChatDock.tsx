@@ -1,3 +1,5 @@
+import RfqChatHeading from './RfqChatHeading'
+import { parseRfqCommand, type RfqChatLink } from './rfqChat'
 import { storageFileAccept, storageFileType } from './storageUploadRules'
 import { startVisiblePolling } from './visiblePolling'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -26,7 +28,7 @@ type UserResult = {
   is_online: boolean
 }
 
-type Message = {
+type Message = RfqChatLink & {
   message_id: string
   conversation_id: string
   sender_id: string
@@ -44,6 +46,7 @@ type Props = {
   enabled: boolean
   openRequest: number
   onError: (message: string) => void
+  onOpenRfq?: (id: string) => void
   onOpenChannels?: () => void
 }
 
@@ -56,7 +59,7 @@ const shortTime = (value: string) => new Intl.DateTimeFormat(undefined, {
   hour: '2-digit', minute: '2-digit',
 }).format(new Date(value))
 
-export default function ChatDock({ enabled, openRequest, onError, onOpenChannels }: Props) {
+export default function ChatDock({ enabled, openRequest, onError, onOpenChannels, onOpenRfq }: Props) {
   const [chatSettings, setChatSettings] = useState(emptyChatSettings)
   const [launcherOpen, setLauncherOpen] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -64,6 +67,10 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserResult[]>([])
   const [loading, setLoading] = useState(false)
+  const [sendingUpdate, setSendingUpdate] = useState(false)
+  const [sentUpdate, setSentUpdate] = useState('')
+  const updateRetry = useRef<{ query: string; id: string } | null>(null)
+  const updateBusy = useRef(false)
   const [authenticated, setAuthenticated] = useState(false)
   const dismissedUnread = useRef<Record<string, number>>({})
   const hadLoadError = useRef(false)
@@ -129,7 +136,7 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
   useEffect(() => {
     if (!supabase || !launcherOpen) return
     const clean = query.trim()
-    if (!clean) { setResults([]); return }
+    if (!clean || clean.startsWith('/')) { setResults([]); return }
     const timer = window.setTimeout(async () => {
       const { data, error } = await supabase!.rpc('chat_search_users', { search_text: clean })
       if (error) onError(`Could not search users: ${error.message}`)
@@ -137,6 +144,22 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
     }, 250)
     return () => window.clearTimeout(timer)
   }, [query, launcherOpen, onError])
+
+  async function sendRfqUpdate() {
+    const command = parseRfqCommand(query)
+    if (!supabase || !command || updateBusy.current) return
+    updateBusy.current = true; setSendingUpdate(true); setSentUpdate('')
+    if (updateRetry.current?.query !== query) updateRetry.current = { query, id: crypto.randomUUID() }
+    try {
+      const { data, error } = await supabase.rpc('send_rfq_chat_update', { p_rfq_no: command.rfqNo, p_body: command.body, p_client_id: updateRetry.current.id })
+      if (error) throw new Error(error.message)
+      await loadConversations(true)
+      const sent = (data || []) as { conversation_id: string }[]
+      setDocked((current) => [...current, ...sent.filter((item) => !current.some((chat) => chat.conversationId === item.conversation_id)).map((item) => ({ conversationId: item.conversation_id, minimized: false }))])
+      setQuery(''); updateRetry.current = null; setSentUpdate(`${command.rfqNo} update sent.`); onError('')
+    } catch (error) { onError(error instanceof Error ? error.message : 'Could not send RFQ update.') }
+    finally { updateBusy.current = false; setSendingUpdate(false) }
+  }
 
   async function startChat(user: UserResult) {
     if (!supabase) return
@@ -183,9 +206,11 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
   return <>
     {launcherOpen && <section className="chat-launcher" aria-label="Team chat">
       <header><div><span className="eyebrow">IMPALA HUB</span><h2>Team chat</h2></div><div className="chat-launcher-actions">{onOpenChannels && <button className="secondary" onClick={() => { setLauncherOpen(false); onOpenChannels() }}>Channels</button>}<button className="icon-button" aria-label="Close chat list" onClick={() => setLauncherOpen(false)}><X size={18} /></button></div></header>
-      <label className="chat-user-search"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="@name or email" aria-label="Find a user by name or email" /></label>
+      <label className="chat-user-search"><Search size={16} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && query.trim().startsWith('/')) { event.preventDefault(); void sendRfqUpdate() } }} placeholder="@name or email" aria-label="Find a user by name or email" /></label>
+      <p className="hint">Send an RFQ update: /IMP26103101 Your message</p>
+      {sentUpdate && <p role="status">{sentUpdate}</p>}
       <div className="chat-launcher-list">
-        {query.trim() ? results.length ? results.map((user) => <button key={user.user_id} className="chat-person-row" onClick={() => void startChat(user)}>
+        {query.trim().startsWith('/') ? <div className="chat-empty"><b>{parseRfqCommand(query)?.rfqNo || 'RFQ update'}</b><span>{parseRfqCommand(query)?.body || 'Enter /RFQ-number followed by your message.'}</span><button className="primary" disabled={sendingUpdate || !parseRfqCommand(query)} onClick={() => void sendRfqUpdate()}><Send size={16} />{sendingUpdate ? 'Sending…' : 'Send RFQ update'}</button></div> : query.trim() ? results.length ? results.map((user) => <button key={user.user_id} className="chat-person-row" onClick={() => void startChat(user)}>
           <Avatar name={personName(user)} url={user.avatar_url} /><span><b style={{ color: chatNameColor(user.user_id, chatSettings.colors) }}>{personName(user)} <Presence online={user.is_online} /></b><small>{user.email}</small></span><MessageCircle size={16} />
         </button>) : <div className="chat-empty">{loading ? 'Searching…' : 'No users match that name or email.'}</div>
         : conversations.length ? conversations.map((conversation) => <button key={conversation.conversation_id} className="chat-person-row" onClick={() => openExisting(conversation.conversation_id)}>
@@ -196,6 +221,7 @@ export default function ChatDock({ enabled, openRequest, onError, onOpenChannels
 
     <div className="chat-dock" aria-label="Open chats">
       {dockRows.map(({ conversation, minimized }) => <ChatWindow
+        onOpenRfq={onOpenRfq}
         nameColors={chatSettings.colors}
         key={conversation!.conversation_id}
         conversation={conversation!}
@@ -220,7 +246,8 @@ function Presence({ online }: { online: boolean }) {
   return <i className={`chat-presence ${online ? 'online' : 'offline'}`} title={online ? 'Online' : 'Offline'} aria-label={online ? 'Online' : 'Offline'} />
 }
 
-function ChatWindow({ nameColors, conversation, minimized, onMinimize, onClose, onChanged, onError }: {
+function ChatWindow({ onOpenRfq, nameColors, conversation, minimized, onMinimize, onClose, onChanged, onError }: {
+  onOpenRfq?: (id: string) => void
   nameColors: Record<string, string>
   conversation: Conversation
   minimized: boolean
@@ -303,7 +330,7 @@ function ChatWindow({ nameColors, conversation, minimized, onMinimize, onClose, 
       <div className="chat-messages">
         {messages.length ? messages.map((message) => {
           const mine = message.sender_id === currentUserId
-          return <div className={`chat-message ${mine ? 'mine' : 'theirs'}`} key={message.message_id}><span><b className="chat-message-name" style={{ color: chatNameColor(message.sender_id, nameColors) }}>{message.sender_name}</b>{message.body}{message.attachments?.length > 0 && <span className="chat-attachments">{message.attachments.map((attachment) => <ChatAttachment key={attachment.id} attachment={attachment} />)}</span>}</span><time>{shortTime(message.created_at)}{mine && <span className="chat-delivery" title={message.read_by_recipient ? 'Read' : 'Sent'}>{message.read_by_recipient ? <CheckCheck size={12} /> : <Check size={12} />}</span>}</time></div>
+          return <div className={`chat-message ${mine ? 'mine' : 'theirs'}`} key={message.message_id}><span><b className="chat-message-name" style={{ color: chatNameColor(message.sender_id, nameColors) }}>{message.sender_name}</b><RfqChatHeading message={message} onOpenRfq={onOpenRfq} />{message.body}{message.attachments?.length > 0 && <span className="chat-attachments">{message.attachments.map((attachment) => <ChatAttachment key={attachment.id} attachment={attachment} />)}</span>}</span><time>{shortTime(message.created_at)}{mine && <span className="chat-delivery" title={message.read_by_recipient ? 'Read' : 'Sent'}>{message.read_by_recipient ? <CheckCheck size={12} /> : <Check size={12} />}</span>}</time></div>
         }) : <div className="chat-empty"><MessageCircle size={24} /><span>This is the start of your chat with {personName(conversation)}.</span></div>}
         <div ref={bottomRef} />
       </div>

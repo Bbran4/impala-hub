@@ -109,3 +109,12 @@ Automatic ingestion from Facebook, WhatsApp, email or website forms; quotation g
 - [ ] Milestone 6 verification: CI must pass, and the claim/concurrency, daily numbering, historical configuration and role tests must be reviewed. Run manual end-to-end regression against the local Windows setup before treating this as production-ready.
 
 Implementation endpoints use the existing namespace `/api/sales-desk` to keep RFQ functionality separate from Marketing's shared API-key endpoints. The follow-on workflow branch is based on the merged identity/RFQ foundation and should be merged only after CI and manual regression checks pass.
+
+
+### RFQ chat updates and completion dates
+
+In Team chat's name/email field, enter `/IMP26103101 Your message` and press Enter or **Send RFQ update**. A manager sends to the active consultant assigned to that RFQ. A consultant sends to all active Sales Managers with **Receive RFQ notifications** enabled. Unassigned RFQs and unavailable recipients produce an error. Each recipient gets a direct chat with a linked RFQ heading and a notification containing the message and sender's name. Retries do not duplicate either record. Opening a link checks current Sales Desk access.
+
+**Send RFQ chat updates** is configurable for roles and users under Sales Desk → Workspace. Approval notifications remain independent of general RFQ notification preferences.
+
+**Date completed** appears below Claimed date. Entering a status in the `completed` category records the time automatically; reopening clears it. Managers may correct a completion timestamp; consultants cannot edit it. Existing historic completion times are left unknown rather than guessed. Corrections are audited and invalidate an earlier approval.

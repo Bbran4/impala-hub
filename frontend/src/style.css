@@ -587,3 +587,5 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 .sd-approval-panel{padding:14px;border:1px solid #d8e1e8;border-radius:9px;background:#f7fafc;margin:12px 0}
 .sd-approval-panel h4{margin:0 0 7px}.sd-approval-panel small{color:#647887}.sd-approval-panel .sd-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:680px){.app-access-row{flex-wrap:wrap}.app-access-row select{flex-basis:100%;max-width:100%;margin-left:42px}}
+
+.notification-item p { white-space: pre-line; overflow-wrap: anywhere; }

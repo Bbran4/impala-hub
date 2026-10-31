@@ -78,21 +78,21 @@ function Sortable<T extends { id: string }>({ items, onReorder, children }: {
 // ---------------------------------------------------------------------------------------------
 type Form = {
   media_platform_id: string; customer_name: string; contact_number: string; email_address: string
-  query_information: string; received_at: string; claimed_at: string; sales_code_id: string
+  query_information: string; received_at: string; claimed_at: string; completed_at: string; sales_code_id: string
   status_id: string; remarks: string; document_number: string
 }
 const formFrom = (r: Rfq | null): Form => ({
   media_platform_id: r?.media_platform_id || '', customer_name: r?.customer_name || '',
   contact_number: r?.contact_number || '', email_address: r?.email_address || '',
   query_information: r?.query_information || '', received_at: toLocalInput(r?.received_at),
-  claimed_at: toLocalInput(r?.claimed_at), sales_code_id: r?.sales_code_id || '',
+  claimed_at: toLocalInput(r?.claimed_at), completed_at: toLocalInput(r?.completed_at), sales_code_id: r?.sales_code_id || '',
   status_id: r?.status_id || '', remarks: r?.remarks || '', document_number: r?.document_number || '',
 })
 
 const CHANGE_LABELS: Record<string, string> = {
   media_platform: 'Media platform', customer_name: 'Customer', contact_number: 'Contact number', email_address: 'Email',
   query_information: 'Query', remarks: 'Remarks', status: 'Status', document_number: 'Document number',
-  received_at: 'Received', claimed_at: 'Claimed',
+  received_at: 'Received', claimed_at: 'Claimed', completed_at: 'Completed',
 }
 const shorten = (v: unknown) => {
   const text = v == null || v === '' ? '—' : String(v)
@@ -123,7 +123,7 @@ function describeHistory(h: RfqAudit): string {
     case 'attachment_deleted': return `Attachment deleted: ${c.file}`
     case 'updated':
       return Object.entries(c).map(([k, v]) => {
-        const stamp = k === 'received_at' || k === 'claimed_at'
+        const stamp = k === 'received_at' || k === 'claimed_at' || k === 'completed_at'
         const show = (x: unknown) => (stamp && x ? fmtDate(String(x)) : shorten(x))
         const change = v && typeof v === 'object' ? v as { from?: unknown; to?: unknown } : {}
         return `${CHANGE_LABELS[k] || k}: ${show(change.from)} → ${show(change.to)}`
@@ -228,7 +228,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
         if (form[key] === initial[key]) continue
         if (isSales && !consultantCanEdit(key)) continue
         if (key === 'received_at') body[key] = toIso(form[key])
-        else if (key === 'claimed_at') body[key] = form[key] ? toIso(form[key]) : null
+        else if (key === 'claimed_at' || key === 'completed_at') body[key] = form[key] ? toIso(form[key]) : null
         else if (key === 'sales_code_id') body[key] = form[key] || null
         else body[key] = form[key]
       }
@@ -354,17 +354,20 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
             <label htmlFor="rfq-query">Query</label>
             <textarea id="rfq-query" rows={4} disabled={disabled || lockedForSales} value={form.query_information} onChange={(e) => set({ query_information: e.target.value })} />
 
-            <label htmlFor="rfq-received">Received date <span>{lockedForSales ? 'Only a manager can change this.' : 'Editable'}</span></label>
-            <input id="rfq-received" type="datetime-local" disabled={disabled || lockedForSales} value={form.received_at} onChange={(e) => set({ received_at: e.target.value })} />
-
             <label htmlFor="rfq-code">Sales code <span>{lockedForSales ? 'Only a manager or administrator can change this.' : 'Saved with the rest of the form when you press Save.'}</span></label>
             <select id="rfq-code" disabled={disabled || lockedForSales} value={form.sales_code_id} onChange={(e) => chooseSalesCode(e.target.value)}>
               <option value="">Unassigned</option>
               {codeChoices.map((c) => <option key={c.id} value={c.id}>{codeLabel(c)}{c.is_active ? '' : ' (inactive)'}</option>)}
             </select>
 
+            <label htmlFor="rfq-received">Received date <span>{lockedForSales ? 'Only a manager can change this.' : 'Editable'}</span></label>
+            <input id="rfq-received" type="datetime-local" disabled={disabled || lockedForSales} value={form.received_at} onChange={(e) => set({ received_at: e.target.value })} />
+
             <label htmlFor="rfq-claimed">Claimed date <span>{lockedForSales ? 'Only a manager can change this.' : form.sales_code_id ? 'Editable. Leave blank on a new assignment to use the time of saving.' : 'Choose a sales code first.'}</span></label>
             <input id="rfq-claimed" type="datetime-local" disabled={disabled || lockedForSales || !form.sales_code_id} value={form.claimed_at} onChange={(e) => set({ claimed_at: e.target.value })} />
+
+            <label htmlFor="rfq-completed">Date completed <span>Recorded automatically on completion. Managers can correct this date.</span></label>
+            <input id="rfq-completed" type="datetime-local" disabled={disabled || lockedForSales || config.statuses.find((status) => status.id === form.status_id)?.metric_category !== 'completed'} value={form.completed_at} onChange={(e) => set({ completed_at: e.target.value })} />
 
             <label htmlFor="rfq-status">Status</label>
             <select id="rfq-status" disabled={disabled} value={form.status_id} onChange={(e) => set({ status_id: e.target.value })}>

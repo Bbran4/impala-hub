@@ -150,6 +150,10 @@ function HubApp({
     }));
     setPage("Admin Settings");
   }
+  function openChatRfq(id: string) {
+    if (!canAccessSalesDesk) { setError("Sales Desk access is required to open this RFQ."); return; }
+    setNotificationRfqId(id); setPage("RFQs");
+  }
   function openNotificationTarget(notification: UserNotification) {
     setError("");
     setNotice("");
@@ -291,7 +295,7 @@ function HubApp({
               />
             )}
             {page === "Channels" && (
-              <ChannelsWorkspace setNotice={setNotice} setError={setError} />
+              <ChannelsWorkspace onOpenRfq={openChatRfq} setNotice={setNotice} setError={setError} />
             )}
             {allowed && context.isAdminSettingsPage && (
               <SettingsWorkspace
@@ -333,6 +337,7 @@ function HubApp({
         )}
       </main>
       <ChatDock
+        onOpenRfq={openChatRfq}
         enabled={Boolean(key)}
         openRequest={chatOpenRequest}
         onError={setError}
