@@ -138,14 +138,17 @@ select throws_ok($sql$
     (id,date,company,rfc_book_number,customer,contact_person,contact_number,invoice_number,invoice_date,reason,part_number,description,qty,status)
   values ('20000000-0000-0000-0000-000000000004','2026-10-26','Pretoria','NOPE','Blocked','Contact','0','0','2026-10-26','Claim','P','Blocked',1,'In Progress')
 $sql$, '42501', null, 'sales role cannot create a claim');
-select is((with changed as (update public.returns_claims set comments = 'Blocked' returning id) select count(*) from changed), 0::bigint, 'sales role cannot edit claims');
-select is((with changed as (update public.returns_claims set deleted_at = now() returning id) select count(*) from changed), 0::bigint, 'sales role cannot soft-delete claims');
+with changed as (update public.returns_claims set comments = 'Blocked' returning id)
+select is((select count(*) from changed), 0::bigint, 'sales role cannot edit claims');
+with changed as (update public.returns_claims set deleted_at = now() returning id)
+select is((select count(*) from changed), 0::bigint, 'sales role cannot soft-delete claims');
 select throws_ok($sql$ delete from public.returns_claims $sql$, '42501', null, 'sales role cannot physically delete claims');
 reset role;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000005","role":"authenticated"}';
 select is((select count(*) from public.returns_claims), 0::bigint, 'inactive user cannot read returns claims');
-select is((with changed as (update public.returns_claims set comments = 'Blocked' returning id) select count(*) from changed), 0::bigint, 'inactive user cannot update returns claims');
+with changed as (update public.returns_claims set comments = 'Blocked' returning id)
+select is((select count(*) from changed), 0::bigint, 'inactive user cannot update returns claims');
 reset role;
 
 -- Attachment policies, validation, limits and audit events.

@@ -12,3 +12,6 @@ supabase/.temp/
 .env.*
 !.env.example
 .vercel/
+
+# Generated TypeScript incremental build caches
+*.tsbuildinfo

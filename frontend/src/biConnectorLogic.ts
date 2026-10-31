@@ -27,7 +27,7 @@ export function uniqueNames(names:string[]){
     seen.add(candidate);return candidate})
 }
 
-const INT=/^-?\d{1,15}$/,NUM=/^-?(\d{1,3}([  ]\d{3})+|\d+)([.,]\d+)?$/,ISO_DATE=/^\d{4}-\d{2}-\d{2}$/,DMY=/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/,YMD=/^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/
+const INT=/^-?\d{1,15}$/,NUM=/^-?(\d{1,3}([ \u00a0]\d{3})+|\d+)([.,]\d+)?$/,ISO_DATE=/^\d{4}-\d{2}-\d{2}$/,DMY=/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/,YMD=/^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/
 const ISO_TS=/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/,BOOL=/^(true|false|yes|no|ja|nee)$/i
 const isBlank=(v:Cell)=>v===null||v===undefined||(typeof v==='string'&&v.trim()==='')
 const midnight=(d:Date)=>d.getUTCHours()===0&&d.getUTCMinutes()===0&&d.getUTCSeconds()===0&&d.getUTCMilliseconds()===0
@@ -53,7 +53,7 @@ export function convertCell(value:Cell,type:UploadType):string|number|boolean|nu
     case 'text':return value instanceof Date?(midnight(value)?value.toISOString().slice(0,10):value.toISOString()):String(value).trim()
     case 'boolean':if(typeof value==='boolean')return value;if(BOOL.test(s))return /^(true|yes|ja)$/i.test(s);break
     case 'bigint':if(typeof value==='number'&&Number.isInteger(value))return value;if(INT.test(s))return Number(s);break
-    case 'numeric':if(typeof value==='number'&&Number.isFinite(value))return value;if(NUM.test(s))return Number(s.replace(/[  ]/g,'').replace(',','.'));break
+    case 'numeric':if(typeof value==='number'&&Number.isFinite(value))return value;if(NUM.test(s))return Number(s.replace(/[ \u00a0]/g,'').replace(',','.'));break
     case 'date':{
       if(value instanceof Date)return value.toISOString().slice(0,10)
       if(ISO_DATE.test(s))return s

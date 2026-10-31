@@ -94,10 +94,11 @@ set local request.jwt.claims = '{"sub":"11000000-0000-0000-0000-000000000003","r
 select ok(public.can_access_workspace('stock_control'), 'management can access Smart Stock');
 select ok(not public.can_operate_stock_control(), 'management is read-only');
 select is((select count(*) from public.stock_parts_queries where deleted_at is null), 1::bigint, 'management can read Parts Queries');
-select is((with changed as (
+with changed as (
   update public.stock_parts_queries set description = 'Blocked manager edit'
   where id = '21000000-0000-0000-0000-000000000001' returning id
-) select count(*) from changed), 0::bigint, 'management cannot edit Parts Queries');
+)
+select is((select count(*) from changed), 0::bigint, 'management cannot edit Parts Queries');
 select throws_ok($sql$
   insert into public.stock_parts_queries
     (part_number,description,qty,development_status,status,created_by,updated_by)
@@ -208,9 +209,14 @@ select throws_ok($sql$
   update public.stock_parts_queries set description = 'Edit after archive'
   where id = '21000000-0000-0000-0000-000000000001'
 $sql$, 'P0001', 'Archived Parts Queries cannot be edited', 'archived Parts Queries are immutable');
-select throws_ok($sql$
-  delete from public.stock_parts_queries where id = '21000000-0000-0000-0000-000000000001'
-$sql$, '42501', null, 'browser users cannot physically delete Parts Queries');
+-- Either the table ACL rejects DELETE or RLS filters the row. Verify both
+-- supported denial mechanisms and the actual retained record.
+select case when has_table_privilege('authenticated','public.stock_parts_queries','delete') then
+  lives_ok($sql$delete from public.stock_parts_queries where id='21000000-0000-0000-0000-000000000001'$sql$, 'RLS blocks physical deletion without a DELETE policy')
+else
+  throws_ok($sql$delete from public.stock_parts_queries where id='21000000-0000-0000-0000-000000000001'$sql$, '42501', null, 'table privileges block physical deletion')
+end;
+select is((select count(*) from public.stock_parts_queries where id='21000000-0000-0000-0000-000000000001'),1::bigint,'browser users cannot physically delete Parts Queries');
 reset role;
 
 select is((select deleted_by from public.stock_parts_queries where id = '21000000-0000-0000-0000-000000000001'),

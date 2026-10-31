@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
-test("compiled Marketing handlers resolve their JavaScript dependencies and start", async () => {
+test("every API handler is type-checked, imports and rejects unsupported methods", async () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
-  const output = mkdtempSync(path.join(root, ".marketing-server-test-"));
+  const output = mkdtempSync(path.join(root, ".api-server-test-"));
   try {
     execFileSync(
       process.execPath,
@@ -20,20 +20,16 @@ test("compiled Marketing handlers resolve their JavaScript dependencies and star
       ],
       { cwd: root, stdio: "pipe" },
     );
-    const handlers = [
-      "status",
-      "facebook/sync",
-      "facebook/publish",
-      "facebook/publish-due",
-      "facebook/callback",
-      "facebook/connection",
-      "facebook/config",
-      "facebook/oauth-url",
-      "facebook/pages",
-      "facebook/select-page",
-    ];
+    const discover = (directory, prefix = '') => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      if (entry.name.startsWith('_')) return [];
+      const relative = prefix + entry.name;
+      return entry.isDirectory() ? discover(path.join(directory, entry.name), relative + '/') : entry.name.endsWith('.ts') ? [relative.slice(0, -3)] : [];
+    });
+    const handlers = discover(path.join(root, 'api'));
+    assert.ok(handlers.includes('marketing/status'));
+    assert.ok(handlers.includes('reporting/send-due'));
     for (const name of handlers) {
-      const entry = path.join(output, "api/marketing", `${name}.js`);
+      const entry = path.join(output, "api", `${name}.js`);
       const { default: handler } = await import(pathToFileURL(entry).href);
       let code;
       const response = {
@@ -45,7 +41,7 @@ test("compiled Marketing handlers resolve their JavaScript dependencies and star
           return this;
         },
       };
-      await handler({ method: "PATCH", headers: {} }, response);
+      await handler({ method: "TRACE", headers: {} }, response);
       assert.equal(code, 405, `${name} starts and rejects unsupported methods`);
     }
     assert.match(
@@ -77,6 +73,7 @@ test("compiled Marketing handlers resolve their JavaScript dependencies and star
         ["facebook/oauth-url", "POST"],
         ["facebook/pages", "GET"],
         ["facebook/select-page", "POST"],
+        ["facebook/publish-due", "POST"],
       ]) {
         const { default: handler } = await import(
           pathToFileURL(path.join(output, "api/marketing", `${name}.js`)).href
@@ -94,6 +91,10 @@ test("compiled Marketing handlers resolve their JavaScript dependencies and star
         await handler({ method, headers: {} }, response);
         assert.equal(code, 401, `${name} requires a bearer session`);
       }
+      const { default: reportDue } = await import(pathToFileURL(path.join(output, 'api/reporting/send-due.js')).href);
+      let reportCode;
+      await reportDue({ method: 'POST', headers: {}, query: {} }, { status(code) { reportCode = code; return this; }, json() { return this; } });
+      assert.equal(reportCode, 401, 'report scheduler rejects requests without its secret');
       const { default: callback } = await import(
         pathToFileURL(path.join(output, "api/marketing/facebook/callback.js"))
           .href

@@ -59,16 +59,16 @@ select throws_ok(
   $sql$select public.admin_reorder_campaign_types(array(select name from public.campaign_types order by position desc))$sql$,
   '42501',null,'non-administrators cannot reorder campaign types'
 );
-select is(
-  (with changed as (
+with changed as (
     update public.campaign_types set position=99 where name='Tips' returning 1
-  ) select count(*) from changed),
+  )
+select is((select count(*) from changed),
   0::bigint,'non-administrators cannot update campaign types'
 );
-select is(
-  (with changed as (
+with changed as (
     delete from public.campaign_types where name='Tips' returning 1
-  ) select count(*) from changed),
+  )
+select is((select count(*) from changed),
   0::bigint,'non-administrators cannot delete campaign types'
 );
 select is((select count(*) from public.admin_app_access_audit),0::bigint,'non-administrators cannot read audit rows');

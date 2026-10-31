@@ -27,6 +27,8 @@ select ok(not has_function_privilege('anon','public.mark_user_notification_read(
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"91000000-0000-0000-0000-000000000001","role":"authenticated"}';
+-- Seed a known RFQ as the database owner; browser writes now use RPCs.
+reset role;
 insert into public.sales_desk_rfqs (
   id, rfq_no, business_date, daily_number, media_platform_id, customer_name,
   query_information, sales_code_id, status_id, created_by, updated_by
@@ -39,9 +41,9 @@ select
   (select id from public.sales_desk_statuses where lower(name) = 'new'),
   auth.uid(), auth.uid();
 
-update public.sales_desk_rfqs
-set status_id = (select id from public.sales_desk_statuses where semantic_key = 'in_progress'), updated_by = auth.uid()
-where id = '92000000-0000-0000-0000-000000000001';
+set local role authenticated;
+select public.update_sales_desk_rfq('92000000-0000-0000-0000-000000000001',jsonb_build_object(
+  'status_id',(select id from public.sales_desk_statuses where semantic_key='in_progress')));
 reset role;
 
 select is((select count(*) from public.user_notifications where user_id = '91000000-0000-0000-0000-000000000002'), 1::bigint, 'entering In Progress creates one notification for the assigned salesperson');
@@ -59,14 +61,11 @@ select throws_ok($sql$
   where id = '92000000-0000-0000-0000-000000000001'
 $sql$, '42501', null, 'an assigned salesperson cannot reassign an RFQ through the data API');
 update public.profiles set sales_code = null where id = auth.uid();
-select is((
-  with changed as (
-    update public.sales_desk_rfqs
-    set sales_code_id = (select id from public.sales_desk_sales_codes where code = 'NT02'), updated_by = auth.uid()
-    where id = '92000000-0000-0000-0000-000000000001'
-    returning id
-  ) select count(*) from changed
-), 0::bigint, 'clearing a profile sales code does not grant manager reassignment authority');
+select throws_ok($sql$
+  update public.sales_desk_rfqs
+  set sales_code_id = (select id from public.sales_desk_sales_codes where code = 'NT02'), updated_by = auth.uid()
+  where id = '92000000-0000-0000-0000-000000000001'
+$sql$, '42501', null, 'clearing a profile sales code does not grant manager reassignment authority');
 update public.profiles set sales_code = 'NT01' where id = auth.uid();
 reset role;
 
@@ -79,8 +78,8 @@ reset role;
 -- A no-op status write must not duplicate the event.
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"91000000-0000-0000-0000-000000000001","role":"authenticated"}';
-update public.sales_desk_rfqs set status_id = status_id, updated_by = auth.uid()
-where id = '92000000-0000-0000-0000-000000000001';
+select public.update_sales_desk_rfq('92000000-0000-0000-0000-000000000001',jsonb_build_object(
+  'status_id',(select status_id from public.sales_desk_rfqs where id='92000000-0000-0000-0000-000000000001')));
 reset role;
 select is((select count(*) from public.user_notifications where target_record_id = '92000000-0000-0000-0000-000000000001'), 1::bigint, 'a no-op status write does not duplicate the notification');
 
@@ -88,12 +87,13 @@ create temporary table hidden_notification_id (id uuid primary key) on commit dr
 insert into hidden_notification_id
 select id from public.user_notifications where user_id = '91000000-0000-0000-0000-000000000002';
 
+grant select on pg_temp.hidden_notification_id to authenticated;
+
 -- Reassignment creates a notification for the new owner and hides stale RFQ details from the former owner.
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"91000000-0000-0000-0000-000000000001","role":"authenticated"}';
-update public.sales_desk_rfqs
-set sales_code_id = (select id from public.sales_desk_sales_codes where code = 'NT02'), updated_by = auth.uid()
-where id = '92000000-0000-0000-0000-000000000001';
+select public.update_sales_desk_rfq('92000000-0000-0000-0000-000000000001',jsonb_build_object(
+  'sales_code_id',(select id from public.sales_desk_sales_codes where code='NT02')));
 reset role;
 
 select is((select count(*) from public.user_notifications where target_record_id = '92000000-0000-0000-0000-000000000001'), 2::bigint, 'reassignment creates one notification for the new owner');

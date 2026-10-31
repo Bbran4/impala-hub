@@ -1,12 +1,11 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "./tsconfig.api.json",
   "compilerOptions": {
     "noEmit": false,
     "incremental": false,
     "rootDir": "."
   },
   "include": [
-    "api/marketing/**/*.ts",
-    "api/_lib/**/*.ts"
+    "api/**/*.ts"
   ]
 }

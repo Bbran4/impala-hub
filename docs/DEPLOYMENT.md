@@ -11,6 +11,7 @@ npm.cmd --prefix frontend ci
 npx.cmd --no-install --prefix frontend supabase start
 npx.cmd --no-install --prefix frontend supabase db reset
 npx.cmd --no-install --prefix frontend supabase test db
+npm.cmd --prefix frontend run lint
 npm.cmd --prefix frontend test
 npm.cmd --prefix frontend run build
 ```
@@ -18,6 +19,25 @@ npm.cmd --prefix frontend run build
 All commands must pass before applying migrations or starting a Vercel production deployment. GitHub Actions repeats the frontend and Supabase tests on pushes to `main`, `supabase-migration`, `feature/**`, and pull requests to `main`.
 
 The project and GitHub Actions both use the pinned Supabase CLI version from `frontend/package.json` (`2.122.0`).
+
+## Automated quality checks
+
+Use Node 22.13 or newer. `npm run lint` checks production TypeScript/TSX code with ESLint correctness rules and React hook ordering. Unused-code/style cleanup is outside this initial gate; intentional control-character sanitizing and sanitized publication errors have narrow rule exceptions.
+
+`npm run typecheck` checks both the frontend and **every `api/**/*.ts` file**. `npm run build` always runs these type checks before Vite, so local and Vercel builds also check server code. `tsconfig.api.json` is the server type-check entry point. `tsconfig.server-test.json` compiles those same files for runtime import tests.
+
+| Area | Regression coverage |
+| --- | --- |
+| Sales Desk authorization | `supabase/tests/sales_desk_rls.test.sql`: own/unclaimed/other RFQs, missing sales codes, manager/inactive/unrelated/anonymous access, audit and attachment visibility, upload and cleanup permissions |
+| Sales Desk commands and aggregates | `sales_desk_transactions.test.sql`, `sales_desk_metrics.test.sql`, `sales_desk_milestones.test.sql`, and the concurrency check in CI |
+| Marketing authorization | `supabase/tests/marketing_permissions.test.sql`: direct RLS and RPC permissions, assignment-only users, locked posts, server-only fields and anonymous/inactive access |
+| Marketing integrity and settings | `marketing_integrity.test.sql`, `marketing_queries.test.sql`, `settings_role_defaults.test.sql` |
+| API startup and guards | `frontend/tests/apiServerBuild.test.mjs` discovers every deployable handler, compiles/imports it and checks method/authentication guards without contacting providers |
+| API behavior | `marketingApiHandlers.test.mjs`, `marketingServerShared.test.mjs`, `marketingPublishing.test.mjs`: ownership, duplicate claims, outcome HTTP responses, credential redaction and bounded publisher requests |
+
+TypeScript build caches (`*.tsbuildinfo`) are ignored and must not be committed. The build uses non-emitting type checks rather than relying on a checked-in cache.
+
+Migration `0111_sales_desk_attachment_rls.sql` closes the gaps exposed by the new RLS suite: missing sales codes no longer grant access to assigned RFQs, attachment metadata and stored files follow the parent RFQ, and uploads/deletions require permission to edit that RFQ. A failed metadata save can still clean up its own pending upload. Signed-out and unrelated-role users cannot retrieve attachments.
 
 ## Production sequence
 
