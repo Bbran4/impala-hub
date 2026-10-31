@@ -1,4 +1,5 @@
 export const MARKETING_PERMISSION_GROUPS = [
+  { id: 'workspace', label: 'Workspace', actions: [['marketing.refresh', 'Refresh and sync']] },
   {
     id: 'feed', label: 'Feed', actions: [
       ['feed.view', 'View'], ['feed.create', 'Create'], ['feed.edit', 'Edit'],

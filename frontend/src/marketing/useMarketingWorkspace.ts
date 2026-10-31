@@ -275,6 +275,10 @@ export function useMarketingWorkspace({
   }
 
   async function syncAll() {
+    if (!canMarketing("marketing.refresh")) {
+      setError("You do not have permission to refresh Marketing.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {

@@ -13,6 +13,7 @@ import {
   type ServerClientFactory,
 } from "./supabase.ts";
 const permissions = {
+  refresh: ["marketing.refresh"],
   accounts: ["feed.manage_accounts"],
   publishing: ["feed.create", "feed.edit", "posts.create", "posts.edit"],
 } as const;
@@ -79,9 +80,9 @@ export async function requireMarketingSession<K extends Setting = never>(
       ),
     );
     if (checks.some((check) => check.error))
-      throw new HttpError(500, "Could not verify Marketing publishing access.");
+      throw new HttpError(500, access === "refresh" ? "Could not verify Marketing refresh access." : "Could not verify Marketing publishing access.");
     if (!checks.some((check) => check.data === true))
-      throw new HttpError(403, "Create or edit post permission required.");
+      throw new HttpError(403, access === "refresh" ? "Marketing refresh permission required." : "Create or edit post permission required.");
   }
   // Create the privileged client only after the employee's live permission check.
   return {

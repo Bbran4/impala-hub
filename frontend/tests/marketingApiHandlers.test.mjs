@@ -8,7 +8,7 @@ import { publishingBudget } from '../api/marketing/facebook/_publishing.ts';
 // Shared authentication and the real atomic publisher have separate tests.
 const bundled = await build({
   stdin: {
-    contents: `export {default as publish} from './api/marketing/facebook/publish.ts'; export {default as pages} from './api/marketing/facebook/pages.ts'; export {default as due} from './api/marketing/facebook/publish-due.ts'`,
+    contents: `export {default as sync} from './api/marketing/facebook/sync.ts'; export {default as publish} from './api/marketing/facebook/publish.ts'; export {default as pages} from './api/marketing/facebook/pages.ts'; export {default as due} from './api/marketing/facebook/publish-due.ts'`,
     resolveDir: fileURLToPath(new URL('../', import.meta.url)), loader: 'ts',
   },
   bundle: true, write: false, platform: 'node', format: 'esm', target: 'es2022',
@@ -127,4 +127,13 @@ test('scheduled multi-photo batches leave the next post unclaimed when its full 
     assert.equal(f.claims.length,1);assert.equal(f.claims[0][1],'first');
     assert.equal(f.publishes[0][4],340_000);
   }finally{Date.now=originalNow;}
+});
+
+
+test('Facebook sync handler uses the dedicated Refresh permission policy', async () => {
+ const f=fixture({connection:false});
+ const result=await invoke(handlers.sync);
+ assert.equal(result.status,409);
+ assert.deepEqual(f.access,['refresh']);
+ assert.equal(f.publishes.length,0);
 });

@@ -5,13 +5,13 @@ export default function MarketingRefresh({ model }: { model: MarketingModel }) {
   )?.last_synced_at;
   return (
     <div className="marketing-refresh">
-      <button
+      {model.canMarketing("marketing.refresh") && <button
         className="secondary"
         disabled={model.busy}
         onClick={() => void model.syncAll()}
       >
         Refresh
-      </button>
+      </button>}
       <span
         className="marketing-last-update"
         title="Last successful Facebook refresh, in Johannesburg time"

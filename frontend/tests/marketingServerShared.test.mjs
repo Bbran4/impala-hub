@@ -341,3 +341,15 @@ test("reconciliation needs a real administrator account, not publishing permissi
   await assert.rejects(requireMarketingSession(request,'reconcile',{},writer.dependencies),status(403));
   assert.deepEqual(writer.created,['browser-key']);
 });
+
+
+test('Marketing sync requires Refresh permission before creating a privileged client', async () => {
+ const allowed = fixture({allowed:['marketing.refresh']});
+ await requireMarketingSession(request,'refresh',{},allowed.dependencies);
+ assert.deepEqual(allowed.checks,[['has_marketing_permission',{required_permission:'marketing.refresh'}]]);
+ for (const config of [{workspace:true},{allowed:['posts.edit','feed.manage_accounts']},{allowed:['marketing.refresh'],errorOn:'marketing.refresh'}]) {
+  const denied=fixture(config);
+  await assert.rejects(requireMarketingSession(request,'refresh',{},denied.dependencies),status(config.errorOn?500:403));
+  assert.equal(denied.created.length,1,'denial never creates the service-role client');
+ }
+});

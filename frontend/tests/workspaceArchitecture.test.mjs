@@ -18,6 +18,7 @@ const bundled = await build({
     export { roadmapStatus } from './src/roadmaps/roadmapStatus.ts'
     export { pageContext, canOpenPage } from './src/platform/workspaceNavigation.ts'
     export { default as MarketingPostDetail } from './src/marketing/MarketingPostDetail.tsx'
+    export { default as MarketingRefresh } from './src/marketing/MarketingRefresh.tsx'
     export { default as MarketingPosts } from './src/marketing/MarketingPosts.tsx'
     export { default as MarketingDialogs } from './src/marketing/MarketingDialogs.tsx'
     export { default as AppSidebar } from './src/platform/AppSidebar.tsx'
@@ -369,4 +370,17 @@ test("app role selectors offer Sales and Sales Manager without platform-wide rol
   const html=render(ui.AppRoleSelect,{name:'Consultant',roles:[{id:'sales',label:'Sales consultant'},{id:'sales_manager',label:'Sales Manager'}],value:'sales_manager',disabled:false,onChange:no});
   assert.match(html,/App role for Consultant/);assert.match(html,/>No app role</);assert.match(html,/value="sales_manager" selected=""/);
   assert.match(html,/Sales consultant/);assert.doesNotMatch(html,/Administrator|Management/);
+});
+
+
+test('Marketing refresh button requires its own permission while last update remains visible', () => {
+  const model = { integrations:[{provider:'facebook',last_synced_at:'2026-11-01T08:00:00Z'}],busy:false,syncAll:no,canMarketing:permission=>permission==='posts.edit' };
+  const denied = render(ui.MarketingRefresh,{model});
+  assert.doesNotMatch(denied, /<button/);
+  assert.match(denied,/Last update:/);
+  assert.match(denied,/2026-11-01T08:00:00Z/);
+  const allowed = render(ui.MarketingRefresh,{model:{...model,canMarketing:permission=>permission==='marketing.refresh'}});
+  assert.match(allowed,/<button[^>]*>Refresh<\/button>/);
+  assert.doesNotMatch(allowed,/<button[^>]*disabled/);
+  assert.match(render(ui.MarketingRefresh,{model:{...model,busy:true,canMarketing:()=>true}}),/<button[^>]*disabled/);
 });

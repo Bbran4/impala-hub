@@ -5,7 +5,7 @@ import { decryptToken } from "../../_lib/metaCrypto.ts";
 import { syncFacebookPage, SYNC_WORK_MS } from "./_sync.ts";
 export default withApiErrors(async (req, res) => {
   requireMethod(req, ["POST"]);
-  const { user, settings } = await requireMarketingSession(req, "workspace", {
+  const { user, settings } = await requireMarketingSession(req, "refresh", {
     required: ["encryptionKey"],
     configurationMessage: "Facebook sync server configuration is incomplete.",
   });
