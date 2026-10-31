@@ -10,6 +10,8 @@ export type SalesDeskUser = {
   display_name: string;
   role: "administrator" | "management" | "manager" | "salesperson";
   sales_code: string | null;
+  can_request_approval?: boolean;
+  can_approve?: boolean;
 };
 export type ConfigOption = {
   id: string;
@@ -93,6 +95,17 @@ export type RfqCreate = Pick<
 > &
   Partial<RfqValues>;
 export type Rfq = RfqValues & {
+  approval_state?:
+    | "not_requested"
+    | "pending"
+    | "approved"
+    | "changes_requested";
+  approval_revision?: number;
+  approval_requested_by?: string | null;
+  approval_requested_at?: string | null;
+  approval_reviewed_by?: string | null;
+  approval_reviewed_at?: string | null;
+  approval_note?: string;
   id: string;
   rfq_no: string;
   attachment_count?: number;

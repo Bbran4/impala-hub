@@ -3,15 +3,16 @@ import {
   serverSettings,
   requireSettings,
   missingSettings,
+  facebookFrontendUrl,
 } from "../../_lib/config.ts";
 import { createAdminClient } from "../../_lib/supabase.ts";
 import { encryptToken } from "../../_lib/metaCrypto.ts";
 import { facebookGraphUrl } from "../../_lib/facebook.ts";
+import type { FacebookPageToken } from "../../_lib/facebookTypes.ts";
 export default withApiErrors(async (req, res) => {
   requireMethod(req, ["GET"]);
   const settings = serverSettings();
-  const frontend =
-    settings.frontendUrl || "https://impala-hub-marketing.vercel.app";
+  const frontend = facebookFrontendUrl(settings);
   const redirect = (reason: string) =>
     res.redirect(
       `${frontend}/?facebook_oauth=error&reason=${encodeURIComponent(reason)}`,
@@ -60,22 +61,22 @@ export default withApiErrors(async (req, res) => {
     );
     const pagesData = await pagesResponse.json();
     const pages = (pagesData.data || [])
-      .filter((page: any) => page.id && page.name && page.access_token)
-      .map((page: any) => ({
+      .filter(
+        (page: FacebookPageToken) => page.id && page.name && page.access_token,
+      )
+      .map((page: FacebookPageToken) => ({
         id: page.id,
         name: page.name,
         tasks: page.tasks || [],
         token: encryptToken(page.access_token, encryptionKey),
       }));
     if (!pages.length) return redirect("page_token_unavailable");
-    await admin
-      .from("oauth_page_choices")
-      .upsert({
-        owner_id: stateRow.owner_id,
-        provider: "facebook",
-        pages,
-        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-      });
+    await admin.from("oauth_page_choices").upsert({
+      owner_id: stateRow.owner_id,
+      provider: "facebook",
+      pages,
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    });
     return res.redirect(`${frontend}/?facebook_oauth=choose_page`);
   } catch {
     return redirect("oauth_failed");

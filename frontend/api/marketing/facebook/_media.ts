@@ -1,4 +1,6 @@
 import { facebookMediaId } from "./_publishing.ts";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { StoredFacebookMedia } from "../../_lib/facebookTypes.ts";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const extensions: Record<string, string> = {
@@ -72,18 +74,23 @@ async function imageBytes(url: string, signal?: AbortSignal) {
 
 // Persist only our own durable URLs. Provider URLs exist only during this request.
 export async function copyFacebookMedia(
-  admin: any,
+  admin: SupabaseClient,
   postId: string,
   urls: string[],
-  existing: any[] = [],
+  existing: unknown[] = [],
   signal?: AbortSignal,
 ) {
   const bucket = admin.storage.from("marketing-media");
   const root = bucket.getPublicUrl("").data.publicUrl;
   const retained = existing.filter(
-    (m) => typeof m.url === "string" && m.url.startsWith(root),
+    (m): m is StoredFacebookMedia =>
+      typeof m === "object" &&
+      m !== null &&
+      "url" in m &&
+      typeof m.url === "string" &&
+      m.url.startsWith(root),
   );
-  const media: any[] = [];
+  const media: StoredFacebookMedia[] = [];
   let unavailable = 0;
   for (const url of [...new Set(urls)].slice(0, 10)) {
     signal?.throwIfAborted();
@@ -92,15 +99,15 @@ export async function copyFacebookMedia(
       const id = facebookMediaId(postId, url).replace(/[^a-zA-Z0-9_-]/g, "_");
       const prefix = `facebook/${postId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
       const cached = await bucket.list(prefix, { search: id, limit: 10 });
-      const found =
-        !cached.error &&
-        cached.data?.find(
-          (entry: any) =>
-            entry.name.startsWith(`${id}.`) &&
-            Object.values(extensions).some(
-              (ext) => entry.name === `${id}.${ext}`,
-            ),
-        );
+      const found = cached.error
+        ? undefined
+        : cached.data?.find(
+            (entry) =>
+              entry.name.startsWith(`${id}.`) &&
+              Object.values(extensions).some(
+                (ext) => entry.name === `${id}.${ext}`,
+              ),
+          );
       let name = found?.name;
       if (!name) {
         const image = await imageBytes(url, signal);

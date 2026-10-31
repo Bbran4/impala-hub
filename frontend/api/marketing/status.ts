@@ -14,10 +14,12 @@ export default withApiErrors(async (req, res) => {
       .status(500)
       .json({ detail: "Could not load shared provider connections." });
   const connected = new Map(
-    (connections || []).map((connection: any) => [
-      connection.provider,
-      connection,
-    ]),
+    (connections || []).map(
+      (connection: Record<string, unknown> & { provider: string }) => [
+        connection.provider,
+        connection,
+      ],
+    ),
   );
   return res.status(200).json({
     authenticated: true,

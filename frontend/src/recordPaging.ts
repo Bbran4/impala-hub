@@ -5,6 +5,7 @@ export type RecordPage<T> = {
   offset: number;
 };
 export type RfqFilters = {
+  approval?: string;
   search?: string;
   status?: string;
   code?: string;

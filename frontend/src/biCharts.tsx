@@ -10,7 +10,7 @@ import {Legend,Message,Tooltip,selectedValues,truncate,useQuery,useSize,type Com
 import {
   SERIES_COLORS,buildSpec,cellStyle,columnOrder,contrastText,safeColor,compactNumber,compareValues,compileObject,defaultSort,displayValue,formatNumber,niceTicks,
   runQuery,sameValue,toCsv,toNumber,toPivot,toSeries,
-  type AppDetail,type CompiledObject,type FieldValue,type NumberFormat,type Selection,type SheetObject,
+  type FieldValue,type NumberFormat,type SheetObject,
 } from './biApps'
 
 // ---------------------------------------------------------------------------

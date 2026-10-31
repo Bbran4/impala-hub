@@ -1,6 +1,6 @@
 # Sales Desk Roadmap
 
-Updated: 2026-10-29
+Updated: 2026-10-31
 
 ## Current review
 
@@ -19,7 +19,8 @@ Implemented today:
 - Sales Desk dashboard with team metrics.
 - RFQ analytics with period filters and charts.
 - Drag-and-drop ordering for configuration items.
-- Approval requests remain disabled until notification persistence and the approval decision queue are connected. The interface does not report an unsaved request as sent.
+- Consultant edit restrictions and transactional approval requests, Sales Manager notifications, approve/return decisions, stale-review protection and an approval list filter. Approval does not create an invoice.
+- Per-user Sales/Sales Manager role selection in App Settings.
 
 ## Improvement roadmap
 

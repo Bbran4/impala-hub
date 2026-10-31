@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { bearerToken, HttpError, type ApiRequest } from "./http.ts";
 import {
   serverSettings,
@@ -55,8 +56,10 @@ export async function requireMarketingSession<K extends Setting = never>(
       throw new HttpError(403, "Marketing access required.");
   } else if (access === "reconcile") {
     const check = await auth.rpc("can_manage_app_settings");
-    if (check.error) throw new HttpError(500, "Could not verify administrator access.");
-    if (check.data !== true) throw new HttpError(403, "Administrator access required.");
+    if (check.error)
+      throw new HttpError(500, "Could not verify administrator access.");
+    if (check.data !== true)
+      throw new HttpError(403, "Administrator access required.");
   } else if (access === "accounts" || access === "connections") {
     const check = await auth.rpc(
       access === "accounts"
@@ -92,6 +95,14 @@ export function requireCron(
   req: ApiRequest,
   env: ServerEnvironment = process.env,
 ) {
-  if (!env.CRON_SECRET || bearerToken(req) !== env.CRON_SECRET)
+  const supplied = bearerToken(req);
+  if (
+    !env.CRON_SECRET ||
+    !supplied ||
+    !timingSafeEqual(
+      createHash("sha256").update(supplied).digest(),
+      createHash("sha256").update(env.CRON_SECRET).digest(),
+    )
+  )
     throw new HttpError(401, "Unauthorized scheduler request.");
 }

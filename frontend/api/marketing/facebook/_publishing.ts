@@ -1,6 +1,11 @@
 import { decryptToken } from "../../_lib/metaCrypto.ts";
 import { facebookGraphUrl } from "../../_lib/facebook.ts";
 import crypto from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type {
+  FacebookPublishPost,
+  FacebookConnection,
+} from "../../_lib/facebookTypes.ts";
 import {
   facebookPostMedia,
   MAX_POST_IMAGES,
@@ -23,9 +28,9 @@ export const facebookMediaId = (postId: string, url: string) =>
 // A timeout is an unknown outcome: Facebook may already have accepted the post.
 // Never automatically retry an ambiguous external side effect.
 export async function publishClaimed(
-  admin: any,
-  post: any,
-  connection: any,
+  admin: SupabaseClient,
+  post: FacebookPublishPost,
+  connection: FacebookConnection | null,
   secret: string,
   deadline = Date.now() + 260_000,
 ) {
@@ -144,7 +149,7 @@ export async function publishClaimed(
 }
 
 export async function claimPost(
-  admin: any,
+  admin: SupabaseClient,
   id: string,
   statuses: string[],
   owner?: string,

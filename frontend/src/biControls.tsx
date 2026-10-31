@@ -3,7 +3,7 @@
 import {useEffect,useMemo,useState,type ReactNode} from 'react'
 import {CalendarDays,ExternalLink,ImageOff,X} from 'lucide-react'
 import {supabase} from './supabase'
-import {buildSpec,displayValue,runQuery,safeColor,type CompiledObject,type FieldValue,type SheetObject} from './biApps'
+import {buildSpec,displayValue,runQuery,safeColor,type CompiledObject,type SheetObject} from './biApps'
 import {type ExprNode} from './biExpression'
 import {buttonValue,quickRanges,safeUrl,trellisCondition,videoSource} from './biControlLogic'
 import {Message,selectedValues,useQuery,type Compiled,type ObjectProps} from './biChartKit'

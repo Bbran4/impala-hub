@@ -24,6 +24,7 @@ const bundled = await build({
     export { RolePermissionControl } from './src/ApplicationPermissions.tsx'
     export { default as PostBoard } from './src/PostBoard.tsx'
     export { default as PostDetail } from './src/PostDetail.tsx'
+    export { default as AppRoleSelect } from './src/AppRoleSelect.tsx'
     export { default as RecordPagination } from './src/RecordPagination.tsx'
     export { default as PostEditor } from './src/marketing/PostEditor.tsx'
     export { default as ColorPicker } from './src/ColorPicker.tsx'
@@ -362,4 +363,10 @@ test("record pagination shows full server totals and disables unavailable pages"
   const html=render(ui.RecordPagination,{page:0,size:50,total:1205,loading:false,onPage:no});
   assert.ok(html.includes('1–50 of '+(1205).toLocaleString()+' records'));assert.match(html,/Page 1 of 25/);assert.match(html,/<button[^>]*disabled[^>]*>Previous/);
   const last=render(ui.RecordPagination,{page:24,size:50,total:1205,loading:false,onPage:no});assert.match(last,/1201–1205/);assert.match(last,/<button[^>]*disabled[^>]*>Next/);
+});
+
+test("app role selectors offer Sales and Sales Manager without platform-wide roles",()=>{
+  const html=render(ui.AppRoleSelect,{name:'Consultant',roles:[{id:'sales',label:'Sales consultant'},{id:'sales_manager',label:'Sales Manager'}],value:'sales_manager',disabled:false,onChange:no});
+  assert.match(html,/App role for Consultant/);assert.match(html,/>No app role</);assert.match(html,/value="sales_manager" selected=""/);
+  assert.match(html,/Sales consultant/);assert.doesNotMatch(html,/Administrator|Management/);
 });

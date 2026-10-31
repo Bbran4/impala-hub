@@ -1,6 +1,7 @@
 import { withApiErrors, requireMethod } from "../../_lib/http.ts";
 import { requireMarketingSession } from "../../_lib/auth.ts";
 import { decryptToken } from "../../_lib/metaCrypto.ts";
+import type { FacebookPageChoice } from "../../_lib/facebookTypes.ts";
 export default withApiErrors(async (req, res) => {
   requireMethod(req, ["POST"]);
   const { admin, user, settings } = await requireMarketingSession(
@@ -23,15 +24,13 @@ export default withApiErrors(async (req, res) => {
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
   const page = (choices?.pages || []).find(
-    (item: any) => item.id === String(page_id),
+    (item: FacebookPageChoice) => item.id === String(page_id),
   );
   if (!page)
-    return res
-      .status(400)
-      .json({
-        detail:
-          "That Facebook Page selection has expired. Connect Facebook again.",
-      });
+    return res.status(400).json({
+      detail:
+        "That Facebook Page selection has expired. Connect Facebook again.",
+    });
   try {
     const pageToken = decryptToken(page.token, encryptionKey);
     const now = new Date().toISOString();
@@ -88,14 +87,12 @@ export default withApiErrors(async (req, res) => {
         .json({ detail: "Could not save the Facebook Page connection." });
     await admin.from("oauth_page_choices").delete().eq("owner_id", user.id);
     void pageToken;
-    return res
-      .status(200)
-      .json({
-        provider: "facebook",
-        status: "connected",
-        page_id: page.id,
-        page_name: page.name,
-      });
+    return res.status(200).json({
+      provider: "facebook",
+      status: "connected",
+      page_id: page.id,
+      page_name: page.name,
+    });
   } catch {
     return res
       .status(500)

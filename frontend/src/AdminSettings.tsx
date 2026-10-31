@@ -1,3 +1,4 @@
+import AppRoleSelect, { type AppRoleOption } from './AppRoleSelect'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   BarChart3, ClipboardList, Megaphone, MessageCircle, PackageCheck, Search, Settings,
@@ -18,6 +19,7 @@ type AppDefinition = {
 }
 
 type AccessRow = {
+  assigned_role: string | null
   profile_id: string
   display_name: string
   email: string | null
@@ -77,6 +79,7 @@ export default function AdminSettings(props: Props) {
   const [selectedAppId, setSelectedAppId] = useState('marketing')
   const [showChatSettings, setShowChatSettings] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
+  const [roleOptions,setRoleOptions] = useState<AppRoleOption[]>([])
   const [accessRows, setAccessRows] = useState<AccessRow[]>([])
   const [accessLoading, setAccessLoading] = useState(true)
   const [savingProfileId, setSavingProfileId] = useState<string | null>(null)
@@ -85,19 +88,22 @@ export default function AdminSettings(props: Props) {
   const [draggedCampaignType, setDraggedCampaignType] = useState<string | null>(null)
   const [campaignDropTarget, setCampaignDropTarget] = useState<CampaignDropTarget | null>(null)
   const accessRequest = useRef(0)
+  const selectedAppRef = useRef(selectedAppId)
+  selectedAppRef.current = selectedAppId
   const selectedApp = APPS.find((app) => app.id === selectedAppId) || APPS[0]
 
   async function loadAccess(appId = selectedAppId) {
     if (!supabase) return
     const requestId = ++accessRequest.current
     setAccessLoading(true)
-    const { data, error } = await supabase.rpc('admin_list_app_access', { p_app_id: appId })
+    const { data, error } = await supabase.rpc('admin_app_role_settings', { p_app_id: appId })
     if (requestId !== accessRequest.current) return
     if (error) {
       props.setError(`Could not load application access: ${error.message}`)
       setAccessRows([])
     } else {
-      setAccessRows((data || []) as AccessRow[])
+      setAccessRows((data?.users || []) as AccessRow[])
+      setRoleOptions((data?.roles || []) as AppRoleOption[])
     }
     setAccessLoading(false)
   }
@@ -110,23 +116,18 @@ export default function AdminSettings(props: Props) {
     return accessRows.filter((row) => `${row.display_name} ${row.email || ''} ${row.sales_code || ''}`.toLocaleLowerCase().includes(query))
   }, [accessRows, accessSearch])
 
-  async function setAccess(row: AccessRow, canOpen: boolean) {
-    if (!supabase || row.inherited_access) return
-    setSavingProfileId(row.profile_id)
-    props.setError('')
-    const { error } = await supabase.rpc('admin_set_app_access', {
-      p_profile_id: row.profile_id,
-      p_app_id: selectedAppId,
-      p_can_open: canOpen,
-    })
-    if (error) {
-      props.setError(`Could not update application access: ${error.message}`)
-    } else {
-      props.setNotice(`${row.display_name || row.email || 'Employee'} ${canOpen ? 'can now open' : 'can no longer open'} ${selectedApp.label}.`)
-      await loadAccess(selectedAppId)
-      await props.onAccessUpdated().catch((error: Error) => props.setError(error.message))
-    }
-    setSavingProfileId(null)
+  async function setRole(row: AccessRow, roleId: string) {
+    if (!supabase) return
+    const appId=selectedAppId,appLabel=selectedApp.label
+    setSavingProfileId(row.profile_id);props.setError('')
+    try {
+      const {error}=await supabase.rpc('admin_set_app_role',{p_profile_id:row.profile_id,p_app_id:appId,p_role_id:roleId||null})
+      if(error)throw new Error(error.message)
+      props.setNotice((row.display_name||row.email||'Employee')+': '+appLabel+' role updated.')
+      if(selectedAppRef.current===appId)await loadAccess(appId)
+      await props.onAccessUpdated()
+    }catch(error){props.setError('Could not update app role: '+(error as Error).message)}
+    finally{setSavingProfileId(null)}
   }
 
   function campaignDropEdge(event: React.DragEvent<HTMLDivElement>): 'before' | 'after' {
@@ -246,7 +247,7 @@ export default function AdminSettings(props: Props) {
           {selectedAppId === 'stock_control' && props.stockControlConfiguration}
 
           <section className="admin-settings-panel app-access-panel">
-            <div className="section-head"><div><h2>Who can open this app</h2><p>Grant application access to active employee accounts. Administrators and platform-wide roles are inherited.</p></div><ShieldCheck size={20} /></div>
+            <div className="section-head"><div><h2>Who can use this app and their role</h2><p>Choose an app role for each employee. Administrator and Management access remains inherited.</p></div><ShieldCheck size={20} /></div>
             <div className="app-access-toolbar"><label><Search size={16} /><input aria-label="Search employees" value={accessSearch} onChange={(event) => setAccessSearch(event.target.value)} placeholder="Search name, email or sales code" /></label><span><Users size={15} /> {accessRows.filter((row) => row.can_open).length} with access</span></div>
             <div className="app-access-list">
               {accessLoading ? <div className="app-access-empty">Loading employee access…</div> : visibleRows.length === 0 ? <div className="app-access-empty">No active employees match this search.</div> : visibleRows.map((row) => (
@@ -255,7 +256,7 @@ export default function AdminSettings(props: Props) {
                   <span className="app-access-person"><b>{row.display_name || row.email || 'Unnamed employee'}</b><small>{[row.sales_code, row.email].filter(Boolean).join(' · ')}</small></span>
                   {row.inherited_access && <span className="app-access-reason">{ACCESS_REASON_LABELS[row.access_reason || ''] || 'Inherited access'}</span>}
                   {!row.inherited_access && row.direct_access && <span className="app-access-reason direct">App role</span>}
-                  <input type="checkbox" checked={row.can_open} disabled={row.inherited_access || savingProfileId === row.profile_id} onChange={(event) => void setAccess(row, event.target.checked)} />
+                  <AppRoleSelect name={row.display_name || row.email || 'employee'} roles={roleOptions} value={row.assigned_role} disabled={savingProfileId === row.profile_id} onChange={roleId=>void setRole(row,roleId)} />
                 </label>
               ))}
             </div>

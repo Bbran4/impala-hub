@@ -46,6 +46,7 @@ test("every API handler is type-checked, imports and rejects unsupported methods
     }
     // Exercise every employee endpoint's missing-token path with configured server settings.
     const values = {
+      FRONTEND_URL: "https://hub.example",
       SUPABASE_URL: "https://project.example",
       SUPABASE_PUBLISHABLE_KEY: "public-key",
       SUPABASE_SERVICE_ROLE_KEY: "service-key",

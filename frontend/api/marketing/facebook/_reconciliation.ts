@@ -1,5 +1,9 @@
 import { HttpError } from "../../_lib/http.ts";
 import { facebookGraphUrl } from "../../_lib/facebook.ts";
+import type {
+  FacebookGraphPost,
+  FacebookGraphRead,
+} from "../../_lib/facebookTypes.ts";
 
 export type VerifiedFacebookPost = {
   id: string;
@@ -40,11 +44,11 @@ export function facebookPostReference(value: string, pageId: string): string {
 }
 
 export function verifiedFacebookPost(
-  value: Record<string, any>,
+  value: FacebookGraphPost,
   context: ReviewContext,
 ): VerifiedFacebookPost {
   const id = String(value.id || "");
-  const time = Date.parse(value.created_time);
+  const time = Date.parse(value.created_time || "");
   const start = context.startedAt ? Date.parse(context.startedAt) : null;
   if (
     !/^\d+_\d+$/.test(id) ||
@@ -84,7 +88,7 @@ async function graphRead(
   path: string,
   context: ReviewContext,
   fetcher: typeof fetch,
-): Promise<Record<string, any>> {
+): Promise<FacebookGraphRead> {
   try {
     const response = await fetcher(
       facebookGraphUrl(

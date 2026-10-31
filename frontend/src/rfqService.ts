@@ -191,11 +191,21 @@ export function createRfqService(client: SupabaseClient | null = supabase) {
           .single(),
       );
     },
-    async sendForApproval(id: string): Promise<void> {
-      requireSupabase(client);
-      throw new Error(
-        "Approval requests are not enabled yet. No approval request has been sent.",
-      );
+    async sendForApproval(id: string): Promise<Rfq> {
+      return command("request_sales_desk_approval", { p_id: id });
+    },
+    async reviewApproval(
+      id: string,
+      revision: number,
+      decision: "approved" | "changes_requested",
+      note: string,
+    ): Promise<Rfq> {
+      return command("review_sales_desk_approval", {
+        p_id: id,
+        p_expected_revision: revision,
+        p_decision: decision,
+        p_note: note,
+      });
     },
     async dashboard(): Promise<RfqDashboard> {
       const dbClient = requireSupabase(client);

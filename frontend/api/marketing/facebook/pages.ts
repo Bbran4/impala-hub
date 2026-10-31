@@ -1,5 +1,6 @@
 import { withApiErrors, requireMethod } from "../../_lib/http.ts";
 import { requireMarketingSession } from "../../_lib/auth.ts";
+import type { FacebookPageChoice } from "../../_lib/facebookTypes.ts";
 export default withApiErrors(async (req, res) => {
   requireMethod(req, ["GET"]);
   const { admin, user } = await requireMarketingSession(req, "accounts", {
@@ -17,7 +18,7 @@ export default withApiErrors(async (req, res) => {
     return res
       .status(500)
       .json({ detail: "Could not load the available Facebook Pages." });
-  const pages = (data?.pages || []).map((page: any) => ({
+  const pages = (data?.pages || []).map((page: FacebookPageChoice) => ({
     id: page.id,
     name: page.name,
     tasks: page.tasks || [],

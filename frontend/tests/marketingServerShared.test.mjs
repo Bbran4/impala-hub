@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { requireMarketingSession, requireCron } from "../api/_lib/auth.ts";
-import { serverSettings, missingSettings } from "../api/_lib/config.ts";
+import { serverSettings, missingSettings, facebookFrontendUrl } from "../api/_lib/config.ts";
 import { encryptToken, decryptToken } from "../api/_lib/metaCrypto.ts";
 import {
   DEFAULT_FACEBOOK_API_VERSION,
@@ -193,6 +193,22 @@ test("scheduler authentication uses its own secret, not an employee session", ()
   );
   for (const config of [{}, { CRON_SECRET: "different" }])
     assert.throws(() => requireCron(request, config), status(401));
+});
+
+test("scheduler secret checks handle different lengths, empty and Unicode values without comparison errors",()=>{
+  const env={CRON_SECRET:'secret-ø-🔐'};
+  assert.doesNotThrow(()=>requireCron({headers:{authorization:'Bearer '+env.CRON_SECRET}},env));
+  for(const token of ['', 'secret','secret-ø-🔓','x'.repeat(1000)])
+    assert.throws(()=>requireCron({headers:{authorization:'Bearer '+token}},env),status(401));
+  assert.throws(()=>requireCron({headers:{}},env),status(401));
+});
+
+test("Facebook callbacks use configured addresses and never guess a deployment domain",()=>{
+  assert.equal(facebookFrontendUrl({frontendUrl:'https://hub.example/app/'}),'https://hub.example/app');
+  assert.equal(facebookFrontendUrl({redirectUri:'https://hub.example/api/marketing/facebook/callback'}),'https://hub.example');
+  assert.equal(facebookFrontendUrl({frontendUrl:'http://localhost:5173/'}),'http://localhost:5173');
+  for(const settings of [{},{frontendUrl:'javascript:alert(1)'},{frontendUrl:'http://external.example'},{frontendUrl:'https://user:password@hub.example'},{frontendUrl:'https://hub.example/?redirect=other'}])
+    assert.throws(()=>facebookFrontendUrl(settings),status(503));
 });
 
 test("configuration aliases and missing-name diagnostics never expose credentials", () => {

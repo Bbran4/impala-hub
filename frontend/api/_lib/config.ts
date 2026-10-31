@@ -49,3 +49,32 @@ export const facebookSettings = [
   "encryptionKey",
   "redirectUri",
 ] as const;
+
+export function facebookFrontendUrl(settings: ServerSettings): string {
+  try {
+    const configured = new URL(
+      settings.frontendUrl || settings.redirectUri || "",
+    );
+    if (
+      configured.username ||
+      configured.password ||
+      configured.search ||
+      configured.hash ||
+      (configured.protocol !== "https:" &&
+        !(
+          configured.protocol === "http:" &&
+          ["localhost", "127.0.0.1"].includes(configured.hostname)
+        ))
+    )
+      throw new Error("Invalid address");
+    return (settings.frontendUrl ? configured.href : configured.origin).replace(
+      /\/+$/,
+      "",
+    );
+  } catch {
+    throw new HttpError(
+      503,
+      "Configure FRONTEND_URL or FACEBOOK_OAUTH_REDIRECT_URI with a valid HTTPS application address.",
+    );
+  }
+}

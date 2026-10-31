@@ -25,7 +25,6 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
   const [files, setFiles] = useState<File[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [channelDraft, setChannelDraft] = useState('')
   const [members, setMembers] = useState<Member[]>([])
   const [memberPickerOpen, setMemberPickerOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -117,13 +116,6 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
     else { setSelected(null); setMemberPickerOpen(false); await loadLists(); setNotice('Channel deleted for all members.') }
   }
 
-  async function createChannel() {
-    if (!supabase || !channelDraft.trim()) return
-    const { data, error } = await supabase.rpc('chat_create_channel', { channel_name: channelDraft.trim(), channel_description: '' })
-    if (error) setError(`Could not create channel: ${error.message}`)
-    else { setChannelDraft(''); await loadLists(); setSelected({ kind: 'channel', id: data }); setNotice('Channel created.') }
-  }
-
   function chooseFiles(event: React.ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(event.target.files || [])
     event.target.value = ''
@@ -162,7 +154,7 @@ export default function ChannelsWorkspace({ setNotice, setError }: Props) {
   return <section className="channels-workspace">
     <aside className="channels-sidebar">
       <div className="channels-sidebar-head"><div><span className="eyebrow">IMPALA HUB</span><h2>Channels</h2></div><Users size={21} /></div>
-      <div className="channels-section-title"><span>Channels</span>{chatSettings.permissions.create_channels && <button className="icon-button" aria-label="Create channel" onClick={() => { const name = window.prompt('Channel name'); if (name) { setChannelDraft(name); void supabase?.rpc('chat_create_channel', { channel_name: name.trim(), channel_description: '' }).then(async ({ data, error }) => { if (error) setError(`Could not create channel: ${error.message}`); else { await loadLists(); setSelected({ kind: 'channel', id: data }); setNotice('Channel created.') } setChannelDraft('') }) } }}><Plus size={16} /></button>}</div>
+      <div className="channels-section-title"><span>Channels</span>{chatSettings.permissions.create_channels && <button className="icon-button" aria-label="Create channel" onClick={() => { const name = window.prompt('Channel name'); if (name) { void supabase?.rpc('chat_create_channel', { channel_name: name.trim(), channel_description: '' }).then(async ({ data, error }) => { if (error) setError(`Could not create channel: ${error.message}`); else { await loadLists(); setSelected({ kind: 'channel', id: data }); setNotice('Channel created.') } }) } }}><Plus size={16} /></button>}</div>
       {channels.map((channel) => <button key={channel.channel_id} className={`channel-list-row ${selected?.kind === 'channel' && selected.id === channel.channel_id ? 'active' : ''}`} onClick={() => setSelected({ kind: 'channel', id: channel.channel_id })}><span className="channel-hash">#</span><span><b>{channel.name}</b><small>{channel.last_message || `${channel.member_count} members`}</small></span>{channel.unread_count > 0 && <em>{channel.unread_count}</em>}</button>)}
       <div className="channels-section-title"><span>Direct chats</span></div>
       {chats.map((chat) => <button key={chat.conversation_id} className={`channel-list-row ${selected?.kind === 'chat' && selected.id === chat.conversation_id ? 'active' : ''}`} onClick={() => setSelected({ kind: 'chat', id: chat.conversation_id })}><Avatar name={chat.other_display_name || chat.other_email} url={chat.other_avatar_url} /><span><b style={{ color: chatNameColor(chat.other_user_id, chatSettings.colors) }}>{chat.other_display_name || chat.other_email}<i className={`presence-dot ${chat.other_is_online ? 'online' : ''}`} title={chat.other_is_online ? 'Online' : 'Offline'} /></b><small>{chat.last_message || 'No messages yet'}</small></span>{chat.unread_count > 0 && <em>{chat.unread_count}</em>}</button>)}

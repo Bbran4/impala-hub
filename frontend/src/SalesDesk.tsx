@@ -1,9 +1,10 @@
+import { consultantCanEdit, approvalLabel } from './rfqEditing'
 import RecordPagination from './RecordPagination'
 import { useRecordPage, useDebouncedSearch } from './useRecordPage'
 import { storageFileType } from './storageUploadRules'
 import { createRfqService, type RfqService, type Rfq, type RfqCreate, type RfqValues, type RfqConfig, type SalesDeskUser, type RfqDashboard, type RfqAnalytics, type RfqAudit, type RfqAttachment, type SalesCode, type ConfigOption, type ConfigKind, type ConfigPatch } from './rfqService'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { BarChart3, ClipboardList, Download, Eye, GripVertical, Megaphone, Paperclip, Plus, Settings, Tags, Trash2, Users, X } from 'lucide-react'
+import { ClipboardList, Download, Eye, GripVertical, Megaphone, Paperclip, Plus, Settings, Tags, Trash2, Users, X } from 'lucide-react'
 import CrossReference from './CrossReference'
 import SalesMilestoneSettingsPanel from './SalesMilestoneSettings'
 import { loadSalesMilestones } from './salesMilestonesService'
@@ -87,7 +88,7 @@ const formFrom = (r: Rfq | null): Form => ({
   claimed_at: toLocalInput(r?.claimed_at), sales_code_id: r?.sales_code_id || '',
   status_id: r?.status_id || '', remarks: r?.remarks || '', document_number: r?.document_number || '',
 })
-const SALESPERSON_KEYS: (keyof Form)[] = ['customer_name', 'contact_number', 'email_address', 'query_information', 'received_at', 'claimed_at', 'remarks', 'document_number']
+
 const CHANGE_LABELS: Record<string, string> = {
   media_platform: 'Media platform', customer_name: 'Customer', contact_number: 'Contact number', email_address: 'Email',
   query_information: 'Query', remarks: 'Remarks', status: 'Status', document_number: 'Document number',
@@ -100,7 +101,8 @@ const shorten = (v: unknown) => {
 function describeHistory(h: RfqAudit): string {
   const c = h.changes || {}
   if (h.action === 'updated' && Array.isArray(c.changed) && c.before && c.after) {
-    return c.changed.map((key: string) => {
+    return c.changed.filter(key=>!key.startsWith('approval_') || key==='approval_state').map((key: string) => {
+      if(key==='approval_state')return 'Manager approval: '+approvalLabel(String(c.before?.approval_state))+' → '+approvalLabel(String(c.after?.approval_state))
       const field = key === 'status_id' ? 'status' : key === 'media_platform_id' ? 'media_platform' : key
       return `${CHANGE_LABELS[field] || field.replaceAll('_',' ')}: ${shorten(c.before?.[field])} -> ${shorten(c.after?.[field])}`
     }).join(' | ')
@@ -108,6 +110,10 @@ function describeHistory(h: RfqAudit): string {
   if (h.action === 'invoice_copy_created') return `Invoice copy created: ${c.to_rfq_no}`
   if (h.action === 'created_from_quotation') return `Created from quotation: ${c.from_rfq_no}`
   switch (h.action) {
+    case 'approval_requested': return 'Approval requested from Sales Managers'
+    case 'approval_approved': return 'RFQ approved'+(c.note ? ': '+c.note : '')
+    case 'approval_changes_requested': return 'Changes requested'+(c.note ? ': '+c.note : '')
+    case 'approval_invalidated': return 'RFQ changed; manager approval needs to be requested again'
     case 'created': return `Created ${c.rfq_no || ''}${c.sales_code ? ` for ${c.sales_code}` : ''}`
     case 'claimed': return `Claimed by ${c.sales_code}`
     case 'assigned': case 'reassigned': case 'unassigned':
@@ -128,15 +134,18 @@ function describeHistory(h: RfqAudit): string {
 
 // ---------------------------------------------------------------------------------------------
 // The RFQ side panel. Used for both "New RFQ" and viewing/editing an existing RFQ.
-function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChanged, setNotice, setError }: {
+function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChanged, setNotice, setError: onError }: {
   mode: 'create' | 'edit'; rfqId?: string; config: RfqConfig; user: SalesDeskUser; token: string; service: RfqService
   onClose: () => void; onChanged: () => Promise<void>; setNotice: (m: string) => void; setError: (m: string) => void
 }) {
+  const [panelError,setPanelError] = useState('')
+  const setError = useCallback((message:string)=>{setPanelError(message);onError(message)},[onError])
   const isSales = user?.role === 'salesperson'
   const [rfq, setRfq] = useState<Rfq | null>(null)
   const [initial, setInitial] = useState<Form>(() => ({ ...formFrom(null), received_at: toLocalInput(new Date().toISOString()) }))
   const [form, setForm] = useState<Form>(initial)
   const [files, setFiles] = useState<File[]>([])
+  const [approvalNote, setApprovalNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(mode === 'edit')
 
@@ -157,8 +166,8 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   }, [mode, config.media_platforms])
 
   const ownRfq = !!rfq && (!isSales || (!!rfq.sales_code && rfq.sales_code.toLowerCase() === (user.sales_code || '').toLowerCase()))
-  const readOnly = mode === 'edit' && !ownRfq // a consultant looking at an unclaimed RFQ
-  const lockedForSales = isSales // media platform, sales code and status are never editable by consultants
+  const readOnly = mode === 'edit' && (!ownRfq || user.role==='management') // a consultant looking at an unclaimed RFQ
+  const lockedForSales = isSales // customer details, assignment and metric timestamps are manager-only
   const dirty = JSON.stringify(form) !== JSON.stringify(initial) || files.length > 0
 
   const requestClose = useCallback(() => {
@@ -217,7 +226,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
       const body: Partial<RfqValues> = {}
       for (const key of Object.keys(form) as (keyof Form)[]) {
         if (form[key] === initial[key]) continue
-        if (isSales && !SALESPERSON_KEYS.includes(key)) continue
+        if (isSales && !consultantCanEdit(key)) continue
         if (key === 'received_at') body[key] = toIso(form[key])
         else if (key === 'claimed_at') body[key] = form[key] ? toIso(form[key]) : null
         else if (key === 'sales_code_id') body[key] = form[key] || null
@@ -281,10 +290,21 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   async function sendForApproval() {
     setBusy(true); setError('')
     try {
-      await service.sendForApproval(rfqId!)
-      setNotice('RFQ sent to the RFQ administrator for approval.')
-      await onChanged()
+      const updated = await service.sendForApproval(rfqId!)
+      setRfq(updated)
+      setNotice('RFQ sent to Sales Managers for approval.')
+      await load();await onChanged()
     } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function reviewApproval(decision:'approved'|'changes_requested') {
+    if(!rfq)return
+    setBusy(true);setError('')
+    try {
+      const updated=await service.reviewApproval(rfq.id,rfq.approval_revision||0,decision,approvalNote)
+      setRfq(updated);setApprovalNote('');await load();await onChanged()
+      setNotice(decision==='approved'?'RFQ approved. No invoice was created.':'RFQ returned to the consultant for changes.')
+    }catch(error){setError((error as Error).message);await load()}finally{setBusy(false)}
   }
 
   const codeLabel = (c: SalesCode) => `${c.code} · ${c.consultant_name || c.display_name}`
@@ -292,7 +312,12 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   const statusChoices = config.statuses.filter((s) => s.is_active || s.id === form.status_id)
   const codeChoices = config.sales_codes.filter((c) => c.is_active || c.id === form.sales_code_id)
   const disabled = readOnly || busy
-  const canSendForApproval = mode === 'edit' && !readOnly && Boolean(form.document_number.trim()) && Boolean(rfq?.attachments?.length) && String(rfq?.status || '').toLowerCase() === 'complete'
+  const canSendForApproval = mode==='edit' && isSales && user.can_request_approval===true && !readOnly &&
+    Boolean(form.document_number.trim()) && Boolean(rfq?.attachments?.length) &&
+    config.statuses.some(status=>status.id===rfq?.status_id && status.is_closed && status.metric_category==='completed') &&
+    !['pending','approved'].includes(rfq?.approval_state||'')
+  const canReviewApproval = user.can_approve===true && rfq?.approval_state==='pending' && rfq.approval_requested_by!==user.id
+
 
   return (
     <div className="overlay">
@@ -306,8 +331,10 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
         </header>
         {loading ? <div className="editor-body"><p className="hint">Loading…</p></div> : (
           <div className="editor-body">
+            {panelError && <p className="error" role="alert">{panelError}</p>}
+            {isSales && !readOnly && <p className="hint">You can edit status, document number, attachments and remarks.</p>}
             {mode === 'edit' && <p className="hint sd-panel-note">The RFQ number is generated automatically and cannot be changed.{rfq?.original_rfq_no ? ` Originally quote ${rfq.original_rfq_no}.` : ''}</p>}
-            {readOnly && <p className="hint sd-panel-note">This RFQ is unclaimed. Claim it to edit it.</p>}
+            {readOnly && <p className="hint sd-panel-note">{isSales ? rfq?.sales_code_id ? 'This RFQ is assigned to another consultant.' : 'This RFQ is unclaimed. Claim it to edit it.' : 'Your role has read-only access to this RFQ.'}</p>}
 
             <label htmlFor="rfq-media">Media platform</label>
             <select id="rfq-media" disabled={disabled || lockedForSales} value={form.media_platform_id} onChange={(e) => set({ media_platform_id: e.target.value })}>
@@ -316,19 +343,19 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
             </select>
 
             <label htmlFor="rfq-customer">Customer name</label>
-            <input id="rfq-customer" disabled={disabled} maxLength={200} value={form.customer_name} onChange={(e) => set({ customer_name: e.target.value })} />
+            <input id="rfq-customer" disabled={disabled || lockedForSales} maxLength={200} value={form.customer_name} onChange={(e) => set({ customer_name: e.target.value })} />
 
             <label htmlFor="rfq-contact">Customer contact</label>
-            <input id="rfq-contact" disabled={disabled} maxLength={80} value={form.contact_number} onChange={(e) => set({ contact_number: e.target.value })} />
+            <input id="rfq-contact" disabled={disabled || lockedForSales} maxLength={80} value={form.contact_number} onChange={(e) => set({ contact_number: e.target.value })} />
 
             <label htmlFor="rfq-email">Email</label>
-            <input id="rfq-email" type="email" disabled={disabled} maxLength={254} value={form.email_address} onChange={(e) => set({ email_address: e.target.value })} />
+            <input id="rfq-email" type="email" disabled={disabled || lockedForSales} maxLength={254} value={form.email_address} onChange={(e) => set({ email_address: e.target.value })} />
 
             <label htmlFor="rfq-query">Query</label>
-            <textarea id="rfq-query" rows={4} disabled={disabled} value={form.query_information} onChange={(e) => set({ query_information: e.target.value })} />
+            <textarea id="rfq-query" rows={4} disabled={disabled || lockedForSales} value={form.query_information} onChange={(e) => set({ query_information: e.target.value })} />
 
-            <label htmlFor="rfq-received">Received date <span>Editable</span></label>
-            <input id="rfq-received" type="datetime-local" disabled={disabled} value={form.received_at} onChange={(e) => set({ received_at: e.target.value })} />
+            <label htmlFor="rfq-received">Received date <span>{lockedForSales ? 'Only a manager can change this.' : 'Editable'}</span></label>
+            <input id="rfq-received" type="datetime-local" disabled={disabled || lockedForSales} value={form.received_at} onChange={(e) => set({ received_at: e.target.value })} />
 
             <label htmlFor="rfq-code">Sales code <span>{lockedForSales ? 'Only a manager or administrator can change this.' : 'Saved with the rest of the form when you press Save.'}</span></label>
             <select id="rfq-code" disabled={disabled || lockedForSales} value={form.sales_code_id} onChange={(e) => chooseSalesCode(e.target.value)}>
@@ -336,11 +363,11 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
               {codeChoices.map((c) => <option key={c.id} value={c.id}>{codeLabel(c)}{c.is_active ? '' : ' (inactive)'}</option>)}
             </select>
 
-            <label htmlFor="rfq-claimed">Claimed date <span>{form.sales_code_id ? 'Editable. Leave blank on a new assignment to use the time of saving.' : 'Choose a sales code first.'}</span></label>
-            <input id="rfq-claimed" type="datetime-local" disabled={disabled || !form.sales_code_id} value={form.claimed_at} onChange={(e) => set({ claimed_at: e.target.value })} />
+            <label htmlFor="rfq-claimed">Claimed date <span>{lockedForSales ? 'Only a manager can change this.' : form.sales_code_id ? 'Editable. Leave blank on a new assignment to use the time of saving.' : 'Choose a sales code first.'}</span></label>
+            <input id="rfq-claimed" type="datetime-local" disabled={disabled || lockedForSales || !form.sales_code_id} value={form.claimed_at} onChange={(e) => set({ claimed_at: e.target.value })} />
 
             <label htmlFor="rfq-status">Status</label>
-            <select id="rfq-status" disabled={disabled || lockedForSales} value={form.status_id} onChange={(e) => set({ status_id: e.target.value })}>
+            <select id="rfq-status" disabled={disabled} value={form.status_id} onChange={(e) => set({ status_id: e.target.value })}>
               {mode === 'create' && <option value="">Automatic ({form.sales_code_id ? 'New' : 'Unclaimed'})</option>}
               {statusChoices.map((s) => <option key={s.id} value={s.id}>{s.name}{s.is_active ? '' : ' (inactive)'}</option>)}
             </select>
@@ -381,6 +408,18 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
               {!files.length && !(rfq?.attachments || []).length && <li className="sd-no-files">No attachments</li>}
             </ul>
 
+            {mode==='edit' && rfq && <section className="sd-approval-panel" aria-label="RFQ approval">
+              <h4>Manager approval</h4><p>{approvalLabel(rfq.approval_state)}</p>
+              {rfq.approval_requested_at && <small>Requested {fmtDate(rfq.approval_requested_at)}</small>}
+              {rfq.approval_note && <p>{rfq.approval_note}</p>}
+              {canReviewApproval && <>
+                <label htmlFor="approval-note">Review note<textarea id="approval-note" rows={3} maxLength={1000} disabled={busy} value={approvalNote} onChange={event=>setApprovalNote(event.target.value)} placeholder="Explain any changes the consultant needs to make" /></label>
+                <div className="sd-actions"><button className="primary" disabled={busy||dirty} onClick={()=>void reviewApproval('approved')}>Approve RFQ</button>
+                <button className="secondary" disabled={busy||dirty||approvalNote.trim().length<3} onClick={()=>void reviewApproval('changes_requested')}>Return for changes</button></div>
+                {dirty && <p className="hint">Save or discard your edits before reviewing this request.</p>}
+              </>}
+            </section>}
+
             {mode === 'edit' && !!rfq?.audit_history?.length && (
               <div className="sd-history">
                 <h4>History</h4>
@@ -393,7 +432,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
         )}
         <footer className="editor-foot">
           <button className="secondary" onClick={requestClose}>{readOnly ? 'Close' : 'Cancel'}</button>
-          {readOnly && isSales && <button className="primary" disabled={busy} onClick={() => void claim()}>Claim this RFQ</button>}
+          {readOnly && isSales && !rfq?.sales_code_id && <button className="primary" disabled={busy} onClick={() => void claim()}>Claim this RFQ</button>}
           {!readOnly && <button className="primary" disabled={busy || loading || (mode === 'edit' && !dirty)} onClick={() => void save()}>{busy ? 'Saving…' : mode === 'create' ? 'Create RFQ' : 'Save changes'}</button>}
           {canSendForApproval && <button className="secondary" disabled={busy || loading || dirty} onClick={() => void sendForApproval()}>Send for Approval</button>}
         </footer>
@@ -418,6 +457,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
   const [statusFilter, setStatusFilter] = useState('')
   const [codeFilter, setCodeFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [approvalFilter, setApprovalFilter] = useState('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('received_asc')
   const [newMedia, setNewMedia] = useState('')
@@ -434,7 +474,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
   const service = useMemo(() => createRfqService(), [token])
 
   const debouncedSearch = useDebouncedSearch(search)
-  const listLoader = useCallback((offset:number) => service.list({search:debouncedSearch,status:statusFilter,code:codeFilter,type:typeFilter,sort},offset),[service,debouncedSearch,statusFilter,codeFilter,typeFilter,sort])
+  const listLoader = useCallback((offset:number) => service.list({search:debouncedSearch,status:statusFilter,code:codeFilter,type:typeFilter,approval:approvalFilter,sort},offset),[service,debouncedSearch,statusFilter,codeFilter,typeFilter,approvalFilter,sort])
   const rfqPage = useRecordPage<Rfq, Awaited<ReturnType<typeof service.list>>>(listLoader,50,page==='RFQs'&&view==='rfqs',setError)
   const rfqs = rfqPage.items
   const load = useCallback(async () => {
@@ -552,6 +592,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
               <div className="rfq-toolbar">
                 <label>Filter by status<select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="">All statuses</option>{config.statuses.filter((s) => s.is_active).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
                 <label>Filter by sales code<select value={codeFilter} onChange={(e) => setCodeFilter(e.target.value)} disabled={user?.role === 'salesperson'}><option value="">All salespeople</option>{config.sales_codes.map((s) => <option key={s.id} value={s.id}>{s.code} · {s.consultant_name || s.display_name}</option>)}</select></label>
+                <label>Approval<select value={approvalFilter} onChange={event=>setApprovalFilter(event.target.value)}><option value="">All approvals</option><option value="pending">Awaiting manager approval</option><option value="approved">Approved</option><option value="changes_requested">Changes requested</option><option value="not_requested">Not requested</option></select></label>
                 <label>Type<select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Quotes and invoices</option><option value="quotation">Quotes</option><option value="invoice">Invoices</option></select></label>
                 <label className="rfq-search">Search RFQs<input placeholder="RFQ number, customer, document number" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
                 <label>Sort by<select value={sort} onChange={(e) => setSort(e.target.value)}><option value="received_asc">Oldest received</option><option value="received_desc">Newest received</option><option value="customer">Customer name</option><option value="rfq_no">RFQ number</option></select></label>

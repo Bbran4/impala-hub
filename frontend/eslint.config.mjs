@@ -3,9 +3,8 @@ import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import hooks from 'eslint-plugin-react-hooks';
 
-// Start with correctness checks across all production code. TypeScript owns
-// undefined symbols, redeclarations and types; unused-code/style cleanup is
-// separate from this gate so it does not obscure security regression work.
+// TypeScript owns undefined symbols and redeclarations; ESLint also rejects
+// unused code. Parameters/catch bindings may be intentionally unused.
 export default [
   { ignores: ['dist/**', 'node_modules/**', '.api-server-test-*/**'] },
   {
@@ -19,9 +18,14 @@ export default [
       'no-undef': 'off',
       'no-redeclare': 'off',
       'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', {args:'none',caughtErrors:'none',varsIgnorePattern:'^_'}],
       'no-useless-assignment': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
+  },
+  {
+    files: ['api/**/*.ts'],
+    rules: {'@typescript-eslint/no-explicit-any':'error'},
   },
   {
     // Publication failures are deliberately replaced with a sanitized error.

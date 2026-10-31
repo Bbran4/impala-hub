@@ -1,3 +1,5 @@
+import type { ApiRequest, ApiResponse } from "../_lib/http.ts";
+import { requireCron } from "../_lib/auth.ts";
 // Report emails (one function: the Hobby plan allows 12 per deployment).
 //   GET ?status=1          which settings are missing (names only, never values; no login needed)
 //   GET/POST + CRON_SECRET  sends due report emails.
@@ -56,16 +58,14 @@ export function missingSettings(env: Record<string, string | undefined>) {
   return checks.filter(([, names]) => !names.some((name) => env[name])).map(([label]) => label)
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: ApiRequest & {url?:string}, res: ApiResponse) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ detail: 'Method not allowed' })
   const query = req.query || Object.fromEntries(new URL(req.url || '/', 'http://x').searchParams)
   if (req.method === 'GET' && query.status) {
     const missing = missingSettings(process.env)
     return res.status(200).json({ configured: missing.length === 0, missing })
   }
-  const cronSecret = process.env.CRON_SECRET
-  const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-  if (!cronSecret || supplied !== cronSecret) return res.status(401).json({ detail: 'Unauthorized scheduler request.' })
+  try { requireCron(req) } catch { return res.status(401).json({ detail: 'Unauthorized scheduler request.' }) }
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const base = hubUrl(process.env)
@@ -81,7 +81,7 @@ export default async function handler(req: any, res: any) {
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD || '' } : undefined,
     connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
   })
-  const secrets = [serviceKey, cronSecret, process.env.SMTP_PASSWORD || '']
+  const secrets = [serviceKey, process.env.CRON_SECRET || '', process.env.SMTP_PASSWORD || '']
   const results: { delivery: string; status: string }[] = []
   let browser: Browser | null = null
   try {
