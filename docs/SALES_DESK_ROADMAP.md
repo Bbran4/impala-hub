@@ -12,6 +12,8 @@ Implemented today:
 - Visibility rules for personal RFQs, team RFQs, and unclaimed RFQs.
 - Transactional Supabase commands for RFQ creation, editing, claiming, assignment, archival and invoice conversion, with database-generated audits.
 - Locked daily counter numbering, atomic configuration ordering and grouped usage counts.
+- Claiming sets In Progress atomically; completion timestamps are automatic with audited manager corrections.
+- Linked RFQ chat updates and separate workspace permissions for manager RFQ and invoice-conversion notifications.
 - In-memory session role display caching; current database permissions authorize every command.
 - Configurable media platforms, sales codes, and statuses.
 - Attachments with download support and deletion protection.

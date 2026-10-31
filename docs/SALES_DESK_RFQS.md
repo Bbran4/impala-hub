@@ -118,3 +118,14 @@ In Team chat's name/email field, enter `/IMP26103101 Your message` and press Ent
 **Send RFQ chat updates** is configurable for roles and users under Sales Desk → Workspace. Approval notifications remain independent of general RFQ notification preferences.
 
 **Date completed** appears below Claimed date. Entering a status in the `completed` category records the time automatically; reopening clears it. Managers may correct a completion timestamp; consultants cannot edit it. Existing historic completion times are left unknown rather than guessed. Corrections are audited and invalidate an earlier approval.
+
+
+### Sales Manager notification permissions
+
+Under Settings → Permissions → Sales Desk → **Workspace**, edit role defaults or individual user overrides:
+
+- **Receive RFQ notifications**: new RFQs, business-field updates (including assignment, status, document, remarks and completion corrections), and consultant RFQ chat updates.
+- **Receive RFQ converted to invoice notifications**: a separate alert linking to the invoice copy when a quotation is converted.
+- **Send RFQ chat updates**: permits the slash command; enabled by default for Sales and Sales Manager roles.
+
+Both receive options default to enabled for Sales Managers. Only active Sales Managers with current Sales Desk view permission receive these manager alerts; the person making a change does not receive their own event alert. Unchanged saves do not alert. Conversion retries do not repeat alerts or send a second general-update alert. Approval requests and decisions keep their own permissions and recipients, regardless of these two receive options. Existing assigned-consultant In Progress alerts are unchanged.
