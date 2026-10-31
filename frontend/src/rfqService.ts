@@ -56,16 +56,18 @@ export function createRfqService(client: SupabaseClient | null = supabase) {
   };
   const detail = async (id: string): Promise<Rfq> => {
     const dbClient = requireSupabase(client);
-    const row = resultData<RawRfq>(
-      await dbClient
+    const response = await dbClient
         .from("sales_desk_rfqs")
         .select(
           "*,media_platform:sales_desk_media_platforms(name),status:sales_desk_statuses(name,is_closed),sales_code:sales_desk_sales_codes(code)",
         )
         .eq("id", id)
         .is("deleted_at", null)
-        .single(),
-    );
+        .single();
+    if (response.error?.code === 'PGRST116' || (!response.error && !response.data)) {
+      throw new Error('This RFQ was deleted or is no longer available to you.');
+    }
+    const row = resultData<RawRfq>(response);
     const [history, attachments] = await Promise.all([
       loadAllRows<Omit<RfqAudit, "actor_name">>((from, to) =>
         dbClient

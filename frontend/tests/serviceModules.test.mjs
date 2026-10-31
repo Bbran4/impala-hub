@@ -388,3 +388,17 @@ test("service contracts reject server-owned fields and malformed filters at comp
     }),
   );
 });
+
+
+test('deleted or inaccessible RFQ links produce a clear message without loading attachments', async () => {
+  for (const result of [{data:null,error:{code:'PGRST116',message:'0 rows'}},{data:null,error:null}]) {
+    let reads = 0;
+    const service = createRfqService({from(table) { reads++; assert.equal(table,'sales_desk_rfqs'); return query(() => result); }});
+    await assert.rejects(() => service.detail('gone'), /RFQ was deleted or is no longer available/);
+    assert.equal(reads,1);
+  }
+});
+test('RFQ link network errors remain errors rather than being labelled deleted', async () => {
+  const service = createRfqService({from() { return query(() => ({data:null,error:{message:'Network unavailable'}})); }});
+  await assert.rejects(() => service.detail('rfq'), /Network unavailable/);
+});

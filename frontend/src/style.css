@@ -589,3 +589,9 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 @media(max-width:680px){.app-access-row{flex-wrap:wrap}.app-access-row select{flex-basis:100%;max-width:100%;margin-left:42px}}
 
 .notification-item p { white-space: pre-line; overflow-wrap: anywhere; }
+
+.notification-row { position: relative; }
+.notification-row .notification-item { padding-right: 55px; }
+.notification-delete { position: absolute; right: 12px; top: 12px; color: #657480; }
+.notification-delete:hover { color: #b42318; background: #fef3f2; }
+.notification-action-notice { margin: 0; padding: 10px 18px; background: #f0f6fa; color: #304456; font-size: 12px; }

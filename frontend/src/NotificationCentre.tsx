@@ -1,6 +1,7 @@
+import { dismissNotification, resolveNotification } from './notificationActions'
 import { startVisiblePolling } from './visiblePolling'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CheckCheck, RefreshCw, X } from "lucide-react";
+import { Bell, CheckCheck, RefreshCw, Trash2, X } from "lucide-react";
 import { supabase } from "./supabase";
 
 export type NotificationChannel =
@@ -64,6 +65,9 @@ export default function NotificationCentre({
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({
     __all__: 0,
   });
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState("");
+  const actionBusy = useRef(false);
   const [loading, setLoading] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -119,7 +123,7 @@ export default function NotificationCentre({
         setNotifications((listResult.data || []) as UserNotification[]);
         setUnreadCounts(
           Object.fromEntries(
-            (countResult.data || []).map((row: any) => [
+            (countResult.data || []).map((row: { notification_channel: string; unread_count: number }) => [
               row.notification_channel,
               Number(row.unread_count || 0),
             ]),
@@ -174,17 +178,6 @@ export default function NotificationCentre({
     }
   }
 
-  async function markRead(notification: UserNotification) {
-    if (!active || !supabase || notification.read_at) return;
-    const { error } = await supabase.rpc("mark_user_notification_read", {
-      notification_id: notification.id,
-    });
-    if (error) {
-      onError(`Could not mark notification as read: ${error.message}`);
-    }
-    await load(true);
-  }
-
   async function markAllRead() {
     if (!active || !supabase || !unreadInView) return;
     const channel = activeChannel === "all" ? null : activeChannel;
@@ -197,10 +190,34 @@ export default function NotificationCentre({
     await load(true);
   }
 
+  async function deleteNotification(notification: UserNotification) {
+    if (!active || !supabase || actionBusy.current) return;
+    actionBusy.current = true; setActionId(notification.id); setActionNotice(""); onError("");
+    try {
+      await dismissNotification(supabase, notification.id);
+      ++loadGeneration.current;
+      setNotifications(current => current.filter(item => item.id !== notification.id));
+      setActionNotice("Notification deleted.");
+      await load(true);
+    } catch (error) { onError(`Could not delete notification: ${error instanceof Error ? error.message : 'Please try again.'}`); }
+    finally { actionBusy.current = false; setActionId(null); }
+  }
+
   async function openNotification(notification: UserNotification) {
-    await markRead(notification);
-    closePanel(false);
-    onNavigate(notification);
+    if (!active || !supabase || actionBusy.current) return;
+    actionBusy.current = true; setActionId(notification.id); setActionNotice(""); onError("");
+    try {
+      const result = await resolveNotification(supabase, notification.id);
+      if (result.status !== 'ready') {
+        setActionNotice(result.status === 'unavailable' ? 'This RFQ was deleted or is no longer available to you.' : 'This notification is no longer available.');
+        await load(true);
+        return;
+      }
+      await load(true);
+      closePanel(false);
+      onNavigate(result.notification);
+    } catch (error) { onError(`Could not open notification: ${error instanceof Error ? error.message : 'Please try again.'}`); }
+    finally { actionBusy.current = false; setActionId(null); }
   }
 
   if (!active) return null;
@@ -218,7 +235,7 @@ export default function NotificationCentre({
         aria-controls="impala-notification-panel"
         onClick={() => {
           setOpen((value) => !value);
-          if (!open) void load();
+          if (!open) { setActionNotice(""); void load(); }
         }}
       >
         <span className="notification-trigger-icon">
@@ -269,6 +286,7 @@ export default function NotificationCentre({
             )}
           </div>
 
+          {actionNotice && <p className="notification-action-notice" role="status">{actionNotice}</p>}
           <>
               <nav
                 className="notification-channels"
@@ -301,8 +319,9 @@ export default function NotificationCentre({
                   </div>
                 ) : visible.length ? (
                   visible.map((notification) => (
+                    <div className="notification-row" key={notification.id}>
                     <button
-                      key={notification.id}
+                      disabled={actionId !== null}
                       className={`notification-item ${notification.read_at ? "" : "unread"}`}
                       onClick={() => void openNotification(notification)}
                     >
@@ -317,6 +336,8 @@ export default function NotificationCentre({
                         {formatDate(notification.created_at)}
                       </time>
                     </button>
+                    <button className="icon-button notification-delete" disabled={actionId !== null} aria-label={`Delete notification: ${notification.title}`} title="Delete notification" onClick={() => void deleteNotification(notification)}><Trash2 size={16} /></button>
+                    </div>
                   ))
                 ) : (
                   <div className="notification-empty">
