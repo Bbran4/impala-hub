@@ -191,8 +191,8 @@ export function createRfqService(client: SupabaseClient | null = supabase) {
           .single(),
       );
     },
-    async sendForApproval(id: string): Promise<Rfq> {
-      return command("request_sales_desk_approval", { p_id: id });
+    async sendForApproval(id: string, values: Partial<RfqValues> = {}): Promise<Rfq> {
+      return command("submit_sales_desk_rfq_for_approval", { p_id: id, p_values: values });
     },
     async reviewApproval(
       id: string,

@@ -41,3 +41,6 @@ Regression tests cover restricted fields, date preservation, ownership, uploaded
 evidence, manager eligibility, notification deduplication, stale/self reviews,
 approval invalidation, no automatic invoices, audit/notification rollback, scoped
 role changes, inherited access and normal-view administrator recovery.
+
+
+Consultants see **Send for Approval** on their assigned RFQs even while requirements are missing. The approval panel explains whether they need a completed status, document number, uploaded document or request permission. They can change the status, document number and remarks and press **Send for Approval** directly. Their changes, approval request, audit and manager notifications commit together; if validation fails none of those changes are saved. Regular **Save changes** remains available for edits that are not ready for approval.

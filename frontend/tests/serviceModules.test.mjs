@@ -108,8 +108,10 @@ test("RFQ commands use transactional RPCs; errors and conversion cardinality are
     ["single"],
     ["archive_sales_desk_rfq", { p_id: "quote" }],
   ]);
+  await service.sendForApproval("quote", { status_id: "completed", document_number: "DOC-1", remarks: "Ready" });
+  assert.deepEqual(calls.at(-1),["submit_sales_desk_rfq_for_approval",{p_id:"quote",p_values:{status_id:"completed",document_number:"DOC-1",remarks:"Ready"}}]);
   await service.sendForApproval("quote");
-  assert.deepEqual(calls.at(-1),["request_sales_desk_approval",{p_id:"quote"}]);
+  assert.deepEqual(calls.at(-1),["submit_sales_desk_rfq_for_approval",{p_id:"quote",p_values:{}}]);
   await service.reviewApproval("quote",3,"approved","Checked quotation");
   assert.deepEqual(calls.at(-1),["review_sales_desk_approval",{p_id:"quote",p_expected_revision:3,p_decision:"approved",p_note:"Checked quotation"}]);
   client.rpc = () => ({ data: null, error: { message: "Not permitted" } });

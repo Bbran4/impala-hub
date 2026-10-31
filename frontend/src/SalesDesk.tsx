@@ -1,4 +1,4 @@
-import { consultantCanEdit, approvalLabel } from './rfqEditing'
+import { consultantCanEdit, approvalLabel, approvalBlockReason } from './rfqEditing'
 import RecordPagination from './RecordPagination'
 import { useRecordPage, useDebouncedSearch } from './useRecordPage'
 import { storageFileType } from './storageUploadRules'
@@ -199,6 +199,19 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
     return { latest, failed }
   }
 
+  function editedValues(): Partial<RfqValues> {
+    const body: Partial<RfqValues> = {}
+    for (const key of Object.keys(form) as (keyof Form)[]) {
+      if (form[key] === initial[key]) continue
+      if (isSales && !consultantCanEdit(key)) continue
+      if (key === 'received_at') body[key] = toIso(form[key])
+      else if (key === 'claimed_at' || key === 'completed_at') body[key] = form[key] ? toIso(form[key]) : null
+      else if (key === 'sales_code_id') body[key] = form[key] || null
+      else body[key] = form[key]
+    }
+    return body
+  }
+
   async function save() {
     setBusy(true); setError('')
     try {
@@ -223,15 +236,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
         return
       }
       // Edit: send only what changed, so an untouched sales code or claimed date is never rewritten.
-      const body: Partial<RfqValues> = {}
-      for (const key of Object.keys(form) as (keyof Form)[]) {
-        if (form[key] === initial[key]) continue
-        if (isSales && !consultantCanEdit(key)) continue
-        if (key === 'received_at') body[key] = toIso(form[key])
-        else if (key === 'claimed_at' || key === 'completed_at') body[key] = form[key] ? toIso(form[key]) : null
-        else if (key === 'sales_code_id') body[key] = form[key] || null
-        else body[key] = form[key]
-      }
+      const body = editedValues()
       if (!Object.keys(body).length) { setNotice('There are no changes to save.'); return }
       const updated = await service.update(rfqId!, body)
       setRfq(updated); const f = formFrom(updated); setInitial(f); setForm(f)
@@ -290,7 +295,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   async function sendForApproval() {
     setBusy(true); setError('')
     try {
-      const updated = await service.sendForApproval(rfqId!)
+      const updated = await service.sendForApproval(rfqId!, editedValues())
       setRfq(updated)
       setNotice('RFQ sent to Sales Managers for approval.')
       await load();await onChanged()
@@ -312,10 +317,14 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   const statusChoices = config.statuses.filter((s) => s.is_active || s.id === form.status_id)
   const codeChoices = config.sales_codes.filter((c) => c.is_active || c.id === form.sales_code_id)
   const disabled = readOnly || busy
-  const canSendForApproval = mode==='edit' && isSales && user.can_request_approval===true && !readOnly &&
-    Boolean(form.document_number.trim()) && Boolean(rfq?.attachments?.length) &&
-    config.statuses.some(status=>status.id===rfq?.status_id && status.is_closed && status.metric_category==='completed') &&
-    !['pending','approved'].includes(rfq?.approval_state||'')
+  const showSendForApproval = mode === 'edit' && isSales && !readOnly
+  const approvalBlocked = approvalBlockReason({
+    hasPermission: user.can_request_approval === true,
+    isQuotation: rfq?.rfq_type === 'quotation',
+    isCompleted: config.statuses.some(status => status.id === form.status_id && status.is_closed && status.metric_category === 'completed'),
+    documentNumber: form.document_number, hasAttachment: Boolean(rfq?.attachments?.length),
+    approvalState: rfq?.approval_state, dirty,
+  })
   const canReviewApproval = user.can_approve===true && rfq?.approval_state==='pending' && rfq.approval_requested_by!==user.id
 
 
@@ -415,6 +424,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
               <h4>Manager approval</h4><p>{approvalLabel(rfq.approval_state)}</p>
               {rfq.approval_requested_at && <small>Requested {fmtDate(rfq.approval_requested_at)}</small>}
               {rfq.approval_note && <p>{rfq.approval_note}</p>}
+              {showSendForApproval && <p id="rfq-approval-help" className="hint">{approvalBlocked || (dirty ? 'Send for approval saves your status, document number and remarks, then notifies Sales Managers.' : 'Send this RFQ to Sales Managers for approval.')}</p>}
               {canReviewApproval && <>
                 <label htmlFor="approval-note">Review note<textarea id="approval-note" rows={3} maxLength={1000} disabled={busy} value={approvalNote} onChange={event=>setApprovalNote(event.target.value)} placeholder="Explain any changes the consultant needs to make" /></label>
                 <div className="sd-actions"><button className="primary" disabled={busy||dirty} onClick={()=>void reviewApproval('approved')}>Approve RFQ</button>
@@ -437,7 +447,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
           <button className="secondary" onClick={requestClose}>{readOnly ? 'Close' : 'Cancel'}</button>
           {readOnly && isSales && !rfq?.sales_code_id && <button className="primary" disabled={busy} onClick={() => void claim()}>Claim this RFQ</button>}
           {!readOnly && <button className="primary" disabled={busy || loading || (mode === 'edit' && !dirty)} onClick={() => void save()}>{busy ? 'Saving…' : mode === 'create' ? 'Create RFQ' : 'Save changes'}</button>}
-          {canSendForApproval && <button className="secondary" disabled={busy || loading || dirty} onClick={() => void sendForApproval()}>Send for Approval</button>}
+          {showSendForApproval && <button className="secondary" aria-describedby="rfq-approval-help" disabled={busy || loading || Boolean(approvalBlocked)} onClick={() => void sendForApproval()}>Send for Approval</button>}
         </footer>
       </section>
     </div>
