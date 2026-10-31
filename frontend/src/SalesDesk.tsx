@@ -167,7 +167,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
 
   const ownRfq = !!rfq && (!isSales || (!!rfq.sales_code && rfq.sales_code.toLowerCase() === (user.sales_code || '').toLowerCase()))
   const readOnly = mode === 'edit' && (!ownRfq || user.role==='management') // a consultant looking at an unclaimed RFQ
-  const lockedForSales = isSales // customer details, assignment and metric timestamps are manager-only
+  const lockedForSales = isSales && mode === 'edit' // customer details, assignment and metric timestamps are manager-only
   const dirty = JSON.stringify(form) !== JSON.stringify(initial) || files.length > 0
 
   const requestClose = useCallback(() => {
@@ -316,7 +316,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   const mediaChoices = config.media_platforms.filter((m) => m.is_active || m.id === form.media_platform_id)
   const statusChoices = config.statuses.filter((s) => s.is_active || s.id === form.status_id)
   const codeChoices = config.sales_codes.filter((c) => c.is_active || c.id === form.sales_code_id)
-  const disabled = readOnly || busy
+  const disabled = readOnly || busy || (mode === 'create' && config.can_create !== true)
   const showSendForApproval = mode === 'edit' && isSales && !readOnly
   const approvalBlocked = approvalBlockReason({
     hasPermission: user.can_request_approval === true,
@@ -341,7 +341,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
         {loading ? <div className="editor-body"><p className="hint">Loading…</p></div> : (
           <div className="editor-body">
             {panelError && <p className="error" role="alert">{panelError}</p>}
-            {isSales && !readOnly && <p className="hint">You can edit status, document number, attachments and remarks.</p>}
+            {mode === 'edit' && isSales && !readOnly && <p className="hint">You can edit status, document number, attachments and remarks.</p>}
             {mode === 'edit' && <p className="hint sd-panel-note">The RFQ number is generated automatically and cannot be changed.{rfq?.original_rfq_no ? ` Originally quote ${rfq.original_rfq_no}.` : ''}</p>}
             {readOnly && <p className="hint sd-panel-note">{isSales ? rfq?.sales_code_id ? 'This RFQ is assigned to another consultant.' : 'This RFQ is unclaimed. Claim it to edit it.' : 'Your role has read-only access to this RFQ.'}</p>}
 
@@ -364,7 +364,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
             <textarea id="rfq-query" rows={4} disabled={disabled || lockedForSales} value={form.query_information} onChange={(e) => set({ query_information: e.target.value })} />
 
             <label htmlFor="rfq-code">Sales code <span>{lockedForSales ? 'Only a manager or administrator can change this.' : 'Saved with the rest of the form when you press Save.'}</span></label>
-            <select id="rfq-code" disabled={disabled || lockedForSales} value={form.sales_code_id} onChange={(e) => chooseSalesCode(e.target.value)}>
+            <select id="rfq-code" disabled={disabled || lockedForSales || (mode === 'create' && config.can_assign !== true)} value={form.sales_code_id} onChange={(e) => chooseSalesCode(e.target.value)}>
               <option value="">Unassigned</option>
               {codeChoices.map((c) => <option key={c.id} value={c.id}>{codeLabel(c)}{c.is_active ? '' : ' (inactive)'}</option>)}
             </select>
@@ -373,10 +373,10 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
             <input id="rfq-received" type="datetime-local" disabled={disabled || lockedForSales} value={form.received_at} onChange={(e) => set({ received_at: e.target.value })} />
 
             <label htmlFor="rfq-claimed">Claimed date <span>{lockedForSales ? 'Only a manager can change this.' : form.sales_code_id ? 'Editable. Leave blank on a new assignment to use the time of saving.' : 'Choose a sales code first.'}</span></label>
-            <input id="rfq-claimed" type="datetime-local" disabled={disabled || lockedForSales || !form.sales_code_id} value={form.claimed_at} onChange={(e) => set({ claimed_at: e.target.value })} />
+            <input id="rfq-claimed" type="datetime-local" disabled={disabled || lockedForSales || !form.sales_code_id || (mode === 'create' && config.can_assign !== true)} value={form.claimed_at} onChange={(e) => set({ claimed_at: e.target.value })} />
 
             <label htmlFor="rfq-completed">Date completed <span>Recorded automatically on completion. Managers can correct this date.</span></label>
-            <input id="rfq-completed" type="datetime-local" disabled={disabled || lockedForSales || config.statuses.find((status) => status.id === form.status_id)?.metric_category !== 'completed'} value={form.completed_at} onChange={(e) => set({ completed_at: e.target.value })} />
+            <input id="rfq-completed" type="datetime-local" disabled={disabled || lockedForSales || mode === 'create' || config.statuses.find((status) => status.id === form.status_id)?.metric_category !== 'completed'} value={form.completed_at} onChange={(e) => set({ completed_at: e.target.value })} />
 
             <label htmlFor="rfq-status">Status</label>
             <select id="rfq-status" disabled={disabled} value={form.status_id} onChange={(e) => set({ status_id: e.target.value })}>
@@ -446,7 +446,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
         <footer className="editor-foot">
           <button className="secondary" onClick={requestClose}>{readOnly ? 'Close' : 'Cancel'}</button>
           {readOnly && isSales && !rfq?.sales_code_id && <button className="primary" disabled={busy} onClick={() => void claim()}>Claim this RFQ</button>}
-          {!readOnly && <button className="primary" disabled={busy || loading || (mode === 'edit' && !dirty)} onClick={() => void save()}>{busy ? 'Saving…' : mode === 'create' ? 'Create RFQ' : 'Save changes'}</button>}
+          {!readOnly && <button className="primary" disabled={disabled || loading || (mode === 'edit' && !dirty)} onClick={() => void save()}>{busy ? 'Saving…' : mode === 'create' ? 'Create RFQ' : 'Save changes'}</button>}
           {showSendForApproval && <button className="secondary" aria-describedby="rfq-approval-help" disabled={busy || loading || Boolean(approvalBlocked)} onClick={() => void sendForApproval()}>Send for Approval</button>}
         </footer>
       </section>
@@ -560,7 +560,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
     <section className={`rfq-workspace${embedded ? ' sales-desk-settings' : ''}`}>
       <>
           {!embedded && <div className="sd-session-bar">
-            {page === 'RFQs' && view === 'rfqs' && isAdmin && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
+            {page === 'RFQs' && config.can_create === true && <button type="button" className="sd-create-button" aria-label="Create new RFQ" title="Create new RFQ" onClick={() => { setView('rfqs'); setPanel({ mode: 'create' }) }}><Plus size={18} /></button>}
             <span>Signed in as <b>{user?.display_name || 'Impala Hub user'}</b>{user?.role ? ` · ${user.role}` : ''}{user?.sales_code ? ` · sales code ${user.sales_code}` : ''}</span>
             {page === 'RFQs' && <div className="sd-view-tabs"><button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button><button className={view === 'rfqs' ? 'active' : ''} onClick={() => setView('rfqs')}>RFQs</button><button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button><button className={view === 'cross-reference' ? 'active' : ''} onClick={() => setView('cross-reference')}>Cross Reference</button></div>}
           </div>}

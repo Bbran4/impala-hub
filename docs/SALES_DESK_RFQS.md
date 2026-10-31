@@ -129,3 +129,8 @@ Under Settings → Permissions → Sales Desk → **Workspace**, edit role defau
 - **Send RFQ chat updates**: permits the slash command; enabled by default for Sales and Sales Manager roles.
 
 Both receive options default to enabled for Sales Managers. Only active Sales Managers with current Sales Desk view permission receive these manager alerts; the person making a change does not receive their own event alert. Unchanged saves do not alert. Conversion retries do not repeat alerts or send a second general-update alert. Approval requests and decisions keep their own permissions and recipients, regardless of these two receive options. Existing assigned-consultant In Progress alerts are unchanged.
+
+
+### Create permission
+
+The RFQ workspace's **Create new RFQ** button follows the effective **RFQs → Create** permission, including role defaults and individual overrides. View access is also required. Creation is not restricted to administrator accounts. Assignment on a new RFQ still requires **Assign** permission. Consultants can enter the initial RFQ details when creating; their existing RFQs retain the status, document number, attachment and remarks edit limits. Refresh Sales Desk after changing permissions to load the current creation capability; every create command checks permissions again in the database.

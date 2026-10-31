@@ -33,6 +33,8 @@ export type SalesCode = {
   rfq_count: number;
 };
 export type RfqConfig = {
+  can_create?: boolean;
+  can_assign?: boolean;
   media_platforms: ConfigOption[];
   statuses: RfqStatus[];
   sales_codes: SalesCode[];

@@ -29,6 +29,8 @@ begin
 end $$;
 create trigger test_reject_sales_audit before insert on public.sales_desk_rfq_audit for each row execute function pg_temp.reject_sales_audit();
 
+insert into public.application_user_permission_overrides(profile_id,app_id,permission_key,enabled) values('99000000-0000-0000-0000-000000000002','sales_desk','sales_desk.create',false);
+
 set local role authenticated;
 set local request.jwt.claims='{"sub":"99000000-0000-0000-0000-000000000001","role":"authenticated"}';
 create temp table tx_rows(label text primary key,r jsonb);
@@ -48,7 +50,7 @@ select public.claim_sales_desk_rfq((select (r->>'id')::uuid from tx_rows where l
 select is((select sales_code_id from public.sales_desk_rfqs where id=(select (r->>'id')::uuid from tx_rows where label='first')),
   (select id from public.sales_desk_sales_codes where code='TX-A'),'claim uses the authenticated salesperson code');
 select is((select count(*) from public.sales_desk_rfq_audit where rfq_id=(select (r->>'id')::uuid from tx_rows where label='first') and action='claimed'),1::bigint,'claim has exactly one atomic audit');
-select throws_ok($$select public.create_sales_desk_rfq(jsonb_build_object('customer_name','Not manager','media_platform_id',(select id from public.sales_desk_media_platforms where is_active limit 1)))$$,'42501',null,'salespeople cannot invoke manager creation');
+select throws_ok($$select public.create_sales_desk_rfq(jsonb_build_object('customer_name','Create denied','media_platform_id',(select id from public.sales_desk_media_platforms where is_active limit 1)))$$,'42501',null,'users denied Create cannot invoke creation');
 select public.update_sales_desk_rfq((select (r->>'id')::uuid from tx_rows where label='first'),'{"document_number":"DOC-1"}'::jsonb);
 select throws_ok($$select public.update_sales_desk_rfq((select (r->>'id')::uuid from tx_rows where label='first'),jsonb_build_object('sales_code_id',(select id from public.sales_desk_sales_codes where code='TX-B')))$$,'42501',null,'salespeople cannot reassign themselves to another code');
 set local request.jwt.claims='{"sub":"99000000-0000-0000-0000-000000000003","role":"authenticated"}';
