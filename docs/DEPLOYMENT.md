@@ -39,6 +39,15 @@ Migration `0103_administrator_normal_user_view.sql` adds the **Use normal user v
 - Ordinary and inactive accounts must not be able to change viewing mode through the RPC or direct profile updates.
 - The GitHub integration must apply migration 0103 before the matching frontend is used. The database regression suite is `supabase/tests/administrator_normal_user_view.test.sql`.
 
+## Chat settings and shared Sales Desk milestones
+
+- Migration `0105_chat_settings.sql` adds **App Settings → Chat and channels**. Administrators can assign each active employee a name colour and permissions to create channels, invite people, remove members and delete joined channels. Creation and invitation retain their previous default availability; removal and deletion require an explicit grant. Administrator view retains all actions, while normal user view uses the saved employee permissions. Non-administrators must also be members of a channel before managing it.
+- All colour controls for stock highlights, milestones and chat names share a visual selector plus editable RGB and hex values. Chat name colours apply in the dock and Channels workspace.
+- Migration `0107_sales_desk_shared_milestones.sql` moves monthly sales and GP% targets and colours into Supabase. Use **Save milestones** in Sales Desk settings. A successful save applies to everyone and is independent of Vercel deployments. Failed saves retain the draft; stale saves require reloading milestones.
+- On the first shared setup, **Import and save browser milestones** can recover valid settings saved by the previous browser-only implementation. The app does not silently import them or overwrite an existing shared configuration.
+- Verify a saved target and custom colour in a second Sales Desk account. Confirm zero GP% thresholds work, duplicate values are rejected, and saved empty milestone groups stay empty after reopening.
+- The new SQL regression suites are `chat_settings.test.sql` and `sales_desk_milestones.test.sql` under `supabase/tests/`.
+
 ## Returns & Claims smoke checks
 
 - Signed out: the Apps Dashboard and Returns & Claims data are unavailable.

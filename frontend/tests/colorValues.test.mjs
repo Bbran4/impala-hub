@@ -9,7 +9,7 @@ test('RGB and hex colours round-trip, including legacy milestone colours', () =>
   assert.deepEqual(colorToRgb('#234e70'), [35, 78, 112]);
   assert.equal(rgbToColor([35, 78, 112]), '#234e70');
   for (const rgb of [[-1, 0, 0], [256, 0, 0], [1.1, 0, 0], [0, NaN, 0], [0, 0]]) assert.equal(rgbToColor(rgb), null);
-  for (const hex of ['red;background:url(x)', '#ffff', '#gggggg', 'rgb(0,0,0)']) assert.equal(normalizeColor(hex), null);
+  for (const hex of ['red;background:url(x)', '#ffff', '#gggggg', 'rgb(0,0,0)', 'constructor']) assert.equal(normalizeColor(hex), null);
 });
 test('chat names use assigned colours and retain a stable automatic fallback', () => {
   assert.equal(chatNameColor('employee', { employee: '#C01234' }), '#c01234');

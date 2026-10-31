@@ -18,7 +18,7 @@ export function normalizeColor(value: string): string | null {
   if (/^#[0-9a-f]{6}$/.test(color)) return color;
   if (/^#[0-9a-f]{3}$/.test(color))
     return "#" + [...color.slice(1)].map((c) => c + c).join("");
-  return legacyColors[color] || null;
+  return Object.hasOwn(legacyColors, color) ? legacyColors[color] : null;
 }
 
 export function colorToRgb(color: string): [number, number, number] {

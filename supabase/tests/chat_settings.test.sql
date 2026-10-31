@@ -18,7 +18,7 @@ set local request.jwt.claims='{"sub":"10500000-0000-0000-0000-000000000001","rol
 select lives_ok($sql$select public.admin_save_chat_user_settings('10500000-0000-0000-0000-000000000002','#AB1234','{"create_channels":false,"invite_users":false,"remove_members":false,"delete_channels":false}')$sql$,'administrator can save permissions and name colour together');
 select throws_ok($sql$select public.admin_save_chat_user_settings('10500000-0000-0000-0000-000000000002','red','{"create_channels":true,"invite_users":true,"remove_members":true,"delete_channels":true}')$sql$,'22023',null,'invalid colours are rejected');
 select throws_ok($sql$select public.admin_save_chat_user_settings('10500000-0000-0000-0000-000000000002','#123456','{"create_channels":"true"}')$sql$,'22023',null,'malformed permission objects are rejected');
-select is((select jsonb_array_length(public.admin_chat_settings())),3,'administrator list includes every active profile');
+select is((select count(*) from jsonb_array_elements(public.admin_chat_settings()) u where u->>'profile_id' like '10500000-%'),3::bigint,'administrator list includes every test profile');
 set local request.jwt.claims='{"sub":"10500000-0000-0000-0000-000000000002","role":"authenticated"}';
 select is(public.chat_client_settings()->'colors'->>'10500000-0000-0000-0000-000000000002','#ab1234','assigned colour is shared with chat clients');
 select throws_ok($sql$select public.admin_chat_settings()$sql$,'42501',null,'employee cannot read administrative settings');
@@ -40,5 +40,11 @@ select lives_ok($sql$select public.chat_add_channel_member('10500000-0000-0000-0
 select lives_ok($sql$select public.chat_remove_channel_member('10500000-0000-0000-0001-000000000001','10500000-0000-0000-0000-000000000003')$sql$,'granted members can remove other members');
 select throws_ok($sql$select public.chat_remove_channel_member('10500000-0000-0000-0001-000000000001',auth.uid())$sql$,'22023',null,'self-removal uses the existing Leave action');
 select lives_ok($sql$select public.chat_delete_channel('10500000-0000-0000-0001-000000000001')$sql$,'granted members can delete joined channels');
+set local request.jwt.claims='{"sub":"10500000-0000-0000-0000-000000000001","role":"authenticated"}';
+select ok(public.chat_has_permission('delete_channels'),'administrator view retains chat management');
+select public.set_my_normal_user_view(true);
+select ok(not public.chat_has_permission('delete_channels'),'normal view uses employee chat permissions');
+select throws_ok($sql$select public.admin_chat_settings()$sql$,'42501',null,'normal view cannot edit chat permissions');
+select public.set_my_normal_user_view(false);
 select * from finish();
 rollback;

@@ -1,8 +1,10 @@
 import { createRfqService, type RfqService, type Rfq, type RfqCreate, type RfqValues, type RfqConfig, type SalesDeskUser, type RfqDashboard, type RfqAnalytics, type RfqAudit, type RfqAttachment, type SalesCode, type ConfigOption, type ConfigKind, type ConfigPatch } from './rfqService'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { BarChart3, ClipboardList, Download, Eye, GripVertical, Megaphone, Paperclip, Percent, Plus, Settings, Tags, Trash2, Users, X } from 'lucide-react'
+import { BarChart3, ClipboardList, Download, Eye, GripVertical, Megaphone, Paperclip, Plus, Settings, Tags, Trash2, Users, X } from 'lucide-react'
 import CrossReference from './CrossReference'
-import ColorPicker from './ColorPicker'
+import SalesMilestoneSettingsPanel from './SalesMilestoneSettings'
+import { loadSalesMilestones } from './salesMilestonesService'
+import type { SalesMilestoneSettings } from './milestoneSettings'
 import { normalizeColor } from './colorValues'
 import './salesdesk.css'
 
@@ -420,12 +422,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
   const [sort, setSort] = useState('received_asc')
   const [newMedia, setNewMedia] = useState('')
   const [newStatus, setNewStatus] = useState({ name: '', closed: false, category: 'other' })
-  const [gpMilestones, setGpMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
-  const [newMilestone, setNewMilestone] = useState('')
-  const [gpPercentMilestones, setGpPercentMilestones] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_percent_milestones') || '[4,9.5,15]') } catch { return [4, 9.5, 15] } })
-  const [gpPercentColors, setGpPercentColors] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_percent_colors') || '{}') } catch { return {} } })
-  const [newGpPercent, setNewGpPercent] = useState('')
-  const [milestoneColors, setMilestoneColors] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('sales_desk_gp_milestone_colors') || '{}') } catch { return {} } })
+  const [milestoneSettings, setMilestoneSettings] = useState<SalesMilestoneSettings | null>(null)
 
   const closePanel = useCallback(() => setPanel(null), [])
   useEffect(() => {
@@ -434,22 +431,19 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
     setPanel({ mode: 'edit', id: openRfqId })
     onOpenRfqHandled?.()
   }, [openRfqId, page, onOpenRfqHandled])
-  useEffect(() => { localStorage.setItem('sales_desk_gp_milestones', JSON.stringify(gpMilestones)) }, [gpMilestones])
-  useEffect(() => { localStorage.setItem('sales_desk_gp_percent_milestones', JSON.stringify(gpPercentMilestones)) }, [gpPercentMilestones])
-  useEffect(() => { localStorage.setItem('sales_desk_gp_percent_colors', JSON.stringify(gpPercentColors)) }, [gpPercentColors])
-  useEffect(() => { localStorage.setItem('sales_desk_gp_milestone_colors', JSON.stringify(milestoneColors)) }, [milestoneColors])
   const service = useMemo(() => createRfqService(), [token])
 
   const load = useCallback(async () => {
     if (!token) return
     try {
-      const [me, cfg, list, dash, analyticsResult] = await Promise.all([
+      const [me, cfg, list, dash, analyticsResult, sharedMilestones] = await Promise.all([
         service.me(), service.configuration(),
         page === 'RFQs' && view === 'rfqs' ? service.list() : Promise.resolve({ items: [] }),
         page === 'RFQs' && view === 'dashboard' ? service.dashboard() : Promise.resolve<RfqDashboard>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 }),
         page === 'RFQs' && view === 'analytics' ? service.analytics({ period: analyticsPeriod, month: analyticsMonth, week: analyticsWeek, year: analyticsYear }) : Promise.resolve({ totals: {}, series: [] }),
+        page === 'RFQs' && view === 'dashboard' ? loadSalesMilestones() : Promise.resolve(null),
       ])
-      setUser(me); setConfig(cfg); setRfqs(list.items || []); setDashboard(dash); setAnalytics(analyticsResult)
+      setUser(me); setConfig(cfg); setRfqs(list.items || []); setDashboard(dash); setAnalytics(analyticsResult); if (sharedMilestones) setMilestoneSettings(sharedMilestones)
     } catch (e) { setError((e as Error).message) }
   }, [token, service, setError, analyticsPeriod, analyticsMonth, analyticsWeek, analyticsYear, page, view])
   useEffect(() => { void load() }, [load, page])
@@ -500,6 +494,10 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
     if (sort === 'received_desc') return String(b.received_at).localeCompare(String(a.received_at))
     return (Number(!!a.sales_code) - Number(!!b.sales_code)) || String(a.received_at).localeCompare(String(b.received_at))
   })
+  const gpMilestones = (milestoneSettings?.sales || []).map((item) => item.value)
+  const gpPercentMilestones = (milestoneSettings?.gp || []).map((item) => item.value)
+  const milestoneColors = Object.fromEntries((milestoneSettings?.sales || []).map((item) => [String(item.value), item.color]))
+  const gpPercentColors = Object.fromEntries((milestoneSettings?.gp || []).map((item) => [String(item.value), item.color]))
   const monthlySales = Number(dashboard.monthly_sales?.gross_sales || 0)
   const monthlyGpPercent = Number(dashboard.monthly_sales?.gp_percent || 0)
   const rfqPerformance = dashboard.rfq_performance || []
@@ -629,20 +627,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
                   </Sortable>
                 </div>
               )}
-              {isAdmin && (
-                <div className="admin-settings-panel sd-settings-card">
-                  <div className="section-head"><div><h2>Monthly sales milestones</h2><p>Set sales targets and choose their dashboard colours.</p></div><BarChart3 size={19} /></div>
-                  <div className="sd-config-add"><input type="number" min="1" step="1" placeholder="Add milestone amount" value={newMilestone} onChange={(e) => setNewMilestone(e.target.value)} /><button className="primary" disabled={!newMilestone || Number(newMilestone) < 0} onClick={() => { const value = Number(newMilestone); if (Number.isInteger(value) && value > 0) { setGpMilestones((items) => [...items, value]); setNewMilestone('') } }}>Add</button></div>
-                  <div className="sd-milestone-list">{[...gpMilestones].sort((a, b) => a - b).map((value) => <div className="sd-config-row" key={value}><div><b>R{value.toLocaleString()}</b><small>{value === Math.min(...gpMilestones) ? 'Lowest milestone' : value === Math.max(...gpMilestones) ? 'Progress total' : 'Intermediate milestone'}</small></div><div className="sd-actions"><ColorPicker label={'Colour for R' + value.toLocaleString()} value={milestoneColors[String(value)] || (value === Math.max(...gpMilestones) ? 'dark-blue' : value === Math.min(...gpMilestones) ? 'grey' : 'light-blue')} onChange={(color) => setMilestoneColors((colors) => ({ ...colors, [String(value)]: color }))} /><button className="secondary" onClick={() => { const next = window.prompt('Edit milestone amount', String(value)); const parsed = Number(next); if (next !== null && Number.isInteger(parsed) && parsed > 0) setGpMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove R' + value.toLocaleString() + ' milestone'} onClick={() => setGpMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
-                </div>
-              )}
-              {isAdmin && (
-                <div className="admin-settings-panel sd-settings-card">
-                  <div className="section-head"><div><h2>GP% milestones</h2><p>Set percentage thresholds and their dashboard colours.</p></div><Percent size={19} /></div>
-                  <div className="sd-config-add"><input type="number" min="0" step="0.01" placeholder="Add GP% milestone" value={newGpPercent} onChange={(e) => setNewGpPercent(e.target.value)} /><button className="primary" disabled={!newGpPercent || Number(newGpPercent) < 0} onClick={() => { const value = Number(newGpPercent); if (value >= 0) { setGpPercentMilestones((items) => [...items, value]); setNewGpPercent('') } }}>Add</button></div>
-                  <div className="sd-milestone-list">{sortedGpPercentMilestones.map((value) => <div className="sd-config-row" key={value}><div><b>{value}%</b><small>GP% threshold</small></div><div className="sd-actions"><ColorPicker label={'Colour for GP ' + value + '%'} value={gpPercentColors[String(value)] || 'dark-blue'} onChange={(color) => setGpPercentColors((colors) => ({ ...colors, [String(value)]: color }))} /><button className="secondary" onClick={() => { const next = window.prompt('Edit GP% milestone', String(value)); const parsed = Number(next); if (next !== null && parsed >= 0) setGpPercentMilestones((items) => items.map((item) => item === value ? parsed : item)) }}>Edit</button><button className="icon-button" aria-label={'Remove GP ' + value + '% milestone'} onClick={() => setGpPercentMilestones((items) => items.filter((item) => item !== value))}><Trash2 size={16} /></button></div></div>)}</div>
-                </div>
-              )}
+              {isAdmin && <SalesMilestoneSettingsPanel setNotice={setNotice} setError={setError} />}
               <div className="admin-settings-panel sd-settings-card">
                 <div className="section-head"><div><h2>Sales codes</h2><p>Manage the employee codes available for RFQ assignment.</p></div><Users size={19} /></div>
                 {config.sales_codes.length === 0 && <p className="hint">No sales codes yet. Create a salesperson account to generate one.</p>}
