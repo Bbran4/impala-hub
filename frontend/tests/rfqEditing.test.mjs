@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CONSULTANT_FIELDS,consultantCanEdit,approvalLabel,approvalBlockReason} from '../src/rfqEditing.ts';
+import {CONSULTANT_FIELDS,consultantCanEdit,approvalLabel,approvalBlockReason,approvalValidationReason} from '../src/rfqEditing.ts';
 test('consultant form edits match the narrow transactional database contract',()=>{
   assert.deepEqual(CONSULTANT_FIELDS,['status_id','document_number','remarks']);
   for(const field of CONSULTANT_FIELDS)assert.equal(consultantCanEdit(field),true);
@@ -19,8 +19,10 @@ test('consultant can submit a newly selected completed status without saving sep
   const ready = { hasPermission: true, isQuotation: true, isCompleted: true, documentNumber: 'DOC-1', hasAttachment: true, approvalState: 'not_requested', dirty: true };
   assert.equal(approvalBlockReason(ready), null);
   assert.match(approvalBlockReason({...ready,isCompleted:false}), /completed status/);
-  assert.match(approvalBlockReason({...ready,documentNumber:'  '}), /document number/);
-  assert.match(approvalBlockReason({...ready,hasAttachment:false}), /Upload a document/);
+  assert.equal(approvalBlockReason({...ready,documentNumber:'  '}), null);
+  assert.match(approvalValidationReason({...ready,documentNumber:'  '}), /document number/);
+  assert.equal(approvalBlockReason({...ready,hasAttachment:false}), null);
+  assert.match(approvalValidationReason({...ready,hasAttachment:false}), /Upload a document/);
   assert.match(approvalBlockReason({...ready,hasPermission:false}), /permission/);
   assert.match(approvalBlockReason({...ready,isQuotation:false}), /Only quotations/);
 });

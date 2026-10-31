@@ -1,4 +1,4 @@
-import { consultantCanEdit, approvalLabel, approvalBlockReason } from './rfqEditing'
+import { consultantCanEdit, approvalLabel, approvalBlockReason, approvalValidationReason } from './rfqEditing'
 import RecordPagination from './RecordPagination'
 import { useRecordPage, useDebouncedSearch } from './useRecordPage'
 import { storageFileType } from './storageUploadRules'
@@ -134,7 +134,7 @@ function describeHistory(h: RfqAudit): string {
 
 // ---------------------------------------------------------------------------------------------
 // The RFQ side panel. Used for both "New RFQ" and viewing/editing an existing RFQ.
-function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChanged, setNotice, setError: onError }: {
+export function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChanged, setNotice, setError: onError }: {
   mode: 'create' | 'edit'; rfqId?: string; config: RfqConfig; user: SalesDeskUser; token: string; service: RfqService
   onClose: () => void; onChanged: () => Promise<void>; setNotice: (m: string) => void; setError: (m: string) => void
 }) {
@@ -293,6 +293,8 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   }
 
   async function sendForApproval() {
+    const problem = approvalBlocked || approvalValidation;
+    if (problem) { setError(problem); return; }
     setBusy(true); setError('')
     try {
       const updated = await service.sendForApproval(rfqId!, editedValues())
@@ -321,10 +323,10 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
   const approvalBlocked = approvalBlockReason({
     hasPermission: user.can_request_approval === true,
     isQuotation: rfq?.rfq_type === 'quotation',
-    isCompleted: config.statuses.some(status => status.id === form.status_id && status.is_closed && status.metric_category === 'completed'),
-    documentNumber: form.document_number, hasAttachment: Boolean(rfq?.attachments?.length),
+    isCompleted: config.statuses.some(status => status.id === form.status_id && status.metric_category === 'completed'),
     approvalState: rfq?.approval_state, dirty,
   })
+  const approvalValidation = approvalValidationReason({ documentNumber: form.document_number, hasAttachment: Boolean(rfq?.attachments?.length) })
   const canReviewApproval = user.can_approve===true && rfq?.approval_state==='pending' && rfq.approval_requested_by!==user.id
 
 
@@ -424,7 +426,7 @@ function RfqPanel({ mode, rfqId, config, user, token, service, onClose, onChange
               <h4>Manager approval</h4><p>{approvalLabel(rfq.approval_state)}</p>
               {rfq.approval_requested_at && <small>Requested {fmtDate(rfq.approval_requested_at)}</small>}
               {rfq.approval_note && <p>{rfq.approval_note}</p>}
-              {showSendForApproval && <p id="rfq-approval-help" className="hint">{approvalBlocked || (dirty ? 'Send for approval saves your status, document number and remarks, then notifies Sales Managers.' : 'Send this RFQ to Sales Managers for approval.')}</p>}
+              {showSendForApproval && <p id="rfq-approval-help" className="hint">{approvalBlocked || approvalValidation || (dirty ? 'Send for approval saves your status, document number and remarks, then notifies Sales Managers.' : 'Send this RFQ to Sales Managers for approval.')}</p>}
               {canReviewApproval && <>
                 <label htmlFor="approval-note">Review note<textarea id="approval-note" rows={3} maxLength={1000} disabled={busy} value={approvalNote} onChange={event=>setApprovalNote(event.target.value)} placeholder="Explain any changes the consultant needs to make" /></label>
                 <div className="sd-actions"><button className="primary" disabled={busy||dirty} onClick={()=>void reviewApproval('approved')}>Approve RFQ</button>

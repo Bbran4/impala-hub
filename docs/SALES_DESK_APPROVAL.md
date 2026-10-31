@@ -47,3 +47,6 @@ Consultants see **Send for Approval** on their assigned RFQs even while requirem
 
 
 Status setup uses **Outcome category**, which controls approvals and completion dates as well as analytics. Choosing **Completed** automatically makes the status closed. Migration 0137 classifies legacy statuses named exactly Complete or Completed when they were previously unclassified; explicitly configured dropped/scrapped/other outcomes are not inferred from names during RFQ processing. Other custom completion statuses must have their outcome category set to Completed.
+
+
+The approval button follows the status currently selected in the unsaved form. Selecting a Completed outcome enables it immediately; selecting another outcome disables it again. Send for Approval saves the pending edits and submits the approval request in one database transaction. Missing document numbers or uploaded documents are shown as validation messages when submitting; they do not keep a Completed RFQ's button disabled.

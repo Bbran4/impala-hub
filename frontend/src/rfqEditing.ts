@@ -16,13 +16,18 @@ export const approvalLabel = (state?: string) =>
 
 export function approvalBlockReason(input: {
   hasPermission: boolean; isQuotation: boolean; isCompleted: boolean;
-  documentNumber: string; hasAttachment: boolean; approvalState?: string; dirty: boolean;
+  approvalState?: string; dirty: boolean;
 }): string | null {
   if (!input.hasPermission) return 'Your role needs Request RFQ approval permission in Sales Desk settings.';
   if (!input.isQuotation) return 'Only quotations can be sent for approval.';
   if (!input.dirty && input.approvalState === 'pending') return 'This RFQ is already waiting for manager approval.';
   if (!input.dirty && input.approvalState === 'approved') return 'This RFQ is already approved.';
   if (!input.isCompleted) return 'Choose a completed status before sending for approval.';
+  return null;
+}
+
+
+export function approvalValidationReason(input: { documentNumber: string; hasAttachment: boolean }): string | null {
   if (!input.documentNumber.trim()) return 'Enter a document number before sending for approval.';
   if (!input.hasAttachment) return 'Upload a document before sending for approval.';
   return null;

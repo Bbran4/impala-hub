@@ -48,6 +48,11 @@ select is((select remarks from public.sales_desk_rfqs where id=(select id from a
 select is((select approval_state from public.sales_desk_rfqs where id=(select id from approval_cases where label='Approval main')),'pending','same action sends request to managers');
 select public.submit_sales_desk_rfq_for_approval((select id from approval_cases where label='Approval main'),'{"status_id":"12500000-0000-0000-0001-000000000003","document_number":"DOC-NEW","remarks":"Ready"}');
 select is((select count(*) from public.sales_desk_rfq_audit where rfq_id=(select id from approval_cases where label='Approval main') and action='approval_requested'),1::bigint,'retry does not duplicate approval audit');
+select throws_ok(format('select public.submit_sales_desk_rfq_for_approval(%L,%L::jsonb)',
+ (select id from approval_cases where label='Approval main'),jsonb_build_object('status_id',(select id from public.sales_desk_statuses where semantic_key='in_progress'))),
+ '22023',null,'changing away from Completed cannot be submitted for approval');
+select is((select approval_state from public.sales_desk_rfqs where id=(select id from approval_cases where label='Approval main')),'pending','invalid submission cannot change the existing request');
+select is((select count(*) from public.sales_desk_rfq_audit where rfq_id=(select id from approval_cases where label='Approval main') and action='approval_requested'),1::bigint,'invalid status sends no new approval event');
 select throws_ok($$select public.submit_sales_desk_rfq_for_approval((select id from approval_cases where label='Approval no-file'),'{"status_id":"12500000-0000-0000-0001-000000000003","document_number":"MISSING-FILE"}')$$,'22023',null,'submission still requires uploaded evidence');
 select is((select document_number from public.sales_desk_rfqs where id=(select id from approval_cases where label='Approval no-file')),'','missing attachment rolls back all submitted edits');
 select throws_ok($$select public.submit_sales_desk_rfq_for_approval((select id from approval_cases where label='Approval main'),'{"received_at":"2020-01-01"}')$$,'42501',null,'submission does not broaden consultant field permissions');
