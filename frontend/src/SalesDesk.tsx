@@ -437,7 +437,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
     if (!token) return
     try {
       const [me, cfg, list, dash, analyticsResult, sharedMilestones] = await Promise.all([
-        service.me(), service.configuration(),
+        embedded ? service.settingsIdentity() : service.me(), embedded ? service.settingsConfiguration() : service.configuration(),
         page === 'RFQs' && view === 'rfqs' ? service.list() : Promise.resolve({ items: [] }),
         page === 'RFQs' && view === 'dashboard' ? service.dashboard() : Promise.resolve<RfqDashboard>({ unclaimed: 0, claimed: 0, received_today: 0, open: 0 }),
         page === 'RFQs' && view === 'analytics' ? service.analytics({ period: analyticsPeriod, month: analyticsMonth, week: analyticsWeek, year: analyticsYear }) : Promise.resolve({ totals: {}, series: [] }),
@@ -445,7 +445,7 @@ export default function SalesDesk({ page, embedded = false, token, setNotice, se
       ])
       setUser(me); setConfig(cfg); setRfqs(list.items || []); setDashboard(dash); setAnalytics(analyticsResult); if (sharedMilestones) setMilestoneSettings(sharedMilestones)
     } catch (e) { setError((e as Error).message) }
-  }, [token, service, setError, analyticsPeriod, analyticsMonth, analyticsWeek, analyticsYear, page, view])
+  }, [token, service, setError, analyticsPeriod, analyticsMonth, analyticsWeek, analyticsYear, page, view, embedded])
   useEffect(() => { void load() }, [load, page])
 
   async function act(work: () => Promise<unknown>, success?: string) {

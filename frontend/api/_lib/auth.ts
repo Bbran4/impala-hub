@@ -15,7 +15,10 @@ const permissions = {
   accounts: ["feed.manage_accounts"],
   publishing: ["feed.create", "feed.edit", "posts.create", "posts.edit"],
 } as const;
-export type MarketingAccess = "workspace" | keyof typeof permissions;
+export type MarketingAccess =
+  | "workspace"
+  | "connections"
+  | keyof typeof permissions;
 export async function requireMarketingSession<K extends Setting = never>(
   req: ApiRequest,
   access: MarketingAccess,
@@ -49,6 +52,16 @@ export async function requireMarketingSession<K extends Setting = never>(
       throw new HttpError(500, "Could not verify Marketing workspace access.");
     if (check.data !== true)
       throw new HttpError(403, "Marketing access required.");
+  } else if (access === "accounts" || access === "connections") {
+    const check = await auth.rpc(
+      access === "accounts"
+        ? "can_manage_marketing_accounts"
+        : "can_view_marketing_connections",
+    );
+    if (check.error)
+      throw new HttpError(500, "Could not verify Marketing settings access.");
+    if (check.data !== true)
+      throw new HttpError(403, "Marketing settings access required.");
   } else {
     const checks = await Promise.all(
       permissions[access].map((permission) =>
@@ -58,19 +71,9 @@ export async function requireMarketingSession<K extends Setting = never>(
       ),
     );
     if (checks.some((check) => check.error))
-      throw new HttpError(
-        500,
-        access === "accounts"
-          ? "Could not verify Marketing account access."
-          : "Could not verify Marketing publishing access.",
-      );
+      throw new HttpError(500, "Could not verify Marketing publishing access.");
     if (!checks.some((check) => check.data === true))
-      throw new HttpError(
-        403,
-        access === "accounts"
-          ? "Marketing account management permission required."
-          : "Create or edit post permission required.",
-      );
+      throw new HttpError(403, "Create or edit post permission required.");
   }
   // Create the privileged client only after the employee's live permission check.
   return {

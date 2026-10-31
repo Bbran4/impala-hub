@@ -176,7 +176,7 @@ export default function AccountPage({ account }: { account: HubAccount }) {
                     <b>Use normal user view</b>
                     <small>
                       See the apps and data allowed by your assigned roles and
-                      permissions, without administrator access. Untick this box
+                      permissions. App Settings stays available. Untick this box
                       to restore administrator access.
                     </small>
                   </span>

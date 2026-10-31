@@ -21,6 +21,7 @@ const bundled = await build({
     export { default as MarketingPosts } from './src/marketing/MarketingPosts.tsx'
     export { default as MarketingDialogs } from './src/marketing/MarketingDialogs.tsx'
     export { default as AppSidebar } from './src/platform/AppSidebar.tsx'
+    export { RolePermissionControl } from './src/ApplicationPermissions.tsx'
     export { default as ColorPicker } from './src/ColorPicker.tsx'
     export { default as AccountPage } from './src/platform/AccountPage.tsx'
     export { default as SignInPage } from './src/platform/SignInPage.tsx'
@@ -298,14 +299,15 @@ test("normal-view navigation uses assigned roles instead of administrator contro
   const preview = account({ isAdministratorAccount: true, normalUserView: true, canAccessStock: true });
   assert.equal(ui.canOpenPage("Stock Booking", preview), true);
   assert.equal(ui.canOpenPage("RFQs", preview), false);
-  assert.equal(ui.canOpenPage("Admin Settings", preview), false);
+  assert.equal(ui.canOpenPage("Admin Settings", preview), true);
   const html = render(ui.AppSidebar, {
     page: "Stock Booking", sessionKey: "session", account: preview, connected: false,
     notificationChannels: ["stock_control"], onNavigate: no, openNotificationTarget: no,
     setError: no, openChat: no, disconnectKey: async () => {},
   });
   assert.match(html, /Stock Booking/);
-  assert.doesNotMatch(html, /Stock Data Import|Open settings/);
+  assert.doesNotMatch(html, /Stock Data Import/);
+  assert.match(html, /Open settings/);
 });
 
 
@@ -316,4 +318,15 @@ test("shared colour controls show a wheel, RGB values and editable hex", () => {
   assert.match(html, /value="#234e70"/);
   for (const channel of ['R','G','B']) assert.match(html, new RegExp('Milestone colour: '+channel));
   for (const value of [35,78,112]) assert.match(html, new RegExp('value="'+value+'"'));
+});
+
+test("role defaults offer editable allow/deny controls and disable during a save", () => {
+  const row = { permission_key: 'feed.edit', label: 'Edit', granted: true };
+  const html = render(ui.RolePermissionControl, { row, disabled: false, onChange: no });
+  assert.match(html, /Edit role default/);
+  assert.match(html, /<select/);
+  assert.match(html, /value="allow" selected/);
+  assert.match(html, /value="deny"/);
+  assert.doesNotMatch(html, /disabled/);
+  assert.match(render(ui.RolePermissionControl, { row: { ...row, granted: false }, disabled: true, onChange: no }), /disabled/);
 });

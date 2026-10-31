@@ -31,13 +31,25 @@ Local UI development uses Vite and Supabase. Use the linked Vercel project with 
 
 ## Administrator normal user view
 
-Migration `0103_administrator_normal_user_view.sql` adds the **Use normal user view** checkbox to administrator accounts under **Profile and security**. The preference is saved on the account. It suppresses the administrator override in database role checks as well as in the UI; other assigned roles and explicit permission overrides continue to apply. It does not impersonate another employee or remove any role assignments.
+Migration `0103_administrator_normal_user_view.sql` adds the **Use normal user view** checkbox to administrator accounts under **Profile and security**. The preference is saved on the account. It suppresses the administrator override for workspace data and actions; other assigned roles and explicit permission overrides continue to apply. Active administrator accounts retain App Settings, including app access, configuration and permission management. It does not impersonate another employee or remove any role assignments.
 
 - Administrator with no other roles: enable normal view and confirm workspaces are unavailable, while the account profile remains accessible.
-- Administrator with employee roles: enable normal view and confirm only assigned workspaces, permissions and permitted data are available. Administrator settings and import controls should disappear.
+- Administrator with employee roles: enable normal view and confirm only assigned workspaces, permissions and permitted data are available. App Settings remains available; workspace import and other administrator-only workspace controls should disappear.
 - Untick the checkbox from the profile and confirm full administrator access returns without signing out. Switching modes discards loaded workspace data and Sales Desk session metadata.
 - Ordinary and inactive accounts must not be able to change viewing mode through the RPC or direct profile updates.
 - The GitHub integration must apply migration 0103 before the matching frontend is used. The database regression suite is `supabase/tests/administrator_normal_user_view.test.sql`.
+
+## Settings authority and editable role defaults
+
+Migration `0109_settings_authority_role_defaults.sql` separates active administrator account authority from normal-view workspace permissions. Settings buttons remain available in both modes. In normal view, administrators can grant or remove their own direct app roles under **Who can open this app**. Other inherited roles (such as Management) continue to grant their documented app access. Configuration readers and mutations retain settings authority without restoring unrestricted RFQ, stock, chat or publishing access.
+
+Under **App Settings → Permissions → Roles**, Allow/Deny edits the role's persisted default. Deny removes that role's grant; another assigned role can still grant it. Explicit user Allow/Deny overrides continue to take precedence. Role edits are audited. Old automatically seeded Marketing grants no longer bypass these defaults; explicitly granted legacy permissions are carried into user overrides.
+
+- Normal-view administrator: enable and disable a direct app role for yourself; confirm the app dashboard updates and App Settings remains accessible.
+- Confirm configuration panels still work without the corresponding workspace role. Marketing connection settings are available, but publishing and sync still require the effective workspace permissions.
+- Change a role default, confirm it persists after reopening, and verify inherited permission checks for a role member. Repeat with explicit user Allow and Deny overrides.
+- Ordinary and inactive users must not be able to call settings readers, change role defaults or write permission audit records.
+- The regression suite is `supabase/tests/settings_role_defaults.test.sql`.
 
 ## Chat settings and shared Sales Desk milestones
 

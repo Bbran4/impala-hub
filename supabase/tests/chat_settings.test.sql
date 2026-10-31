@@ -44,7 +44,7 @@ set local request.jwt.claims='{"sub":"10500000-0000-0000-0000-000000000001","rol
 select ok(public.chat_has_permission('delete_channels'),'administrator view retains chat management');
 select public.set_my_normal_user_view(true);
 select ok(not public.chat_has_permission('delete_channels'),'normal view uses employee chat permissions');
-select throws_ok($sql$select public.admin_chat_settings()$sql$,'42501',null,'normal view cannot edit chat permissions');
+select lives_ok($sql$select public.admin_chat_settings()$sql$,'normal view retains chat settings access');
 select public.set_my_normal_user_view(false);
 select * from finish();
 rollback;

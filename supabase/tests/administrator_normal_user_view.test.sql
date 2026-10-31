@@ -40,7 +40,7 @@ select is(public.my_account_access()->'roles','[]'::jsonb,'administrator-only ac
 select ok(not public.can_access_workspace('marketing'),'normal view needs an assigned workspace role');
 select ok(not public.has_application_permission('marketing','posts.delete'),'normal view removes implicit application permissions');
 select is((select count(*) from public.normal_view_test_rows),1::bigint,'normal view obeys data row policies');
-select throws_ok($sql$select * from public.admin_list_app_access('marketing')$sql$,'42501',null,'normal view cannot invoke administrator functions');
+select lives_ok($sql$select * from public.admin_list_app_access('marketing')$sql$,'normal view retains administrator settings access');
 select ok(not public.set_my_normal_user_view(false),'administrator can restore access without admin permission');
 select ok(public.has_role('administrator'),'administrator access is restored');
 select is((select count(*) from public.normal_view_test_rows),2::bigint,'restoring administrator access restores row visibility');

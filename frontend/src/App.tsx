@@ -63,6 +63,7 @@ function HubApp({
   const { key } = session;
   const {
     isAdministrator,
+    isAdministratorAccount,
     profileLoaded,
     canAccessMarketing,
     canAccessSalesDesk,
@@ -75,10 +76,16 @@ function HubApp({
   const context = pageContext(page);
   const isMarketingPage = marketingPages.includes(page);
   const connections = useMarketingConnections({
-    enabled: Boolean(key) && canAccessMarketing,
+    enabled:
+      Boolean(key) &&
+      (canAccessMarketing ||
+        (isAdministratorAccount && context.isAdminSettingsPage)),
     sessionKey: key,
     page,
-    canManageAccounts: isAdministrator || canMarketing("feed.manage_accounts"),
+    canManageAccounts:
+      (isAdministratorAccount && context.isAdminSettingsPage) ||
+      isAdministrator ||
+      canMarketing("feed.manage_accounts"),
     setPage,
     setNotice,
     setError,
@@ -108,7 +115,7 @@ function HubApp({
     if (!profileLoaded) return;
     if (
       ["Configuration", "Stock Control Configuration"].includes(page) &&
-      isAdministrator
+      isAdministratorAccount
     ) {
       setPage("Admin Settings");
       return;
@@ -118,6 +125,7 @@ function HubApp({
     page,
     profileLoaded,
     isAdministrator,
+    isAdministratorAccount,
     canAccessMarketing,
     canAccessSalesDesk,
     canAccessStock,
@@ -237,7 +245,7 @@ function HubApp({
               <div className="warning" key="fb-token">
                 <CircleAlert size={17} />
                 {item.token_warning}
-                {!context.isAdminSettingsPage && isAdministrator && (
+                {!context.isAdminSettingsPage && isAdministratorAccount && (
                   <button
                     className="secondary"
                     onClick={() => setPage("Admin Settings")}
@@ -265,6 +273,7 @@ function HubApp({
             )}
             {allowed && context.isAdminSettingsPage && (
               <SettingsWorkspace
+                onAccessUpdated={account.loadProfile}
                 token={key}
                 connections={connections}
                 setNotice={setNotice}

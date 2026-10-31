@@ -40,15 +40,12 @@ export function pageContext(page: string) {
 }
 export function canOpenPage(page: string, access: HubAccount) {
   if (
-    [
-      "Admin Settings",
-      "Configuration",
-      "Stock Data Import",
-      "Stock Control Configuration",
-    ].includes(page) &&
-    !access.isAdministrator
+    ["Admin Settings", "Configuration", "Stock Control Configuration"].includes(
+      page,
+    )
   )
-    return false;
+    return Boolean(access.isAdministratorAccount || access.isAdministrator);
+  if (page === "Stock Data Import" && !access.isAdministrator) return false;
   if (salesPages.includes(page)) return access.canAccessSalesDesk;
   if (stockPages.includes(page)) return access.canAccessStock;
   if (returnsPages.includes(page)) return access.canAccessReturns;

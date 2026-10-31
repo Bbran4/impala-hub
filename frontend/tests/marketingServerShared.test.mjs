@@ -27,6 +27,7 @@ const request = {
 function fixture({
   allowed = [],
   workspace = true,
+  settingsManager = false,
   errorOn,
   user = { id: "employee" },
   userError = null,
@@ -42,11 +43,12 @@ function fixture({
     },
     async rpc(name, args) {
       checks.push([name, args]);
-      const permission = args.required_permission;
+      const permission = args?.required_permission;
       return {
         data:
-          name === "can_access_workspace"
-            ? workspace
+          name === "can_access_workspace" ? workspace
+            : name === "can_manage_marketing_accounts" ? settingsManager || allowed.includes("feed.manage_accounts")
+            : name === "can_view_marketing_connections" ? settingsManager || workspace
             : allowed.includes(permission),
         error:
           errorOn && (errorOn === name || errorOn === permission)
@@ -155,10 +157,7 @@ test("account-management and publication gates retain their distinct permission 
     manager.dependencies,
   );
   assert.deepEqual(manager.checks, [
-    [
-      "has_marketing_permission",
-      { required_permission: "feed.manage_accounts" },
-    ],
+    ["can_manage_marketing_accounts", undefined],
   ]);
   for (const permission of [
     "feed.create",
@@ -307,4 +306,13 @@ test("every Graph operation has one default and one validated environment overri
       /graph\.facebook\.com|process\.env\.FACEBOOK_API_VERSION|function decrypt\(|createDecipheriv|createCipheriv|createClient\(/,
       path.relative(root, file),
     );
+});
+
+test("normal-view settings authority allows connection configuration without publishing or syncing", async () => {
+  const admin = fixture({ workspace: false, settingsManager: true });
+  for (const policy of ['accounts', 'connections']) await requireMarketingSession(request, policy, {}, admin.dependencies);
+  for (const policy of ['workspace', 'publishing']) await assert.rejects(requireMarketingSession(request, policy, {}, admin.dependencies), status(403));
+  const broken = fixture({ settingsManager: true, errorOn: 'can_manage_marketing_accounts' });
+  await assert.rejects(requireMarketingSession(request, 'accounts', {}, broken.dependencies), status(500));
+  assert.deepEqual(broken.created, ['browser-key']);
 });

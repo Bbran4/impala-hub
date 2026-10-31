@@ -35,7 +35,12 @@ export function prepareStockThresholds(slowMax: unknown, abMin: unknown): StockS
   return { slow_max_avg_sales: slow, ab_min_avg_sales: ab }
 }
 
-export async function loadStockConfiguration(client: SupabaseClient) {
+export async function loadStockConfiguration(client: SupabaseClient, settingsMode = false) {
+  if (settingsMode) {
+    const result = await client.rpc('admin_stock_configuration')
+    if (result.error || !result.data) throw new Error(result.error?.message || 'Stock configuration is unavailable.')
+    return result.data as { locations: StockLocation[]; settings: StockSettings; statuses: StockDevelopmentStatus[]; access: { isAdmin: boolean; canEdit: boolean } }
+  }
   const [locations, settings, statuses, access] = await Promise.all([
     client.from('stock_locations').select('id,name,description,vehicle_name,supply_branch,color,is_active').order('name'),
     client.from('stock_settings').select('slow_max_avg_sales,ab_min_avg_sales').eq('singleton', true).single(),

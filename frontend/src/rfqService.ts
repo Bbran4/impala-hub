@@ -142,6 +142,12 @@ export function createRfqService(client: SupabaseClient | null = supabase) {
       const items = (rows.data as RawRfq[]).map(normalizeRfq);
       return { items, total: rows.count, limit: items.length, offset: 0 };
     },
+    async settingsIdentity(): Promise<SalesDeskUser> {
+      return resultData<SalesDeskUser>(await requireSupabase(client).rpc("admin_settings_identity"));
+    },
+    async settingsConfiguration(): Promise<RfqConfig> {
+      return resultData<RfqConfig>(await requireSupabase(client).rpc("admin_sales_desk_configuration"));
+    },
     async configuration(): Promise<RfqConfig> {
       const dbClient = requireSupabase(client);
       return resultData<RfqConfig>(

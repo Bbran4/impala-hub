@@ -30,6 +30,7 @@ type AccessRow = {
 type CampaignDropTarget = { type: string; edge: 'before' | 'after' }
 
 type Props = {
+  onAccessUpdated: () => Promise<void>
   stockControlConfiguration: ReactNode
   salesDeskConfiguration: ReactNode
   integrations: any[]
@@ -121,6 +122,7 @@ export default function AdminSettings(props: Props) {
     } else {
       props.setNotice(`${row.display_name || row.email || 'Employee'} ${canOpen ? 'can now open' : 'can no longer open'} ${selectedApp.label}.`)
       await loadAccess(selectedAppId)
+      await props.onAccessUpdated().catch((error: Error) => props.setError(error.message))
     }
     setSavingProfileId(null)
   }
@@ -165,7 +167,7 @@ export default function AdminSettings(props: Props) {
         </nav>
 
         <div className="admin-settings-content">
-          {showChatSettings ? <ChatSettings setNotice={props.setNotice} setError={props.setError} /> : showPermissions ? <ApplicationPermissions setNotice={props.setNotice} setError={props.setError} /> : <>
+          {showChatSettings ? <ChatSettings setNotice={props.setNotice} setError={props.setError} /> : showPermissions ? <ApplicationPermissions onAccessUpdated={props.onAccessUpdated} setNotice={props.setNotice} setError={props.setError} /> : <>
           <div className="admin-settings-heading">
             <div className="admin-settings-app-icon"><selectedApp.icon size={24} /></div>
             <div><span className="eyebrow">APPLICATION SETTINGS</span><h2>{selectedApp.label}</h2><p>{selectedApp.description}</p></div>

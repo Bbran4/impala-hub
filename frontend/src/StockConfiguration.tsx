@@ -33,7 +33,7 @@ export default function StockConfiguration({ setNotice, setError }: Props) {
   const load = useCallback(async () => {
     if (!supabase) { setError('Supabase is not configured.'); setLoading(false); return }
     try {
-      const data = await loadStockConfiguration(supabase)
+      const data = await loadStockConfiguration(supabase, true)
       setLocations(data.locations)
       setStatuses(data.statuses)
       setSlowMax(String(data.settings.slow_max_avg_sales))

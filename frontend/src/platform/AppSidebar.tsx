@@ -57,6 +57,7 @@ export default function AppSidebar({
   const {
     profile,
     isAdministrator,
+    isAdministratorAccount,
     canMarketing,
     reportingAccess,
     loadProfile,
@@ -108,7 +109,7 @@ export default function AppSidebar({
                   onNavigate={openNotificationTarget}
                   onError={setError}
                 />
-                {isAdministrator && (
+                {(isAdministratorAccount || isAdministrator) && (
                   <button
                     className="communication-button"
                     aria-label="Open settings"
@@ -163,9 +164,7 @@ export default function AppSidebar({
                     ["Stock Reordering", PackageCheck],
                     ["Parts Query", ClipboardList],
                     ...(isAdministrator
-                      ? [
-                          ["Stock Data Import", Upload] as const,
-                        ]
+                      ? [["Stock Data Import", Upload] as const]
                       : []),
                     ["Stock Control Roadmap", Map],
                   ] as const)
@@ -246,7 +245,7 @@ export default function AppSidebar({
                     onNavigate={openNotificationTarget}
                     onError={setError}
                   />
-                  {isAdministrator && (
+                  {(isAdministratorAccount || isAdministrator) && (
                     <button
                       className="communication-button"
                       aria-label="Open settings"

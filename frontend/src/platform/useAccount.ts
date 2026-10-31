@@ -60,6 +60,7 @@ export function useAccount(
     setNormalUserView(access.data.normal_user_view === true);
     setIsAdministrator(roleIds.includes("administrator"));
     setAssignedRoles(roleIds);
+    clearRfqSession();
     const permissions = await supabase.rpc("my_marketing_permissions");
     setMarketingPermissions((permissions.data || []) as MarketingPermission[]);
     const factors = await supabase.auth.mfa.listFactors();

@@ -9,7 +9,9 @@ export default function SettingsWorkspace({
   setNotice,
   setError,
   handleError,
+  onAccessUpdated,
 }: {
+  onAccessUpdated: () => Promise<void>;
   token: string;
   connections: MarketingConnections;
   setNotice: (message: string) => void;
@@ -35,7 +37,10 @@ export default function SettingsWorkspace({
     <>
       {" "}
       <AdminSettings
-        stockControlConfiguration={<StockConfiguration setNotice={setNotice} setError={setError} />}
+        onAccessUpdated={onAccessUpdated}
+        stockControlConfiguration={
+          <StockConfiguration setNotice={setNotice} setError={setError} />
+        }
         salesDeskConfiguration={
           <SalesDesk
             page="App Settings"

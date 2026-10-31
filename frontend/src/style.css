@@ -571,3 +571,5 @@ button.app-card{width:100%;cursor:pointer;font:inherit}
 
 .sd-milestone-save-bar,.sd-milestone-import{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f7f9fb;border:1px solid #e1e7ec;border-radius:9px;padding:14px}
 .sd-milestone-save-bar p,.sd-milestone-import p{flex:1;min-width:180px;margin:0;font-size:11px;color:#71808d;line-height:1.6}
+
+.permission-role-hint{font-size:11px;line-height:1.6;color:#71808d;background:#f7f9fb;padding:12px;border:1px solid #e8edf1;border-radius:8px}

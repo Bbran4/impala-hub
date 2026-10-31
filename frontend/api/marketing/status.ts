@@ -2,7 +2,7 @@ import { withApiErrors, requireMethod } from "../_lib/http.ts";
 import { requireMarketingSession } from "../_lib/auth.ts";
 export default withApiErrors(async (req, res) => {
   requireMethod(req, ["GET"]);
-  const { admin, settings } = await requireMarketingSession(req, "workspace");
+  const { admin, settings } = await requireMarketingSession(req, "connections");
   const { data: connections, error: connectionError } = await admin
     .from("provider_connections")
     .select(
