@@ -853,4 +853,15 @@ check(odd not in r.out and "P%2541ss" not in r.out, "...and is not shown, plain 
 sb.execute(f"alter role bi_agent password '{PASSWORDS[0]}'")
 os.environ["BI_AGENT_DB_PASSWORD"] = PASSWORDS[0]
 
+# ===========================================================================
+section("--once explains when there is nothing to load")
+sb.execute("update bi.load_groups set last_status = 'error', last_run_at = now(), reload_requested = false, full_reload_requested = false where managed_by = 'test-agent'")
+sb.execute("update bi.load_jobs set reload_requested = false, full_reload_requested = false, last_run_at = now() where managed_by = 'test-agent'")
+sb.execute("update bi.connectors set reload_requested = false, last_run_at = now()")
+r = agent("--once")
+log = LOG.read_text()
+check("Nothing to load right now." in log, "--once says when nothing is due")
+check("last load failed; retried 5 min after the failure (use --run sales to load it now)" in log, "...and why: a failed group waits before retrying")
+check("next load at" in log, "...or when the next scheduled load is")
+
 print(f"\nAll {passed} checks passed")

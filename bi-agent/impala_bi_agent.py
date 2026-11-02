@@ -1622,9 +1622,49 @@ class Agent:
         self.recover_interrupted()
         self.heartbeat(force=True)
         self.process_requests()
+        loaded = 0
         while self.run_due():
+            loaded += 1
             self.process_requests()
+        if not loaded:
+            self._explain_nothing_due()
         self.cleanup()
+
+    def _explain_nothing_due(self) -> None:
+        """--once found nothing to load: say why, so a silent exit is not mistaken for a hang or a failure."""
+        conn = self.wh.main
+        log.info("Nothing to load right now.")
+        rows = conn.execute(
+            f"""
+            select 'group' as kind, name, last_status, last_run_at, interval_minutes, enabled,
+                   (reload_requested or full_reload_requested) as requested, not {RETRY_OK.format(t="g")} as waiting
+            from bi.load_groups g where managed_by = %s
+            union all
+            select 'table', target_table, last_status, last_run_at, interval_minutes, enabled,
+                   (reload_requested or full_reload_requested), not {RETRY_OK.format(t="j")}
+            from bi.load_jobs j where managed_by = %s and group_name is null
+            order by 2
+            """, (self.name, self.name)).fetchall()
+        if not rows:
+            log.info("  No tables are published for agent '%s' yet: run --plan and --apply (or Publish in ui.bat).", self.name)
+            return
+        for r in rows:
+            if r["last_status"] == "error" and r["waiting"]:
+                why = f"last load failed; retried {RETRY_MINUTES} min after the failure (use --run {r['name']} to load it now)"
+            elif not r["enabled"]:
+                why = "paused in the Hub"
+            elif not r["interval_minutes"]:
+                why = f"manual only (Reload now in the Hub, or --run {r['name']})"
+            elif r["last_run_at"]:
+                due = r["last_run_at"] + dt.timedelta(minutes=r["interval_minutes"])
+                why = f"next load at {due.astimezone().strftime('%H:%M')} (every {r['interval_minutes']} min)"
+            else:
+                why = "waiting"
+            log.info("  %s %s: %s", r["kind"], r["name"], why)
+        if self.tf is not None and self._tables_error is None:
+            changes, _ = compute_plan(conn, self.tf, self.name)
+            if changes:
+                log.info("  tables.toml has %d change(s) that are not published yet: run --plan and --apply.", len(changes))
 
     def _sleep(self, seconds: float) -> None:
         end = time.monotonic() + seconds
