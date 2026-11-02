@@ -4,6 +4,7 @@ import StockImport from "../StockImport";
 import StockReordering from "../StockReorderingSupabase";
 import StockMaxLevel from "../StockMaxLevel";
 import StockSuppliers from "../StockSuppliers";
+import StockSupplierManagement from "../StockSupplierManagement";
 import RoadmapPage from "./WorkspaceRoadmap";
 import type { WorkspaceProps } from "./types";
 export default function StockWorkspace({ page, ...props }: WorkspaceProps) {
@@ -15,6 +16,8 @@ export default function StockWorkspace({ page, ...props }: WorkspaceProps) {
     case "Stock Max Level":
       return <StockMaxLevel {...props} />;
     case "Suppliers":
+      return <StockSupplierManagement {...props} />;
+    case "Supplier Parts Allocation":
       return <StockSuppliers {...props} />;
     case "Parts Query":
       return <PartsQueries {...props} />;

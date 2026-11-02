@@ -164,6 +164,7 @@ export default function AppSidebar({
                     ["Stock Reordering", PackageCheck],
                     ["Stock Max Level", PackageCheck],
                     ["Suppliers", PackageCheck],
+                    ["Supplier Parts Allocation", PackageCheck],
                     ["Parts Query", ClipboardList],
                     ...(isAdministrator
                       ? [["Stock Data Import", Upload] as const]

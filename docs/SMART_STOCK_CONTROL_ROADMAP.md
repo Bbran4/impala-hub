@@ -16,7 +16,8 @@ Updated: 2026-10-30
 | 8 | Stock Reordering and shared calculations | Implemented |
 | 9 | Automated Google Sheets ingestion | Retired; disabled by migration 0045 |
 | 10 | Stock Max Level master data | Implemented in migration 0145; Excel/CSV import, duplicate protection, CRUD, active/inactive records and WH/PTA/ER max levels |
-| 11 | Suppliers master and part assignments | Implemented in migration 0151; supplier-code master, Excel assignment import, reassignment and archive controls |
+| 11 | Suppliers master | Implemented in migration 0151; supplier-code master with create, update, archive and delete controls |
+| 12 | Supplier Parts Allocation | Implemented; Excel assignment import, inline supplier reassignment, add-part allocation, archive and delete controls |
 | 10 | Historical SQLite reconciliation and real external data | Deferred |
 | 11 | Frontend and database tests for current manual workflows | Implemented; hosted smoke testing remains |
 | 12 | Legacy Python web application retirement | Implemented; hosted workflow smoke checks remain |
