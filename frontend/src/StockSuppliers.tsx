@@ -232,7 +232,7 @@ export default function StockSuppliers({ setNotice, setError }: Props) {
           </label>
           <label>
             Supplier
-            <select
+              <select className="supplier-allocation-select"
               value={supplierId}
               onChange={(e) => setSupplierId(e.target.value)}
             >
@@ -287,7 +287,7 @@ export default function StockSuppliers({ setNotice, setError }: Props) {
         <p>Loading allocations…</p>
       ) : (
         <div className="rfq-table-wrap">
-          <table className="rfq-table">
+            <table className="rfq-table supplier-allocation-table">
             <thead>
               <tr>
                 {header("Part No", "part_no")}
@@ -302,7 +302,7 @@ export default function StockSuppliers({ setNotice, setError }: Props) {
                     <b>{row.part_no}</b>
                   </td>
                   <td>
-                    <select
+                    <select className="supplier-allocation-select"
                       value={row.supplier_id}
                       onChange={(e) => void change(row, e.target.value)}
                     >
