@@ -163,7 +163,7 @@ export default function AppsDashboard({
             <button
               className="app-card app-card-available"
               onClick={() => {
-                onNavigate("Stock Booking");
+                onNavigate("Stock Max Level");
                 setError("");
                 setNotice("");
               }}
