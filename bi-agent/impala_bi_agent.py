@@ -150,14 +150,19 @@ def setup_logging(cfg: dict) -> None:
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
-def _expand_env(value: Any) -> Any:
+def _expand_env(value: Any, url: bool = False) -> Any:
     if isinstance(value, str):
         def repl(m: re.Match) -> str:
             name = m.group(1)
             if name not in os.environ:
                 raise AgentError(f"Config refers to ${{{name}}}, which is not set (add it to .env)")
             remember_secret(os.environ[name])
-            return os.environ[name]
+            if not url:
+                return os.environ[name]
+            # inside a postgresql:// address a password like "Ab%c@1/#" must be percent-encoded
+            encoded = urllib.parse.quote(os.environ[name], safe="")
+            remember_secret(encoded)
+            return encoded
         return _ENV_RE.sub(repl, value)
     if isinstance(value, dict):
         return {k: _expand_env(v) for k, v in value.items()}
@@ -209,7 +214,11 @@ def load_config(path: str) -> dict:
         raise AgentError(f"Config file not found: {cfg_path}")
     load_dotenv(cfg_path.parent / ".env")
     with open(cfg_path, "rb") as f:
-        cfg = _expand_env(tomllib.load(f))
+        raw = tomllib.load(f)
+    db_url = (raw.get("supabase") or {}).get("db_url")
+    if isinstance(db_url, str) and re.match(r"postgres(ql)?://", db_url):
+        raw["supabase"]["db_url"] = _expand_env(db_url, url=True)
+    cfg = _expand_env(raw)
 
     agent = cfg.setdefault("agent", {})
     agent.setdefault("name", socket.gethostname().lower())

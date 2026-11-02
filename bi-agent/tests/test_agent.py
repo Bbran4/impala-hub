@@ -842,4 +842,15 @@ for f in TESTS.glob("ui_tables.tmp.toml*"):
     f.unlink()
 ui_cfg.unlink()
 
+# ===========================================================================
+section("Passwords with special characters in the Supabase address")
+odd = "P%41ss@w/rd#1:x?"
+sb.execute(f"alter role bi_agent password '{odd}'")
+os.environ["BI_AGENT_DB_PASSWORD"] = odd
+r = agent("--check")
+check("[OK]   Supabase: connected as bi_agent" in r.out, "a password with % @ / # : ? works in db_url (it is percent-encoded)")
+check(odd not in r.out and "P%2541ss" not in r.out, "...and is not shown, plain or encoded")
+sb.execute(f"alter role bi_agent password '{PASSWORDS[0]}'")
+os.environ["BI_AGENT_DB_PASSWORD"] = PASSWORDS[0]
+
 print(f"\nAll {passed} checks passed")
