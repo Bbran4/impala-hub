@@ -732,4 +732,114 @@ cloud.shutdown()
 key_file.unlink()
 cloud_cfg.unlink()
 
+# ===========================================================================
+section("Table picker (--ui): browse the source, save tables.toml, publish")
+import urllib.request as _ur
+import urllib.error as _ue
+
+ui_tables = TESTS / "ui_tables.tmp.toml"
+ui_tables.write_text("")
+ui_cfg = TESTS / "ui.tmp.toml"
+ui_cfg.write_text(CONFIG.read_text().replace('name = "test-agent"', 'name = "ui-agent"')
+                  .replace('tables_file = "tables.test.toml"', f'tables_file = "{ui_tables.name}"'))
+ui = subprocess.Popen([sys.executable, AGENT_PY, "--config", str(ui_cfg), "--ui", "--no-browser"],
+                      cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+line = ui.stdout.readline()
+m = re.search(r"http://127\.0\.0\.1:(\d+)/#(\S+)", line)
+check(m is not None, "--ui prints its local address with a one-time code")
+UI_PORT, UI_TOKEN = int(m.group(1)), m.group(2)
+
+
+def ui_call(route, body=None, token=None, host=None, origin=None):
+    req = _ur.Request(f"http://127.0.0.1:{UI_PORT}/api/{route}", data=_json.dumps(body or {}).encode(), method="POST",
+                      headers={"Content-Type": "application/json", "X-Agent-Token": UI_TOKEN if token is None else token})
+    if host:
+        req.add_header("Host", host)
+    if origin:
+        req.add_header("Origin", origin)
+    try:
+        with _ur.urlopen(req, timeout=120) as r:
+            return r.status, _json.loads(r.read())
+    except _ue.HTTPError as e:
+        raw = e.read()
+        try:
+            return e.code, _json.loads(raw)
+        except ValueError:
+            return e.code, {"raw": raw.decode()}
+
+
+check(ui_call("state", token="wrong")[0] == 401, "requests without the code are refused")
+check(ui_call("state", host="evil.example.com")[0] == 403, "requests for another host name are refused (DNS rebinding)")
+check(ui_call("state", origin="https://evil.example.com")[0] == 403, "requests from other web sites are refused")
+code, st = ui_call("state")
+check(code == 200 and [s["name"] for s in st["sources"]] == ["erp", "branches"] and st["agent"] == "ui-agent",
+      "the page sees the agent and its sources")
+code, tl = ui_call("tables", {"source": "erp"})
+check(code == 200 and "StockItems" in [t["name"] for t in tl["tables"]] and "PostgreSQL" in tl["dbms"],
+      "it lists the source's tables over ODBC")
+code, cols = ui_call("columns", {"source": "erp", "schema": "public", "table": "StockItems"})
+by = {c["name"]: c for c in cols["columns"]}
+check(code == 200 and cols["primary_key"] == ["ItemCode"] and by["ItemCode"]["target"] == "item_code"
+      and by["Cost Price"]["target"] == "cost_price" and cols["from"] == '"public"."StockItems"',
+      "it shows columns, the primary key and clean names (ItemCode -> item_code)")
+code, icols = ui_call("columns", {"source": "erp", "schema": "public", "table": "invoices"})
+check({c["name"]: c["watermark_type"] for c in icols["columns"]}.get("modified_at") == "timestamp",
+      "date/time columns are offered as 'changed since' columns")
+check(ui_call("count", {"source": "erp", "from": cols["from"]})[1].get("rows") == 3, "it counts rows")
+gen = 'SELECT "ItemCode" AS item_code, "Cost Price" AS cost_price, "Qty On Hand" AS qty_on_hand FROM "public"."StockItems"'
+code, pv = ui_call("preview", {"source": "erp", "sql": gen, "limit": 2})
+check(code == 200 and [c["name"] for c in pv["columns"]] == ["item_code", "cost_price", "qty_on_hand"] and len(pv["rows"]) == 2,
+      "it previews the generated query")
+code, bad = ui_call("preview", {"source": "erp", "sql": 'DELETE FROM "StockItems"'})
+check(code == 400 and "SELECT" in bad["error"], "a query that changes data is refused")
+code, bad = ui_call("preview", {"source": "erp", "sql": "SELECT * FROM secret_payroll"})
+check(code == 400 and "permission denied" in bad["error"].lower(), "the read-only login still limits what can be read")
+inv_sql = 'SELECT "invoice_no" AS invoice_no, "total" AS total, "modified_at" AS modified_at\nFROM   "public"."invoices"\nWHERE  "modified_at" >= {{watermark}}'
+doc = {"defaults": {"source": "erp"}, "groups": {"ui_sales": {"description": "Picker test", "interval_minutes": 15}},
+       "tables": {"ui_stock": {"description": "Stock from the picker", "source": "erp", "mode": "upsert", "keys": ["item_code"],
+                               "interval_minutes": "60", "sql": gen},
+                  "ui_invoices": {"source": "erp", "mode": "upsert", "keys": ["invoice_no"], "group": "ui_sales",
+                                  "incremental_column": "modified_at", "watermark_type": "timestamp", "initial_watermark": "2026-01-01",
+                                  "sql": inv_sql}}}
+code, t = ui_call("test", {"name": "ui_invoices", "table": doc["tables"]["ui_invoices"], "defaults": doc["defaults"]})
+check(code == 200 and t["ok"] and "next watermark would be" in t["output"] and "nothing was written" in t["output"],
+      "the full test runs like --test-table")
+bad_doc = _json.loads(_json.dumps(doc))
+bad_doc["tables"]["ui_stock"]["keys"] = []
+code, r = ui_call("save", {"doc": bad_doc, "expected_mtime": st["mtime"]})
+check(code == 200 and not r["saved"] and "upsert needs keys" in r["problem"] and ui_tables.read_text() == "",
+      "an invalid definition is not saved (the file is untouched)")
+code, r = ui_call("save", {"doc": doc, "expected_mtime": st["mtime"]})
+check(code == 200 and r["saved"] and r["backup"] and agent("--validate", config=ui_cfg).returncode == 0,
+      "saving writes a valid tables.toml and keeps a backup")
+check("WHERE  \"modified_at\" >= {{watermark}}" in ui_tables.read_text(), "...with the SQL as readable multi-line text")
+code, r = ui_call("save", {"doc": doc, "expected_mtime": st["mtime"]})
+check(not r["saved"] and "changed outside" in r["problem"], "a file changed since the page loaded is not overwritten")
+code, plan = ui_call("plan")
+kinds = sorted(f"{c['kind']}:{c['object_type']}:{c['name']}" for c in plan["changes"])
+check(kinds == ["add:group:ui_sales", "add:table:ui_invoices", "add:table:ui_stock"], "Publish shows the plan")
+code, r = ui_call("apply", {"changes": kinds[:1]})
+check(not r["applied"] and job("ui_stock") is None, "a plan that no longer matches is not applied")
+code, r = ui_call("apply", {"changes": kinds})
+check(r["applied"] and job("ui_stock")["key_columns"] == ["item_code"] and job("ui_invoices")["group_name"] == "ui_sales",
+      "applying creates the load jobs, exactly as --apply")
+r = agent("--once", config=ui_cfg)
+check(count("ui_stock") == 3 and count("ui_invoices") > 0, "the agent loads the picked tables")
+code, st2 = ui_call("state")
+del doc["tables"]["ui_stock"]
+code, r = ui_call("save", {"doc": doc, "expected_mtime": st2["mtime"]})
+code, plan = ui_call("plan")
+kinds = sorted(f"{c['kind']}:{c['object_type']}:{c['name']}" for c in plan["changes"])
+code, r = ui_call("apply", {"changes": kinds})
+check(not r["applied"] and "delete" in r["errors"][0] and job("ui_stock") is not None, "removing a table needs 'delete' typed")
+code, r = ui_call("apply", {"changes": kinds, "confirm": "delete"})
+check(r["applied"] and job("ui_stock") is None, "...then it is removed")
+everything = str(st) + str(tl) + str(cols) + str(pv) + str(t) + ui_cfg.read_text()
+check(all(pw not in everything for pw in PASSWORDS), "no password appears in what the page receives")
+ui.terminate()
+ui.wait(10)
+for f in TESTS.glob("ui_tables.tmp.toml*"):
+    f.unlink()
+ui_cfg.unlink()
+
 print(f"\nAll {passed} checks passed")

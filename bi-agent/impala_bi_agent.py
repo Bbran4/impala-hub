@@ -22,6 +22,8 @@ Commands:
   --apply [--yes]         publish tables.toml to Supabase (add / change / remove tables)
   --run NAME              load one table, group or connector now, then exit
   --once                  do all due work once, then exit
+  --ui                    open the table picker in the browser (this computer only): browse the
+                          ODBC sources, choose tables and columns, test, save tables.toml, publish
   (no command)            run continuously
 """
 
@@ -60,7 +62,7 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 PLACEHOLDER = "{{watermark}}"
 DATA_SCHEMA = "bi_data"
 LOADED_AT_COLUMN = "_bi_loaded_at"
@@ -2201,9 +2203,12 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--apply", action="store_true")
     g.add_argument("--run", metavar="NAME")
     g.add_argument("--once", action="store_true")
+    g.add_argument("--ui", action="store_true", help="open the table picker in the browser on this computer")
     p.add_argument("--yes", action="store_true", help="with --apply: don't ask for confirmation")
     p.add_argument("--watermark", help="with --test-table: use this {{watermark}} value")
     p.add_argument("--rows", type=int, default=10, help="with --test-table/--test-all: sample rows to show")
+    p.add_argument("--port", type=int, default=0, help="with --ui: port on 127.0.0.1 (default: any free port)")
+    p.add_argument("--no-browser", action="store_true", help="with --ui: only print the address")
     args = p.parse_args(argv)
 
     try:
@@ -2225,6 +2230,12 @@ def main(argv: list[str] | None = None) -> int:
         for w in cfg.get("_warnings", []):
             print(f"WARNING: {w}")
         return 0
+
+    if args.ui:
+        logging.basicConfig(level=logging.WARNING)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import agent_ui
+        return agent_ui.serve(sys.modules[__name__], cfg, port=args.port, open_browser=not args.no_browser)
 
     if args.check:
         logging.basicConfig(level=logging.WARNING)
