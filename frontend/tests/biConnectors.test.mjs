@@ -105,3 +105,29 @@ test('migration 0090 accepts the new kinds and the agent runs them',()=>{
   const agentPy=readFileSync(new URL('../../bi-agent/impala_bi_agent.py',import.meta.url),'utf8')
   for(const kind of ['sharepoint','gsheet']){assert.ok(sql.includes(`'${kind}'`));assert.ok(agentPy.includes(`con["kind"] == "${kind}"`))}
 })
+
+import {hubArea,hubTableLabel,hubViewProblem,suggestHubName} from '../src/biConnectorLogic.ts'
+
+test('Hub data connections: grouping, names and checks',()=>{
+  assert.equal(hubArea({schema:'public',name:'sales_desk_rfqs'}),'Sales Desk')
+  assert.equal(hubArea({schema:'xref',name:'parts'}),'Cross Reference')
+  assert.equal(hubArea({schema:'public',name:'returns_claims'}),'Returns & Claims')
+  assert.equal(hubArea({schema:'public',name:'stock_locations'}),'Smart Stock')
+  assert.equal(hubArea({schema:'public',name:'profiles'}),'Users')
+  assert.equal(hubTableLabel({schema:'public',name:'sales_desk_rfqs'}),'Sales Desk: rfqs')
+  assert.equal(suggestHubName({schema:'public',name:'sales_desk_rfqs'}),'hub_sales_desk_rfqs')
+  assert.equal(suggestHubName({schema:'xref',name:'parts'}),'hub_xref_parts')
+  assert.equal(hubViewProblem('hub_rfqs',['id'],[]),null)
+  assert.match(hubViewProblem('Hub RFQs',['id'],[]),/lower case/)
+  assert.match(hubViewProblem('hub_rfqs',[],[]),/at least one column/)
+  const existing=[{name:'hub_rfqs'}]
+  assert.match(hubViewProblem('hub_rfqs',['id'],existing),/already exists/)
+  assert.equal(hubViewProblem('hub_rfqs',['id'],existing,existing[0]),null)
+})
+
+test('migration 0148 makes Hub views read-only for the browser and blocks secrets',()=>{
+  const sql=readFileSync(new URL('../../supabase/migrations/0148_bi_hub_data.sql',import.meta.url),'utf8')
+  assert.ok(sql.includes("revoke all on %I.%I from public, anon, authenticated"))
+  assert.ok(/hub_column_allowed[\s\S]*token\|secret\|password/.test(sql))
+  assert.ok(/chat\|oauth\|token\|secret\|permission\|audit\|notification/.test(sql))
+})

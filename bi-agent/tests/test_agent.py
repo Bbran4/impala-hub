@@ -920,4 +920,14 @@ check(any("stock_items" in r["indexdef"] and "(itemcode)" in r["indexdef"]
       "a full reload keeps the link index")
 sb.execute("delete from bi.apps where id = '9b000000-0000-0000-0000-000000000001'")
 
+section("A tables.toml name that is already a Data Connection")
+saved_tables = TABLES.read_text()
+sb.execute("insert into bi.connectors (name, kind, config) values ('hub_clash', 'upload', '{}')")
+TABLES.write_text(saved_tables + '\n[tables.hub_clash]\nmode = "full"\nsql = "SELECT * FROM grv"\n')
+r = agent("--plan")
+check("'hub_clash' is already a upload connection" in r.out and job("hub_clash") is None,
+      "refused with a clear message, nothing loaded")
+TABLES.write_text(saved_tables)
+sb.execute("delete from bi.connectors where name = 'hub_clash'")
+
 print(f"\nAll {passed} checks passed")

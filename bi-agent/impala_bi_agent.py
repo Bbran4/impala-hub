@@ -1436,7 +1436,12 @@ def compute_plan(conn: psycopg.Connection, tf: TablesFile, agent_name: str) -> t
     for name, row in db_jobs.items():
         if name in tf.tables and row["managed_by"] != agent_name:
             errors.append(f"Table '{name}' already belongs to agent '{row['managed_by']}'")
+    connectors = {r["name"]: r["kind"] for r in conn.execute("select name, kind from bi.connectors").fetchall()}
     for name in tf.tables:
+        if name not in db_jobs and name in connectors:
+            errors.append(f"'{name}' is already a {connectors[name]} connection in Reporting → Data Connections. "
+                          f"Pick another name for this table.")
+            continue
         if name not in db_jobs and name in orphans:
             errors.append(f"Table bi_data.{name} already exists but is not managed by any load job. "
                           f"Pick another name, or drop that table first.")
