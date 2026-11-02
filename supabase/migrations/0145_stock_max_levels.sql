@@ -29,7 +29,7 @@ declare row_data jsonb; inserted_count integer := 0; part text;
 begin
   if not public.has_application_permission('stock_control','stock_control.import') then raise exception 'Stock Max Level import permission required' using errcode='42501'; end if;
   if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) < 1 or jsonb_array_length(p_rows) > 10000 then raise exception 'Provide between 1 and 10,000 Stock Max Level rows' using errcode='22023'; end if;
-  if exists (select 1 from jsonb_array_elements(p_rows) row_data group by lower(btrim(row_data->>'part_no')) having count(*) > 1) then raise exception 'The import contains duplicate part numbers' using errcode='23505'; end if;
+  if exists (select 1 from jsonb_array_elements(p_rows) as elements(value) group by lower(btrim(elements.value->>'part_no')) having count(*) > 1) then raise exception 'The import contains duplicate part numbers' using errcode='23505'; end if;
   for row_data in select value from jsonb_array_elements(p_rows) loop
     part := btrim(row_data->>'part_no');
     if part = '' or row_data->>'wh_max_level' !~ '^\d+$' or row_data->>'pta_max_level' !~ '^\d+$' or row_data->>'er_max_level' !~ '^\d+$' then raise exception 'Each row requires a part number and non-negative integer max levels' using errcode='22023'; end if;
