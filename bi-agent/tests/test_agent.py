@@ -930,4 +930,26 @@ check("'hub_clash' is already a upload connection" in r.out and job("hub_clash")
 TABLES.write_text(saved_tables)
 sb.execute("delete from bi.connectors where name = 'hub_clash'")
 
+section("A table changed from add & update (with keys) to full without keys")
+saved_tables = TABLES.read_text()
+erp.execute("drop table if exists dup_src")
+erp.execute("create table dup_src (k int, v text)")
+erp.execute("insert into dup_src values (1, 'a'), (2, 'b')")
+erp.execute("grant select on dup_src to erp_reader")
+TABLES.write_text(saved_tables + '\n[tables.dup_lines]\nmode = "upsert"\nkeys = ["k"]\nsql = "SELECT k, v FROM dup_src"\n')
+agent("--apply", stdin="y\n")
+r = agent("--run", "dup_lines")
+check(r.returncode == 0 and count("dup_lines") == 2
+      and one("select count(*) n from pg_indexes where schemaname = 'bi_data' and indexname = 'dup_lines_bi_key'")["n"] == 1,
+      "loaded with its unique key")
+erp.execute("insert into dup_src values (2, 'b again')")
+TABLES.write_text(saved_tables + '\n[tables.dup_lines]\nmode = "full"\nsql = "SELECT k, v FROM dup_src"\n')
+agent("--apply", stdin="y\n")
+r = agent("--run", "dup_lines")
+check(r.returncode == 0 and count("dup_lines") == 3, "full reload with duplicate rows works (old key not carried over)")
+check(one("select count(*) n from pg_indexes where schemaname = 'bi_data' and indexname like 'dup_lines_bi_key%%'")["n"] == 0,
+      "...and the old unique key is gone")
+TABLES.write_text(saved_tables)
+agent("--apply", stdin="y\n")
+
 print(f"\nAll {passed} checks passed")

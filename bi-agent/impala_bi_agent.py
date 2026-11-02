@@ -62,7 +62,7 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 PLACEHOLDER = "{{watermark}}"
 DATA_SCHEMA = "bi_data"
 LOADED_AT_COLUMN = "_bi_loaded_at"
@@ -832,9 +832,12 @@ class Warehouse:
     def replacement_name(table: str) -> str:
         return f"{table[:48]}__bi_new"
 
-    def build_replacement(self, conn: psycopg.Connection, table: str, select: sql.Composable, names: list[str]) -> tuple[str, int]:
+    def build_replacement(self, conn: psycopg.Connection, table: str, select: sql.Composable, names: list[str],
+                          keys: list[str] | None = None) -> tuple[str, int]:
         """Create bi_data.<table>__bi_new with the same columns, defaults, indexes and rights, filled by `select`.
-        Runs inside the load's transaction, so nobody sees it until it is swapped in."""
+        Runs inside the load's transaction, so nobody sees it until it is swapped in. The unique key of an
+        add & update table is only carried over while the table still has keys (a table changed to "full"
+        without keys may now hold duplicate rows)."""
         new = self.replacement_name(table)
         old_ident, new_ident = sql.Identifier(DATA_SCHEMA, table), sql.Identifier(DATA_SCHEMA, new)
         conn.execute(sql.SQL("drop table if exists {}").format(new_ident))
@@ -853,7 +856,7 @@ class Warehouse:
                 where n.nspname = %s and t.relname = %s and i.relkind = 'i' and x.indisvalid
                 """, (DATA_SCHEMA, table)).fetchall():
             m = re.match(r"^CREATE (UNIQUE )?INDEX \S+ ON (?:ONLY )?\S+ (USING .*)$", ix["def"])
-            if not m:
+            if not m or (ix["name"] == f"{table[:50]}_bi_key" and not keys):
                 continue
             conn.execute(sql.SQL("create {}index {} on {} {}").format(
                 sql.SQL(m.group(1) or ""), sql.Identifier(ix["name"][:60] + "__n"), new_ident, sql.SQL(m.group(2))))
@@ -2244,7 +2247,8 @@ class Agent:
             distinct = sql.SQL("distinct on ({}) ").format(sql.SQL(", ").join(map(sql.Identifier, t.keys))) \
                 if t.mode == "upsert" else sql.SQL("")
             s.replacement, s.row_count = self.wh.build_replacement(
-                conn, t.name, sql.SQL("select {}{} from {}").format(distinct, col_list, stage), s.names)
+                conn, t.name, sql.SQL("select {}{} from {}").format(distinct, col_list, stage), s.names,
+                t.keys if t.mode == "upsert" else None)
             return
         if t.mode == "upsert":
             non_keys = [n for n in s.names if n not in t.keys]
