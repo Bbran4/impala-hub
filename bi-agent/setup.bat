@@ -6,10 +6,10 @@ py -3 -m venv .venv || python -m venv .venv
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt
 if not exist config.toml copy config.example.toml config.toml
-if not exist tables.toml copy tables.example.toml tables.toml
+if not exist tables.toml (echo # What to load: use ui.bat, or see tables.example.toml for every option.)> tables.toml
 echo.
-echo Done. Next: edit config.toml, .env and tables.toml, then run:
-echo   run_agent.bat --validate
-echo   run_agent.bat --test-all
-echo   run_agent.bat --check
+echo Done. Next: edit config.toml and .env (connections and passwords), then run:
+echo   run_agent.bat --check      tests the connections
+echo   ui.bat                     choose the ERP tables to load in your browser
+echo                              (or edit tables.toml and use --validate, --test-all, --plan, --apply)
 pause

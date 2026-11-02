@@ -33,14 +33,47 @@ Part of the Impala Hub **Reporting** workspace (the Qlik Sense replacement): get
 | `supabase/tests/bi_reporting.test.sql` | pgTAP tests for access and controls (run by CI with the other database tests) |
 | `frontend/src/Reporting.tsx`, `reportingData.ts` | Reporting workspace: Data, Data Loads, Run History, Audit Log, Roadmap |
 | `bi-agent/impala_bi_agent.py` | The sync agent (this folder) |
+| `bi-agent/agent_ui.py`, `ui.bat` | The table picker (`--ui`): choose ERP tables in the browser instead of writing tables.toml by hand |
 | `bi-agent/tables.example.toml` | Example tables file, with every option explained |
 | `bi-agent/config.example.toml` | Connections: Supabase + ODBC sources |
-| `bi-agent/setup.bat`, `run_agent.bat`, `install_task.ps1` | Windows install helpers |
+| `bi-agent/setup.bat`, `run_agent.bat`, `ui.bat`, `install_task.ps1` | Windows install and run helpers |
 | `bi-agent/tests/` | End-to-end tests of the agent against every migration |
 
 ---
 
 ## Managing tables
+
+### The easy way: the table picker
+
+Double-click **`ui.bat`** (as an Administrator, because the agent folder is locked down) or run
+`run_agent.bat --ui`. It opens a page in the browser of **this computer only**:
+
+1. **Add tables**: choose a source, click **Show tables**, find a table or view. You see its columns, types and
+   primary key; **Count rows** tells you how big it is.
+2. Tick the columns you want. Names are cleaned for Supabase (`ItemCode` → `item_code`, `Cost Price` → `cost_price`)
+   and can be changed.
+3. Choose how to load it:
+   - **Replace everything**: master data and small or medium tables;
+   - **Add and update**: matched on key columns (the primary key is ticked for you); pick a
+     **changed since** column (e.g. `ModifiedDate`) to read only new and changed rows;
+   - **Add only**: logs and snapshots.
+4. Choose when: every N minutes, with a group (create groups on the **Groups** tab), or only on *Reload now*.
+5. **Preview rows** and **Full test** (the same as `--test-table`) show the result; nothing is written. The SQL is
+   generated for you; **Write the SQL myself** lets you change it (joins, filters, calculated columns).
+6. **Add to tables to load**, then **Save tables.toml** (it is checked first; the previous file is kept as
+   `tables.toml.<date>.bak`, the last 10) and **Publish to Supabase**: the same plan and apply as below,
+   with `delete` to type before tables are removed.
+
+The picker only listens on 127.0.0.1, needs the one-time code in the address it opens, and refuses requests from
+other web sites, so nothing on the network or in the Hub can use it. It only writes tables.toml on this machine,
+so the agent's guarantee stays the same: it only runs queries that are in tables.toml here. The read-only ERP login
+still decides what can be read. Close the window (or press Ctrl+C) to stop it; the running agent is not affected
+and picks up published changes within a few seconds.
+
+Saving rewrites tables.toml in a tidy standard layout, so comments you added by hand are not kept (they are in the
+backup).
+
+### By hand
 
 Every change follows the same five steps:
 
@@ -230,7 +263,8 @@ outbound access to Supabase on port 5432.
 1. Copy the `bi-agent` folder to e.g. `C:\ImpalaBI\bi-agent`, put the SSL certificate in it, run `setup.bat`.
 2. Edit `config.toml` (Supabase string with user `bi_agent.<project-ref>`, ODBC source),
    `.env` (passwords) and `tables.toml` (your tables).
-3. `run_agent.bat --validate`, `--test-all`, `--check`, `--plan`, `--apply`.
+3. `run_agent.bat --check` (connections), then choose the tables with **`ui.bat`** (or edit `tables.toml` and run
+   `--validate`, `--test-all`, `--plan`, `--apply`).
 4. Keep `tables.toml`, `config.toml` and `.env` on the agent machine only: the repository is public, and they
    describe the ERP. Back them up somewhere private.
 5. Install permanently (Administrator PowerShell): `powershell -ExecutionPolicy Bypass -File install_task.ps1`.
