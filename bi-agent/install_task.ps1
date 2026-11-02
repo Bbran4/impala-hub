@@ -14,7 +14,10 @@ if (-not (Test-Path "$dir\tables.toml")) { throw "tables.toml not found in $dir"
 
 # 1. Only SYSTEM and Administrators may read or change the agent folder
 #    (it holds the ERP and Supabase passwords, and tables.toml decides what is read from the ERP).
-icacls "$dir" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /T /Q | Out-Null
+# Only the folder itself gets explicit rights (inherited by everything inside). Running this with /T used to
+# strip the inherited rights from every file without giving any back, leaving files nobody could open.
+icacls "$dir" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /Q | Out-Null
+icacls "$dir\*" /reset /T /C /Q | Out-Null
 Write-Host "Folder locked down: only SYSTEM and Administrators can access $dir"
 
 # 2. Scheduled task
