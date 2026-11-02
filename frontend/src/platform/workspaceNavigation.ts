@@ -6,6 +6,7 @@ export const stockPages = [
   "Stock Booking",
   "Stock Reordering",
   "Stock Max Level",
+  "Suppliers",
   "Stock Data Import",
   "Stock Control Roadmap",
 ];
