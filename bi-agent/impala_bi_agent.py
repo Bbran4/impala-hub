@@ -62,13 +62,16 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 PLACEHOLDER = "{{watermark}}"
 DATA_SCHEMA = "bi_data"
 LOADED_AT_COLUMN = "_bi_loaded_at"
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 REQUEST_KINDS = ("test_connection", "list_tables", "list_columns", "preview")
 RETRY_MINUTES = 5
+SWAP_LOCK_SECONDS = 3      # longest a report waits while a reloaded table is swapped in
+SWAP_ATTEMPTS = 40         # ... tried this many times (about 2 minutes) before the load gives up
+INDEX_CHECK_SECONDS = 600  # how often link columns used by apps are checked for an index
 RETRY_OK = ("({t}.last_status is distinct from 'error' "
             "or {t}.last_run_at < now() - make_interval(mins => " + str(RETRY_MINUTES) + "))")
 
@@ -758,6 +761,8 @@ class Warehouse:
     def ddl(self) -> psycopg.Connection:
         if not self._ok(self._ddl):
             self._ddl = pg_connect(self.cfg)
+            # adding a column must not wait behind long report queries (and make new queries wait behind it)
+            self._ddl.execute("set lock_timeout = '10s'")
         return self._ddl
 
     def close(self) -> None:
@@ -818,6 +823,124 @@ class Warehouse:
                         f"be converted ({short_error(e)}). Cast it in the query to keep the old type."
                     ) from e
         return self.table_columns(table)
+
+    # --- full reloads without blocking reports ------------------------------------------
+    # A full reload builds the new rows in a second table next to the old one; reports keep reading the old
+    # table the whole time. Only at the very end the two are swapped, which takes milliseconds.
+
+    @staticmethod
+    def replacement_name(table: str) -> str:
+        return f"{table[:48]}__bi_new"
+
+    def build_replacement(self, conn: psycopg.Connection, table: str, select: sql.Composable, names: list[str]) -> tuple[str, int]:
+        """Create bi_data.<table>__bi_new with the same columns, defaults, indexes and rights, filled by `select`.
+        Runs inside the load's transaction, so nobody sees it until it is swapped in."""
+        new = self.replacement_name(table)
+        old_ident, new_ident = sql.Identifier(DATA_SCHEMA, table), sql.Identifier(DATA_SCHEMA, new)
+        conn.execute(sql.SQL("drop table if exists {}").format(new_ident))
+        conn.execute(sql.SQL("create table {} (like {} including defaults including constraints including storage)")
+                     .format(new_ident, old_ident))
+        col_list = sql.SQL(", ").join(map(sql.Identifier, names))
+        n = conn.execute(sql.SQL("insert into {} ({}) ").format(new_ident, col_list) + select).rowcount
+        # indexes after the rows (much faster than filling an indexed table), named <old name>__n until the swap
+        for ix in conn.execute(
+                """
+                select i.relname as name, pg_catalog.pg_get_indexdef(i.oid) as def
+                from pg_catalog.pg_index x
+                join pg_catalog.pg_class i on i.oid = x.indexrelid
+                join pg_catalog.pg_class t on t.oid = x.indrelid
+                join pg_catalog.pg_namespace n on n.oid = t.relnamespace
+                where n.nspname = %s and t.relname = %s and i.relkind = 'i' and x.indisvalid
+                """, (DATA_SCHEMA, table)).fetchall():
+            m = re.match(r"^CREATE (UNIQUE )?INDEX \S+ ON (?:ONLY )?\S+ (USING .*)$", ix["def"])
+            if not m:
+                continue
+            conn.execute(sql.SQL("create {}index {} on {} {}").format(
+                sql.SQL(m.group(1) or ""), sql.Identifier(ix["name"][:60] + "__n"), new_ident, sql.SQL(m.group(2))))
+        # the same rights as the old table (e.g. select for the Hub's functions)
+        for g in conn.execute(
+                """
+                select r.rolname as grantee, a.privilege_type as priv
+                from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace,
+                     pg_catalog.aclexplode(c.relacl) a join pg_catalog.pg_roles r on r.oid = a.grantee
+                where n.nspname = %s and c.relname = %s and a.grantee <> c.relowner
+                """, (DATA_SCHEMA, table)).fetchall():
+            conn.execute(sql.SQL("grant {} on {} to {}").format(sql.SQL(g["priv"]), new_ident, sql.Identifier(g["grantee"])))
+        conn.execute(sql.SQL("revoke all on {} from public").format(new_ident))
+        conn.execute(sql.SQL("analyze {}").format(new_ident))
+        return new, n
+
+    def swap_in(self, conn: psycopg.Connection, tables: list[str], stopping=lambda: False) -> None:
+        """Replace each table by its __bi_new copy (inside the load's transaction). Waits at most SWAP_LOCK_SECONDS
+        at a time for running reports to finish, so new report queries are never held up for longer than that."""
+        if not tables:
+            return
+        idents = sql.SQL(", ").join(sql.Identifier(DATA_SCHEMA, t) for t in tables)
+        for attempt in range(SWAP_ATTEMPTS):
+            try:
+                with conn.transaction():
+                    conn.execute(f"set local lock_timeout = '{SWAP_LOCK_SECONDS}s'")
+                    conn.execute(sql.SQL("lock table {} in access exclusive mode").format(idents))
+                break
+            except psycopg.errors.LockNotAvailable:
+                if stopping():
+                    raise AgentError("The agent was stopped during the load")
+                if attempt == SWAP_ATTEMPTS - 1:
+                    raise AgentError("Reports kept the table(s) busy for too long to swap in the new data; "
+                                     "the load is retried in a few minutes") from None
+                time.sleep(1)
+        conn.execute("set local lock_timeout = 0")
+        for t in tables:
+            new = self.replacement_name(t)
+            idx = conn.execute(
+                """
+                select i.relname as name from pg_catalog.pg_index x
+                join pg_catalog.pg_class i on i.oid = x.indexrelid join pg_catalog.pg_class c on c.oid = x.indrelid
+                join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = %s and c.relname = %s
+                """, (DATA_SCHEMA, new)).fetchall()
+            conn.execute(sql.SQL("drop table {}").format(sql.Identifier(DATA_SCHEMA, t)))
+            conn.execute(sql.SQL("alter table {} rename to {}").format(sql.Identifier(DATA_SCHEMA, new), sql.Identifier(t)))
+            for ix in idx:
+                if ix["name"].endswith("__n"):
+                    conn.execute(sql.SQL("alter index {} rename to {}").format(
+                        sql.Identifier(DATA_SCHEMA, ix["name"]), sql.Identifier(ix["name"][:-3])))
+
+    def ensure_link_indexes(self, agent_name: str) -> int:
+        """Columns that apps use to link tables get an index, so linking large tables stays fast.
+        Built with CREATE INDEX CONCURRENTLY: reports and loads keep working while it is built."""
+        conn = self.ddl
+        made = 0
+        rows = conn.execute("select table_name, column_name from public.bi_agent_link_columns(%s)", (agent_name,)).fetchall()
+        for r in rows:
+            t, c = r["table_name"], r["column_name"]
+            have = conn.execute(
+                """
+                select i.relname as name, x.indisvalid as valid,
+                       (select a.attname from pg_catalog.pg_attribute a where a.attrelid = x.indrelid and a.attnum = x.indkey[0]) as first
+                from pg_catalog.pg_index x
+                join pg_catalog.pg_class i on i.oid = x.indexrelid join pg_catalog.pg_class tc on tc.oid = x.indrelid
+                join pg_catalog.pg_namespace n on n.oid = tc.relnamespace
+                where n.nspname = %s and tc.relname = %s
+                """, (DATA_SCHEMA, t)).fetchall()
+            if any(h["first"] == c and h["valid"] for h in have):
+                continue
+            if c not in self.table_columns(t):
+                continue
+            name = f"{t[:28]}_{c[:24]}_bi_link"
+            for h in have:
+                if h["name"] == name and not h["valid"]:  # left over from an interrupted build
+                    conn.execute(sql.SQL("drop index concurrently if exists {}").format(sql.Identifier(DATA_SCHEMA, name)))
+            started = time.monotonic()
+            conn.execute("set lock_timeout = 0")
+            try:
+                conn.execute(sql.SQL("create index concurrently if not exists {} on {} ({})").format(
+                    sql.Identifier(name), sql.Identifier(DATA_SCHEMA, t), sql.Identifier(c)))
+                made += 1
+                log.info("Indexed %s.%s for linking in apps (%.1fs)", t, c, time.monotonic() - started)
+            finally:
+                conn.execute("set lock_timeout = '10s'")
+        return made
 
     def ensure_key_index(self, table: str, keys: list[str]) -> None:
         conn = self.ddl
@@ -1486,6 +1609,8 @@ class Staged:
     total: int
     max_wm: Any
     start_wm: str | None
+    replacement: str | None = None
+    row_count: int | None = None
 
 
 class Agent:
@@ -1498,8 +1623,11 @@ class Agent:
         self.started_at = dt.datetime.now(dt.timezone.utc)
         self.tf: TablesFile | None = None
         self._tables_error: str | None = None
-        self._last_heartbeat = 0.0
-        self._last_cleanup = 0.0
+        self._last_heartbeat = float("-inf")
+        # "never" (time.monotonic() counts from when the computer started, so 0.0 could look recent)
+        self._last_cleanup = float("-inf")
+        self._last_index_check = float("-inf")
+        self._index_warned = False
         self._warned_drift: set[str] = set()
 
     # --- tables.toml (re-read whenever it changes) ------------------------------
@@ -1601,6 +1729,8 @@ class Agent:
                 worked = self.process_requests()
                 worked = self.run_due() or worked
                 self.cleanup()
+                if not worked:
+                    self.maintain_indexes()
                 backoff = 5
                 if not worked:
                     self._sleep(self.cfg["agent"]["poll_seconds"])
@@ -1629,6 +1759,21 @@ class Agent:
         if not loaded:
             self._explain_nothing_due()
         self.cleanup()
+        self.maintain_indexes()
+
+    def maintain_indexes(self) -> None:
+        """Between loads: index the columns apps link tables on (checked every INDEX_CHECK_SECONDS and after loads)."""
+        if time.monotonic() - self._last_index_check < INDEX_CHECK_SECONDS:
+            return
+        self._last_index_check = time.monotonic()
+        try:
+            self.wh.ensure_link_indexes(self.name)
+        except psycopg.errors.UndefinedFunction:
+            if not self._index_warned:
+                log.warning("Supabase does not have bi_agent_link_columns yet (migration 0142): link columns are not indexed")
+                self._index_warned = True
+        except psycopg.Error as e:
+            log.warning("Could not index link columns: %s", short_error(e))
 
     def _explain_nothing_due(self) -> None:
         """--once found nothing to load: say why, so a silent exit is not mistaken for a hang or a failure."""
@@ -1881,12 +2026,17 @@ class Agent:
             names = [x["name"] for x in cols]
             target = sql.Identifier(DATA_SCHEMA, name)
             with conn.transaction():
-                conn.execute(sql.SQL("truncate {}").format(target))
+                stage = sql.Identifier("_bi_stage_connector")
+                conn.execute(sql.SQL("create temp table {} ({}) on commit drop").format(
+                    stage, sql.SQL(", ").join(sql.SQL("{} {}").format(sql.Identifier(n), sql.SQL(target_types[n])) for n in names)))
                 with conn.cursor() as pgcur:
                     with pgcur.copy(sql.SQL("copy {} ({}) from stdin").format(
-                            target, sql.SQL(", ").join(map(sql.Identifier, names)))) as cp:
+                            stage, sql.SQL(", ").join(map(sql.Identifier, names)))) as cp:
                         for r in rows:
                             cp.write_row(r)
+                self.wh.build_replacement(conn, name, sql.SQL("select {} from {}").format(
+                    sql.SQL(", ").join(map(sql.Identifier, names)), stage), names)
+                self.wh.swap_in(conn, [name], lambda: self.stopping)
                 final_cols = [{"name": n, "type": ty} for n, ty in self.wh.table_columns(name, conn).items()]
                 conn.execute(
                     """
@@ -1969,12 +2119,25 @@ class Agent:
                 current = None
                 for s in staged:
                     current = s.table.name
-                    self._apply_stage(s, bool(s.job["full_reload_requested"]))
+                    self._apply_data(s, bool(s.job["full_reload_requested"]))
+                current = None
+                self.wh.swap_in(conn, [s.table.name for s in staged if s.replacement], lambda: self.stopping)
+                for s in staged:
+                    current = s.table.name
+                    self._apply_record(s, bool(s.job["full_reload_requested"]))
                 if group:
                     conn.execute("update bi.load_groups set last_status = 'success', last_error = null, "
                                  "last_run_at = now() where name = %s", (group,))
             total = sum(s.total for s in staged)
             log.info("Loaded %s: %s rows in %.1fs", label, f"{total:,}", time.monotonic() - started)
+            # fresh statistics, so reports on large tables keep fast query plans (swapped tables already have them)
+            for s in staged:
+                if not s.replacement and s.total:
+                    try:
+                        conn.execute(sql.SQL("analyze {}").format(sql.Identifier(DATA_SCHEMA, s.table.name)))
+                    except psycopg.Error as e:
+                        log.warning("Could not update statistics for %s: %s", s.table.name, short_error(e))
+            self._last_index_check = float("-inf")
         except Exception as e:
             err = short_error(e)
             if isinstance(e, (AgentError, pyodbc.Error, psycopg.errors.DataError, psycopg.errors.IntegrityError)):
@@ -2062,15 +2225,20 @@ class Agent:
         finally:
             src.close()
 
-    def _apply_stage(self, s: Staged, full_reload: bool) -> None:
-        """Move staged rows into the real table and record the run (same transaction)."""
+    def _apply_data(self, s: Staged, full_reload: bool) -> None:
+        """Phase 1 (reports keep working): a full reload fills a replacement table; incremental loads
+        add/update rows in place (row locks only, readers see the old rows until the load commits)."""
         conn = self.wh.main
         t = s.table
         target = sql.Identifier(DATA_SCHEMA, t.name)
         stage = sql.Identifier(s.stage)
         col_list = sql.SQL(", ").join(map(sql.Identifier, s.names))
         if t.mode == "full" or full_reload:
-            conn.execute(sql.SQL("truncate {}").format(target))
+            distinct = sql.SQL("distinct on ({}) ").format(sql.SQL(", ").join(map(sql.Identifier, t.keys))) \
+                if t.mode == "upsert" else sql.SQL("")
+            s.replacement, s.row_count = self.wh.build_replacement(
+                conn, t.name, sql.SQL("select {}{} from {}").format(distinct, col_list, stage), s.names)
+            return
         if t.mode == "upsert":
             non_keys = [n for n in s.names if n not in t.keys]
             key_list = sql.SQL(", ").join(map(sql.Identifier, t.keys))
@@ -2086,11 +2254,17 @@ class Agent:
         else:
             conn.execute(sql.SQL("insert into {} ({}) select {} from {}").format(target, col_list, col_list, stage))
 
+    def _apply_record(self, s: Staged, full_reload: bool) -> None:
+        """Phase 3 (after the swap): row count, columns, watermark and run status."""
+        conn = self.wh.main
+        t = s.table
+        target = sql.Identifier(DATA_SCHEMA, t.name)
         new_wm = None
         if t.incremental:
             new_wm = format_watermark(s.max_wm) if s.max_wm is not None else \
                 (t.initial_watermark if full_reload else s.job["watermark"])
-        row_count = conn.execute(sql.SQL("select count(*) as n from {}").format(target)).fetchone()["n"]
+        row_count = s.row_count if s.row_count is not None else \
+            conn.execute(sql.SQL("select count(*) as n from {}").format(target)).fetchone()["n"]
         final_cols = [{"name": n, "type": ty} for n, ty in self.wh.table_columns(t.name, conn).items()]
         conn.execute(
             """

@@ -167,6 +167,19 @@ select id, 'reporting' from public.profiles where email = 'someone@impalaspares.
 
 ---
 
+## Large tables: reports keep working during loads
+
+- **Full reloads** build the new rows in a second table next to the old one (`<table>__bi_new`, with the same
+  columns, indexes and rights). Reports keep reading the old table the whole time; only at the very end the two
+  are swapped, which takes milliseconds. If a report is still reading the table, the agent waits for it (at most
+  3 seconds at a time, so new reports are never held up for longer) and tries again for about two minutes.
+- **Incremental loads** (add and update) change rows in place; reports see the old rows until the load commits.
+- After every load the table's **statistics** are updated, so the database keeps choosing fast plans.
+- Columns that apps **link tables on** (Data model & sharing) get an **index** automatically, built without
+  blocking anything (needs migration 0142). The agent checks every 10 minutes and after loads.
+- Report queries in the Hub may run up to **60 seconds** (migration 0142); other Supabase API calls keep the
+  normal 8-second limit.
+
 ## Security
 
 This moves ERP data out of the building, so it's locked down in layers.
