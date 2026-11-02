@@ -142,8 +142,8 @@ export async function uploadTable(client:SupabaseClient,name:string,description:
 // ---------------------------------------------------------------------------
 // Web and folder connectors
 // ---------------------------------------------------------------------------
-export type ConnectorKind='upload'|'web'|'folder'|'sharepoint'|'gsheet'
-export type AgentKind=Exclude<ConnectorKind,'upload'>
+export type ConnectorKind='upload'|'web'|'folder'|'sharepoint'|'gsheet'|'hub'
+export type AgentKind=Exclude<ConnectorKind,'upload'|'hub'>
 export type Connector={id:string;name:string;kind:ConnectorKind;description:string;agent_name:string|null;config:Record<string,any>// eslint-disable-line @typescript-eslint/no-explicit-any
   interval_minutes:number|null;enabled:boolean;reload_requested:boolean;last_run_at:string|null;last_status:'running'|'success'|'error'|null
   last_error:string|null;last_row_count:number|null;row_count:number|null;last_loaded_at:string|null;columns:{name:string;type:string}[]|null;updated_at:string}
@@ -220,5 +220,44 @@ export function checkGsheetConnector(link:string,sheet:string,range:string,agent
   if(!spreadsheetId(link))return 'Paste the link of the Google Sheet (or its ID, the long code between /d/ and /edit)'
   if(/['!]/.test(sheet)||sheet.length>100)return "The tab name cannot contain ' or !"
   if(range&&!/^[A-Z]{1,3}[0-9]{0,7}:[A-Z]{1,3}[0-9]{0,7}$/.test(range))return 'The range must look like A1:H500 or A:H (or leave it empty for the whole tab)'
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Hub data: live views of tables that already live in the Hub (migration 0146)
+// ---------------------------------------------------------------------------
+export type HubColumn={name:string;type:string;allowed:boolean}
+export type HubSource={schema:string;name:string;type:'table'|'view';rows:number|null;columns:HubColumn[];used_by:string[]}
+
+export async function loadHubSources(client:SupabaseClient){
+  const {data,error}=await client.rpc('bi_hub_sources');if(error)throw new Error(error.message)
+  return (data||[]) as HubSource[]
+}
+export async function saveHubView(client:SupabaseClient,view:{name:string;description:string;schema:string;table:string;columns:string[]}){
+  const {error}=await client.rpc('bi_save_hub_view',{p:view});if(error)throw new Error(error.message)
+}
+
+// Which part of the Hub a table belongs to, for grouping the list
+export function hubArea(s:Pick<HubSource,'schema'|'name'>){
+  if(s.schema==='xref')return 'Cross Reference'
+  if(s.name.startsWith('sales_desk_'))return 'Sales Desk'
+  if(s.name.startsWith('returns_claims'))return 'Returns & Claims'
+  if(s.name.startsWith('stock_'))return 'Smart Stock'
+  if(['profiles','roles','profile_roles'].includes(s.name))return 'Users'
+  if(['posts','campaigns','campaign_types'].includes(s.name))return 'Marketing'
+  return 'Other'
+}
+export function hubTableLabel(s:Pick<HubSource,'schema'|'name'>){
+  const area=hubArea(s)
+  const rest=s.schema==='xref'?s.name:s.name.replace(/^sales_desk_/,'').replace(/^stock_/,'')
+  return area==='Other'?s.name:`${area}: ${rest.replace(/_/g,' ')}`
+}
+export function suggestHubName(s:Pick<HubSource,'schema'|'name'>){
+  return safeName(`hub_${s.schema==='xref'?'xref_':''}${s.name}`,'hub').slice(0,63)
+}
+export function hubViewProblem(name:string,columns:string[],existing:Connector[],editing?:Connector){
+  if(!/^[a-z][a-z0-9_]{0,62}$/.test(name))return 'The table name must start with a letter and use only lower case letters, digits and _'
+  if(!editing&&existing.some(c=>c.name===name))return `A connection named ${name} already exists`
+  if(!columns.length)return 'Choose at least one column'
   return null
 }

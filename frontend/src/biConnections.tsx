@@ -1,21 +1,22 @@
 // Reporting → Data Connections (administrators): data that does not come from the ERP.
 // Excel/CSV uploads are loaded from the browser; web, folder, SharePoint/OneDrive and Google Sheets
-// connectors are run by the agent within what its config.toml allows.
+// connectors are run by the agent within what its config.toml allows; Hub data are live views of the Hub's own tables.
 import {useCallback,useEffect,useMemo,useState} from 'react'
-import {Cloud,CloudDownload,FileSpreadsheet,FolderOpen,Globe,Pencil,Plus,RefreshCw,Sheet as SheetIcon,Trash2,Upload,X} from 'lucide-react'
+import {Cloud,CloudDownload,Database,FileSpreadsheet,FolderOpen,Globe,Lock,Pencil,Plus,RefreshCw,Search,Sheet as SheetIcon,ShieldAlert,Trash2,Upload,X} from 'lucide-react'
 import {supabase} from './supabase'
 import {
   UPLOAD_TYPES,agentSupports,buildRows,checkGsheetConnector,checkSharepointConnector,checkWebConnector,columnProblems,deleteConnector,guessColumns,hasWildcard,
   loadConnectors,readUploadFile,reloadConnector,safeName,saveConnector,spreadsheetId,uploadTable,
-  type AgentKind,type Connector,type ConnectorAgent,type UploadColumn,type UploadSheet,type UploadType,
+  hubArea,hubTableLabel,hubViewProblem,loadHubSources,saveHubView,suggestHubName,
+  type AgentKind,type Connector,type ConnectorAgent,type HubSource,type UploadColumn,type UploadSheet,type UploadType,
 } from './biConnectorLogic'
 import {ago} from './reportingData'
 
 type Props={setNotice:(m:string)=>void;setError:(m:string)=>void}
-type Editing={kind:'upload';replace?:Connector}|{kind:AgentKind;connector?:Connector}
+type Editing={kind:'upload';replace?:Connector}|{kind:'hub';connector?:Connector}|{kind:AgentKind;connector?:Connector}
 
-const KIND_LABEL={upload:'Excel / CSV upload',web:'Web API',folder:'Folder files',sharepoint:'SharePoint / OneDrive',gsheet:'Google Sheets'}
-const KIND_ICON={upload:FileSpreadsheet,web:Globe,folder:FolderOpen,sharepoint:Cloud,gsheet:SheetIcon}
+const KIND_LABEL={upload:'Excel / CSV upload',web:'Web API',folder:'Folder files',sharepoint:'SharePoint / OneDrive',gsheet:'Google Sheets',hub:'Hub data'}
+const KIND_ICON={upload:FileSpreadsheet,web:Globe,folder:FolderOpen,sharepoint:Cloud,gsheet:SheetIcon,hub:Database}
 const FORM_TITLE={web:'New web API connector',folder:'New folder connector',sharepoint:'New SharePoint / OneDrive connector',gsheet:'New Google Sheets connector'}
 
 export default function DataConnections({setNotice,setError}:Props){
@@ -29,12 +30,14 @@ export default function DataConnections({setNotice,setError}:Props){
     if(action==='delete'&&!confirm(`Remove the connector "${c.name}" and its table? Apps that use the table will show an error until it is removed from them.`))return
     setBusy(c.name)
     try{
-      if(action==='reload'){await reloadConnector(supabase!,c.name);setNotice(`Asked agent ${c.agent_name} to load ${c.name}. It starts within a few seconds.`)}
+      if(action==='reload'){await reloadConnector(supabase!,c.name);setNotice(c.kind==='hub'?`${c.name} refreshed: its columns and row count are up to date.`:`Asked agent ${c.agent_name} to load ${c.name}. It starts within a few seconds.`)}
       else{await deleteConnector(supabase!,c.name,true);setNotice(`Removed ${c.name}.`)}
       await load()
     }catch(error){setError((error as Error).message)}finally{setBusy('')}
   }
   if(editing?.kind==='upload')return <UploadWizard replace={editing.replace} existing={data?.connectors||[]} onClose={()=>setEditing(null)} onDone={async message=>{setNotice(message);setEditing(null);await load()}} setError={setError}/>
+  if(editing?.kind==='hub')return <HubForm connector={editing.connector} existing={data?.connectors||[]} onClose={()=>setEditing(null)}
+    onDone={async message=>{setNotice(message);setEditing(null);await load()}} setError={setError}/>
   if(editing)return <ConnectorForm kind={editing.kind} connector={editing.connector} agents={data?.agents||[]} existing={data?.connectors||[]} onClose={()=>setEditing(null)}
     onDone={async message=>{setNotice(message);setEditing(null);await load()}} setError={setError}/>
   return <section className="rfq-workspace">
@@ -45,6 +48,7 @@ export default function DataConnections({setNotice,setError}:Props){
       <button className="bi-conn-card" onClick={()=>setEditing({kind:'folder'})}><FolderOpen size={22}/><b>Files from a folder</b><span>Excel or CSV files in a network folder the agent can read.</span></button>
       <button className="bi-conn-card" onClick={()=>setEditing({kind:'sharepoint'})}><Cloud size={22}/><b>SharePoint or OneDrive</b><span>An Excel or CSV file in a SharePoint library or OneDrive, kept up to date.</span></button>
       <button className="bi-conn-card" onClick={()=>setEditing({kind:'gsheet'})}><SheetIcon size={22}/><b>Google Sheets</b><span>A tab of a Google Sheet shared with the agent's Google account.</span></button>
+      <button className="bi-conn-card" onClick={()=>setEditing({kind:'hub'})}><Database size={22}/><b>Hub data</b><span>RFQs, returns, stock, cross reference, users… live from the Hub itself, nothing to load.</span></button>
     </div>
     <div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Table</th><th>Kind</th><th>From</th><th>Status</th><th>Rows</th><th>Last loaded</th><th>Schedule</th><th/></tr></thead><tbody>
       {(data?.connectors||[]).map(c=>{const Icon=KIND_ICON[c.kind]
@@ -53,17 +57,18 @@ export default function DataConnections({setNotice,setError}:Props){
           <td><span className="bi-conn-kind"><Icon size={13}/>{KIND_LABEL[c.kind]}</span></td>
           <td className="bi-conn-from">{c.kind==='upload'?c.config.file||'—':c.kind==='web'?<code>{c.config.url}</code>
             :c.kind==='sharepoint'?<><code>{c.config.location}</code> / <code>{c.config.path}</code></>
+            :c.kind==='hub'?<><code>{c.config.schema}.{c.config.table}</code><small className="rp-sub">{(c.config.columns||[]).length} columns · live</small></>
             :c.kind==='gsheet'?<><a href={`https://docs.google.com/spreadsheets/d/${c.config.spreadsheet_id}`} target="_blank" rel="noreferrer">Google Sheet</a>{c.config.sheet?<> · <code>{c.config.sheet}</code></>:null}{c.config.range?<> · <code>{c.config.range}</code></>:null}</>
             :<><code>{c.config.folder}</code> / <code>{c.config.pattern}</code></>}{c.agent_name&&<small className="rp-sub">agent {c.agent_name}</small>}</td>
-          <td>{c.reload_requested?<span className="rp-badge stale">Waiting for agent</span>:c.last_status==='error'?<span className="rp-badge failed" title={c.last_error||''}>Failed</span>:c.last_status==='running'?<span className="rp-badge stale">Loading…</span>:c.last_status==='success'?<span className="rp-badge fresh">Loaded</span>:<span className="rp-badge never">Not loaded yet</span>}
+          <td>{c.kind==='hub'&&c.last_status!=='error'?<span className="rp-badge fresh">Live</span>:c.reload_requested?<span className="rp-badge stale">Waiting for agent</span>:c.last_status==='error'?<span className="rp-badge failed" title={c.last_error||''}>Failed</span>:c.last_status==='running'?<span className="rp-badge stale">Loading…</span>:c.last_status==='success'?<span className="rp-badge fresh">Loaded</span>:<span className="rp-badge never">Not loaded yet</span>}
             {c.last_status==='error'&&c.last_error&&<small className="rp-sub bi-conn-error">{c.last_error}</small>}</td>
           <td>{c.row_count!=null?Number(c.row_count).toLocaleString():'—'}</td>
-          <td>{ago(c.last_loaded_at||c.last_run_at,now)}</td>
-          <td>{c.kind==='upload'?'When uploaded':c.interval_minutes?`Every ${c.interval_minutes} min${c.enabled?'':' (paused)'}`:'Only on Reload'}</td>
+          <td>{c.kind==='hub'?'Live':ago(c.last_loaded_at||c.last_run_at,now)}</td>
+          <td>{c.kind==='upload'?'When uploaded':c.kind==='hub'?'Always current':c.interval_minutes?`Every ${c.interval_minutes} min${c.enabled?'':' (paused)'}`:'Only on Reload'}</td>
           <td className="bi-conn-actions">
             {c.kind==='upload'?<button className="secondary" onClick={()=>setEditing({kind:'upload',replace:c})}><Upload size={14}/>Replace file</button>
-              :<><button className="secondary" disabled={busy===c.name} onClick={()=>void act(c,'reload')}><RefreshCw size={14}/>Reload</button>
-                <button className="icon-button" aria-label={`Edit ${c.name}`} onClick={()=>setEditing({kind:c.kind as AgentKind,connector:c})}><Pencil size={14}/></button></>}
+              :<><button className="secondary" disabled={busy===c.name} onClick={()=>void act(c,'reload')} title={c.kind==='hub'?'Pick up new columns or column types and update the row count':undefined}><RefreshCw size={14}/>{c.kind==='hub'?'Refresh':'Reload'}</button>
+                <button className="icon-button" aria-label={`Edit ${c.name}`} onClick={()=>setEditing(c.kind==='hub'?{kind:'hub',connector:c}:{kind:c.kind as AgentKind,connector:c})}><Pencil size={14}/></button></>}
             <button className="icon-button" aria-label={`Remove ${c.name}`} disabled={busy===c.name} onClick={()=>void act(c,'delete')}><Trash2 size={14}/></button>
           </td></tr>})}
       {data&&!data.connectors.length&&<tr><td colSpan={8}><p className="bi-muted">No connectors yet. Start with an upload, a web API or a folder above.</p></td></tr>}
@@ -215,5 +220,71 @@ function ConnectorForm({kind,connector,agents,existing,onClose,onDone,setError}:
       <label>When several files match<select value={combine} onChange={event=>setCombine(event.target.value as 'latest')}><option value="latest">Use the newest file</option><option value="all">Combine all files (adds source_file)</option></select></label>
     </div><p className="hint">Folders are set up by name in the agent's config.toml; the first non-empty row of each file is the header.</p></div>}
     {problem&&<p className="bi-expr-error bi-conn-problem">{problem}</p>}
+  </section>
+}
+
+// ---------------------------------------------------------------------------
+// Hub data: a live view of a table that already lives in the Hub
+// ---------------------------------------------------------------------------
+function HubForm({connector,existing,onClose,onDone,setError}:{connector?:Connector;existing:Connector[];onClose:()=>void;onDone:(m:string)=>void;setError:(m:string)=>void}){
+  const [sources,setSources]=useState<HubSource[]|null>(null)
+  const [search,setSearch]=useState('')
+  const [picked,setPicked]=useState<string>(connector?`${connector.config.schema}.${connector.config.table}`:'')
+  const [columns,setColumns]=useState<string[]>(connector?.config.columns||[])
+  const [name,setName]=useState(connector?.name||'')
+  const [description,setDescription]=useState(connector?.description||'')
+  const [saving,setSaving]=useState(false)
+  useEffect(()=>{loadHubSources(supabase!).then(setSources).catch(error=>{setError((error as Error).message);setSources([])})},[setError])
+  const source=sources?.find(s=>`${s.schema}.${s.name}`===picked)
+  function pick(s:HubSource){
+    setPicked(`${s.schema}.${s.name}`)
+    setColumns(s.columns.filter(c=>c.allowed).map(c=>c.name))
+    if(!connector){setName(suggestHubName(s));setDescription(`${hubTableLabel(s)} (live from the Hub)`)}
+  }
+  const needle=search.trim().toLowerCase()
+  const shown=(sources||[]).filter(s=>!needle||`${s.schema}.${s.name} ${hubTableLabel(s)}`.toLowerCase().includes(needle))
+  const areas=[...new Set(shown.map(hubArea))]
+  const problem=!source?'Choose a Hub table':hubViewProblem(name,columns,existing,connector)
+  const toggle=(c:string)=>setColumns(columns.includes(c)?columns.filter(x=>x!==c):[...columns,c])
+  async function save(){
+    if(problem||!source)return
+    setSaving(true)
+    try{
+      // keep the source's column order
+      const ordered=source.columns.map(c=>c.name).filter(c=>columns.includes(c))
+      await saveHubView(supabase!,{name,description,schema:source.schema,table:source.name,columns:ordered})
+      onDone(`${name} is ready: it always shows the current ${hubTableLabel(source)} data. Add it to an app under Data model & sharing.`)
+    }catch(error){setError((error as Error).message)}finally{setSaving(false)}
+  }
+  return <section className="rfq-workspace bi-settings bi-conn-form">
+    <div className="sd-session-bar"><Database size={18}/><span>{connector?`Edit ${connector.name}`:'New Hub data connection'}</span>
+      <div className="bi-app-actions"><button className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={Boolean(problem)||saving} onClick={()=>void save()}>{saving?'Saving…':'Save'}</button></div></div>
+    <div className="bi-hub">
+      <div className="bi-card bi-hub-tables"><h3>Hub table</h3>
+        <label className="bi-search-box"><Search size={14}/><input placeholder="Find a table" value={search} onChange={event=>setSearch(event.target.value)}/></label>
+        {sources===null?<p className="bi-muted">Loading…</p>:!shown.length?<p className="bi-muted">No tables match.</p>:
+          <div className="bi-hub-list">{areas.map(area=><div key={area}><div className="bi-section-title">{area}</div>
+            {shown.filter(s=>hubArea(s)===area).map(s=>{const key=`${s.schema}.${s.name}`
+              return <button key={key} className={`bi-hub-item ${picked===key?'on':''}`} disabled={Boolean(connector)&&picked!==key} onClick={()=>pick(s)}>
+                <b>{hubTableLabel(s)}</b><small>{key}{s.type==='view'?' · view':''}{s.rows!=null?` · ~${s.rows.toLocaleString()} rows`:''}{s.used_by.length?` · used by ${s.used_by.join(', ')}`:''}</small></button>})}</div>)}</div>}
+        <p className="hint">Only business tables are offered. Chat, sign-in, permission, audit and notification tables never are.</p>
+      </div>
+      <div className="bi-card"><h3>Columns</h3>
+        {!source?<p className="bi-muted">Choose a table on the left.</p>:<>
+          <div className="bi-form-grid">
+            <label>Table name in Reporting<input value={name} disabled={Boolean(connector)} onChange={event=>setName(event.target.value.toLowerCase())} placeholder="e.g. hub_sales_desk_rfqs"/></label>
+            <label>Description<input value={description} maxLength={500} onChange={event=>setDescription(event.target.value)}/></label>
+          </div>
+          <div className="bi-row"><span className="bi-muted">{columns.length} of {source.columns.filter(c=>c.allowed).length} columns</span>
+            <button className="text-button" onClick={()=>setColumns(source.columns.filter(c=>c.allowed).map(c=>c.name))}>All</button>
+            <button className="text-button" onClick={()=>setColumns([])}>None</button></div>
+          <div className="bi-hub-columns">{source.columns.map(c=><label key={c.name} className={`bi-check ${c.allowed?'':'blocked'}`} title={c.allowed?undefined:'Looks like a secret (token, password, …): never available in Reporting'}>
+            <input type="checkbox" disabled={!c.allowed} checked={c.allowed&&columns.includes(c.name)} onChange={()=>toggle(c.name)}/>
+            {c.allowed?null:<Lock size={12}/>}<span>{c.name}</span><small>{c.type}</small></label>)}</div>
+          <div className="bi-hub-warning"><ShieldAlert size={16}/><span>Everyone who can open an app that uses this table sees all its rows and the columns chosen here: the Hub's own rules for this table (e.g. a salesperson only seeing their RFQs) do not apply in Reporting. Leave out personal details that reports do not need, and use <b>Row access</b> on the app to limit rows per person or role.</span></div>
+          {problem&&<p className="bi-expr-error">{problem}</p>}
+        </>}
+      </div>
+    </div>
   </section>
 }

@@ -54,7 +54,7 @@ const REPORTING_ROADMAP_ROWS=[
   ['Smart Stock feed','ERP stock snapshots','Feed Smart Stock imports from the ERP through the sync agent','Planned'],
 ]
 
-const SOURCE_LABEL={erp:'ERP',upload:'Upload',web:'Web API',folder:'Folder',sharepoint:'SharePoint',gsheet:'Google Sheets',other:'—'}
+const SOURCE_LABEL={erp:'ERP',upload:'Upload',web:'Web API',folder:'Folder',sharepoint:'SharePoint',gsheet:'Google Sheets',hub:'Hub (live)',other:'—'}
 const STATUS_LABEL={success:'Loaded',error:'Failed',running:'Loading…'}
 const FRESHNESS_LABEL={fresh:'Up to date',stale:'Out of date',failed:'Last load failed',never:'Not loaded yet'}
 const count=(value:number|null|undefined)=>value==null?'—':Number(value).toLocaleString()
