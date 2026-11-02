@@ -133,7 +133,8 @@ export default function StockMaxLevel({ setNotice, setError }: Props) {
     [editing, setEditing] = useState<string | null>(null),
     [draft, setDraft] = useState<Form | null>(null),
     [sort, setSort] = useState<keyof Row>("part_no"),
-    [descending, setDescending] = useState(false);
+    [descending, setDescending] = useState(false),
+    [unitFilter, setUnitFilter] = useState("");
   const request = useRef(0);
   const load = async (nextPage = page) => {
     if (!supabase) return;
@@ -141,11 +142,13 @@ export default function StockMaxLevel({ setNotice, setError }: Props) {
     setLoading(true);
     let query = supabase
       .from("stock_max_levels")
-      .select("*", { count: "exact" })
+      .select("*", { count: "estimated" })
       .order("part_no")
       .range(nextPage * PAGE_SIZE, nextPage * PAGE_SIZE + PAGE_SIZE - 1);
     if (search.trim()) query = query.ilike("part_no", `%${search.trim()}%`);
     if (status !== "all") query = query.eq("is_active", status === "active");
+    if (unitFilter.trim())
+      query = query.ilike("unit_size", `%${unitFilter.trim()}%`);
     const { data, count, error } = await query;
     if (current !== request.current) return;
     if (error) {
@@ -160,7 +163,7 @@ export default function StockMaxLevel({ setNotice, setError }: Props) {
   useEffect(() => {
     const timer = window.setTimeout(() => void load(0), 350);
     return () => window.clearTimeout(timer);
-  }, [search, status]);
+  }, [search, status, unitFilter]);
   const orderedRows = useMemo(
     () =>
       [...rows].sort((a, b) => {
@@ -362,7 +365,17 @@ export default function StockMaxLevel({ setNotice, setError }: Props) {
             <option value="all">All</option>
           </select>
         </label>
-        <span>{total.toLocaleString()} records</span>
+        <span className="stock-record-count">
+          {total.toLocaleString()} records
+        </span>
+        <label>
+          Unit size
+          <input
+            value={unitFilter}
+            onChange={(event) => setUnitFilter(event.target.value)}
+            placeholder="Filter unit size"
+          />
+        </label>
       </div>
       {showNew && (
         <div className="settings-card">
