@@ -842,4 +842,82 @@ for f in TESTS.glob("ui_tables.tmp.toml*"):
     f.unlink()
 ui_cfg.unlink()
 
+# ===========================================================================
+section("Passwords with special characters in the Supabase address")
+odd = "P%41ss@w/rd#1:x?"
+sb.execute(f"alter role bi_agent password '{odd}'")
+os.environ["BI_AGENT_DB_PASSWORD"] = odd
+r = agent("--check")
+check("[OK]   Supabase: connected as bi_agent" in r.out, "a password with % @ / # : ? works in db_url (it is percent-encoded)")
+check(odd not in r.out and "P%2541ss" not in r.out, "...and is not shown, plain or encoded")
+sb.execute(f"alter role bi_agent password '{PASSWORDS[0]}'")
+os.environ["BI_AGENT_DB_PASSWORD"] = PASSWORDS[0]
+
+# ===========================================================================
+section("--once explains when there is nothing to load")
+sb.execute("update bi.load_groups set last_status = 'error', last_run_at = now(), reload_requested = false, full_reload_requested = false where managed_by = 'test-agent'")
+sb.execute("update bi.load_jobs set reload_requested = false, full_reload_requested = false, last_run_at = now() where managed_by = 'test-agent'")
+sb.execute("update bi.connectors set reload_requested = false, last_run_at = now()")
+r = agent("--once")
+log = LOG.read_text()
+check("Nothing to load right now." in log, "--once says when nothing is due")
+check("last load failed; retried 5 min after the failure (use --run sales to load it now)" in log, "...and why: a failed group waits before retrying")
+check("next load at" in log, "...or when the next scheduled load is")
+
+# ===========================================================================
+section("Large data: reports keep working while tables are reloaded; link columns indexed")
+import time as _time
+write_tables(BASE_TABLES.replace('[tables.grv]\nmode = "full"\nsql = "SELECT * FROM grv"\n', ""))
+agent("--apply", "--yes")
+sb.execute("update bi.load_groups set last_status = null, reload_requested = true where name = 'sales'")
+agent("--run", "sales")
+key_before = one("select indexname from pg_indexes where schemaname='bi_data' and tablename='invoices' and indexname like '%%bi_key'")
+lines_before = count("invoice_lines")
+# a report is busy reading invoices when a full reload of the group finishes
+reader = psycopg.connect("dbname=sb user=postgres host=localhost")
+reader.execute("select count(*) from bi_data.invoices").fetchone()
+sb.execute("update bi.load_jobs set full_reload_requested = true where group_name = 'sales'")
+loader = subprocess.Popen([sys.executable, AGENT_PY, "--config", str(CONFIG), "--run", "sales"], cwd=ROOT,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+_time.sleep(6)
+probe = psycopg.connect("dbname=sb user=postgres host=localhost", autocommit=True)
+probe.execute("set statement_timeout = '8s'")
+t0 = _time.monotonic()
+n_during = probe.execute("select count(*) from bi_data.invoice_lines").fetchone()[0]
+waited = _time.monotonic() - t0
+check(n_during == lines_before and waited < 4,
+      f"while the reload waits to swap, other reports still get the old data quickly ({waited:.1f}s)")
+check(loader.poll() is None, "...and the reload waits for the busy report instead of breaking it")
+reader.commit()
+reader.close()
+check(loader.wait(120) == 0, "when the report is done the new data is swapped in")
+run = one("select status, trigger from bi.sync_runs where group_name='sales' order by id desc limit 1")
+check(run["status"] == "success" and run["trigger"] == "full_reload" and count("invoice_lines") == lines_before,
+      "the full reload completed with all rows")
+key_after = one("select indexname, indexdef from pg_indexes where schemaname='bi_data' and tablename='invoices' and indexname like '%%bi_key'")
+check(key_after and key_after["indexname"] == key_before["indexname"] and "UNIQUE" in key_after["indexdef"],
+      "the swapped-in table keeps its key index (same name)")
+check(one("select has_table_privilege('service_role', 'bi_data.invoices', 'select') as ok")["ok"],
+      "...and its rights for the Hub")
+check(not q("select 1 from pg_tables where schemaname='bi_data' and tablename like '%%__bi_new'"), "no replacement tables are left behind")
+check(one("select last_analyze from pg_stat_user_tables where schemaname='bi_data' and relname='invoices'")["last_analyze"] is not None,
+      "statistics are fresh after the load")
+# link columns from an app's data model are indexed
+sb.execute("insert into bi.apps(id,name) values ('9b000000-0000-0000-0000-000000000001','Agent test app')")
+sb.execute("""insert into bi.app_tables(app_id,alias,table_name,parent_alias,join_pairs,position) values
+  ('9b000000-0000-0000-0000-000000000001','lines','invoice_lines',null,'[]',0),
+  ('9b000000-0000-0000-0000-000000000001','items','stock_items','lines','[["itemcode","item_code"]]',1)""")
+agent("--once")
+idx = {r["indexdef"] for r in q("select indexdef from pg_indexes where schemaname='bi_data' and indexname like '%%bi_link'")}
+check(any("invoice_lines" in d and "(item_code)" in d for d in idx) and any("stock_items" in d and "(itemcode)" in d for d in idx),
+      "columns apps link tables on get an index (both sides)")
+check(one("select count(*) n from pg_index x join pg_class c on c.oid = x.indexrelid where c.relname like '%%bi_link' and not x.indisvalid")["n"] == 0,
+      "...built without blocking (valid, concurrently)")
+sb.execute("update bi.load_jobs set full_reload_requested = true where target_table = 'stock_items'")
+agent("--run", "stock_items")
+check(any("stock_items" in r["indexdef"] and "(itemcode)" in r["indexdef"]
+          for r in q("select indexdef from pg_indexes where schemaname='bi_data' and indexname like '%%bi_link'")),
+      "a full reload keeps the link index")
+sb.execute("delete from bi.apps where id = '9b000000-0000-0000-0000-000000000001'")
+
 print(f"\nAll {passed} checks passed")
