@@ -1666,7 +1666,8 @@ class Agent:
                                       + (f" · {loc['library']}" if loc["library"] else ""))
                                      + (f" / {loc['folder']}" if loc["folder"] else "") for n, loc in c["sharepoint"].items()},
                    "microsoft": c["microsoft"] is not None, "google": google_account(c["google"])}
-        self.wh.main.execute(
+        # on the second connection: it commits straight away, also while a long load holds the main one
+        self.wh.ddl.execute(
             """
             insert into bi.agents (name, sources, app_requests, version, hostname, started_at, last_seen_at, connector_options)
             values (%s, %s, %s, %s, %s, %s, now(), %s)
@@ -2217,6 +2218,7 @@ class Agent:
                         total += len(batch)
                         if total % (batch_size * 20) < len(batch):
                             log.info("  %s: %s rows read", t.name, f"{total:,}")
+                        self.heartbeat()  # a long load must not make the Hub show the agent as offline
                         if self.stopping:
                             raise AgentError("The agent was stopped during the load")
                         batch = [source.clean_row(r) for r in cur.fetchmany(batch_size)]
