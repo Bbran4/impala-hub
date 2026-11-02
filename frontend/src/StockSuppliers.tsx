@@ -1,14 +1,366 @@
-import { useEffect, useState } from 'react'
-import { FileSpreadsheet, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
-import { supabase } from './supabase'
-import { parseStockImportFile } from './stockImportFiles'
-type Props={setNotice:(m:string)=>void;setError:(m:string)=>void};type Supplier={id:string;supplier_code:string;supplier_name:string;is_active:boolean};type Row={id:string;part_no:string;supplier_id:string;is_active:boolean;supplier:Supplier};const clean=(v:unknown)=>String(v??'').trim()
-function importedRows(table:any){const h=table.headers.map((v:string)=>v.trim().toLowerCase().replace(/[^a-z0-9]+/g,''));const f=(a:string[])=>h.findIndex((v:string)=>a.includes(v));const i={part:f(['partno','partnumber','part']),code:f(['suppliercode','code']),name:f(['supplier','suppliername'])};if(Object.values(i).some(v=>v<0))throw new Error('The sheet must contain Part No, SupplierCode and Supplier columns.');return table.rows.map((r:string[])=>({part_no:clean(r[i.part]),supplier_code:clean(r[i.code]),supplier:clean(r[i.name])})).filter((r:any)=>r.part_no&&r.supplier_code&&r.supplier)}
-export default function StockSuppliers({setNotice,setError}:Props){const [rows,setRows]=useState<Row[]>([]),[suppliers,setSuppliers]=useState<Supplier[]>([]),[search,setSearch]=useState(''),[loading,setLoading]=useState(true),[partNo,setPartNo]=useState(''),[supplierId,setSupplierId]=useState('')
- const load=async()=>{if(!supabase)return;setLoading(true);const [a,b]=await Promise.all([supabase.from('stock_part_suppliers').select('id,part_no,supplier_id,is_active,supplier:stock_suppliers(id,supplier_code,supplier_name,is_active)').order('part_no'),supabase.from('stock_suppliers').select('*').order('supplier_code')]);if(a.error)setError(a.error.message);else setRows((a.data||[]) as any);if(b.error)setError(b.error.message);else{setSuppliers((b.data||[]) as Supplier[]);if(!supplierId&&b.data?.length)setSupplierId(b.data[0].id)}setLoading(false)};useEffect(()=>{void load()},[])
- const visible=rows.filter(r=>`${r.part_no} ${r.supplier.supplier_code} ${r.supplier.supplier_name}`.toLowerCase().includes(search.toLowerCase().trim()))
- const add=async()=>{if(!supabase||!partNo.trim()||!supplierId){setError('Enter a part number and choose a supplier.');return}const user=(await supabase.auth.getUser()).data.user;const {error}=await supabase.from('stock_part_suppliers').insert({part_no:partNo.trim(),supplier_id:supplierId,created_by:user?.id,updated_by:user?.id});if(error)setError(error.code==='23505'?'That part is already assigned to this supplier.':error.message);else{setPartNo('');setNotice('Part allocated to supplier.');await load()}}
- const importFile=async(file?:File)=>{if(!file||!supabase)return;try{const table=await parseStockImportFile(file,'booking');const {data,error}=await supabase.rpc('import_stock_part_suppliers',{p_rows:importedRows(table)});if(error)throw new Error(error.message);setNotice(`${data} supplier assignments imported.`);await load()}catch(e){setError((e as Error).message)}}
- const change=async(row:Row,supplier_id:string)=>{if(!supabase)return;const {error}=await supabase.from('stock_part_suppliers').update({supplier_id}).eq('id',row.id);if(error)setError(error.code==='23505'?'That part is already assigned to this supplier.':error.message);else await load()};const toggle=async(row:Row)=>{if(!supabase)return;const {error}=await supabase.from('stock_part_suppliers').update({is_active:!row.is_active}).eq('id',row.id);if(error)setError(error.message);else await load()};const remove=async(row:Row)=>{if(!supabase||!window.confirm(`Delete allocation for ${row.part_no}?`))return;const {error}=await supabase.from('stock_part_suppliers').delete().eq('id',row.id);if(error)setError(error.message);else await load()}
- return <section className="rfq-workspace"><div className="sd-session-bar"><FileSpreadsheet size={18}/><span>Smart Stock Control workspace</span><div className="sd-view-tabs"><button className="active">Supplier Parts Allocation</button></div><button className="secondary" onClick={()=>void load()}><RefreshCw size={14}/>Refresh</button></div><div className="section-head"><div><h2>Supplier Parts Allocation</h2><p>Allocate parts to existing suppliers. Create suppliers in the Suppliers app.</p></div><label className="secondary"><Upload size={15}/>Import Excel<input hidden type="file" accept=".xlsx,.csv,.tsv" onChange={e=>{void importFile(e.target.files?.[0]);e.target.value='' }}/></label></div><div className="settings-card"><h3>Add part allocation</h3><div className="account-fields"><label>Part No<input value={partNo} onChange={e=>setPartNo(e.target.value)} placeholder="Leading zeroes are preserved"/></label><label>Supplier<select value={supplierId} onChange={e=>setSupplierId(e.target.value)}><option value="">Choose supplier</option>{suppliers.filter(s=>s.is_active).map(s=><option key={s.id} value={s.id}>{s.supplier_code} · {s.supplier_name}</option>)}</select></label><button className="primary" onClick={()=>void add()}><Plus size={15}/>Add allocation</button></div></div><div className="rfq-toolbar"><label className="rfq-search">Search<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Part number, supplier code or name"/></label></div>{loading?<p>Loading allocations…</p>:<div className="rfq-table-wrap"><table className="rfq-table"><thead><tr><th>Part No</th><th>Supplier assignment</th><th>Actions</th></tr></thead><tbody>{visible.map(row=><tr key={row.id}><td><b>{row.part_no}</b></td><td><select value={row.supplier_id} onChange={e=>void change(row,e.target.value)}>{suppliers.filter(s=>s.is_active||s.id===row.supplier_id).map(s=><option key={s.id} value={s.id}>{s.supplier_code} · {s.supplier_name}</option>)}</select></td><td><button className="icon-button" onClick={()=>void toggle(row)}>{row.is_active?'Archive':'Activate'}</button><button className="icon-button danger" onClick={()=>void remove(row)}><Trash2 size={15}/></button></td></tr>)}{!visible.length&&<tr><td colSpan={3}>No part allocations found.</td></tr>}</tbody></table></div>}</section>
+import { useEffect, useMemo, useState } from "react";
+import { FileSpreadsheet, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { supabase } from "./supabase";
+import { parseStockImportFile } from "./stockImportFiles";
+type Props = { setNotice: (m: string) => void; setError: (m: string) => void };
+type Supplier = {
+  id: string;
+  supplier_code: string;
+  supplier_name: string;
+  is_active: boolean;
+};
+type Row = {
+  id: string;
+  part_no: string;
+  supplier_id: string;
+  is_active: boolean;
+  supplier: Supplier;
+};
+const clean = (v: unknown) => String(v ?? "").trim();
+function importedRows(table: any) {
+  const h = table.headers.map((v: string) =>
+    v
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ""),
+  );
+  const f = (a: string[]) => h.findIndex((v: string) => a.includes(v));
+  const i = {
+    part: f(["partno", "partnumber", "part"]),
+    code: f(["suppliercode", "code"]),
+    name: f(["supplier", "suppliername"]),
+  };
+  if (Object.values(i).some((v) => v < 0))
+    throw new Error(
+      "The sheet must contain Part No, SupplierCode and Supplier columns.",
+    );
+  return table.rows
+    .map((r: string[]) => ({
+      part_no: clean(r[i.part]),
+      supplier_code: clean(r[i.code]),
+      supplier: clean(r[i.name]),
+    }))
+    .filter((r: any) => r.part_no && r.supplier_code && r.supplier);
+}
+export default function StockSuppliers({ setNotice, setError }: Props) {
+  const [rows, setRows] = useState<Row[]>([]),
+    [suppliers, setSuppliers] = useState<Supplier[]>([]),
+    [search, setSearch] = useState(""),
+    [loading, setLoading] = useState(true),
+    [partNo, setPartNo] = useState(""),
+    [supplierId, setSupplierId] = useState(""),
+    [sort, setSort] = useState<"part_no" | "supplier" | "is_active">("part_no"),
+    [descending, setDescending] = useState(false),
+    [page, setPage] = useState(0);
+  const load = async () => {
+    if (!supabase) return;
+    setLoading(true);
+    const [a, b] = await Promise.all([
+      supabase
+        .from("stock_part_suppliers")
+        .select(
+          "id,part_no,supplier_id,is_active,supplier:stock_suppliers(id,supplier_code,supplier_name,is_active)",
+        )
+        .order("part_no"),
+      supabase.from("stock_suppliers").select("*").order("supplier_code"),
+    ]);
+    if (a.error) setError(a.error.message);
+    else setRows((a.data || []) as any);
+    if (b.error) setError(b.error.message);
+    else {
+      setSuppliers((b.data || []) as Supplier[]);
+      if (!supplierId && b.data?.length) setSupplierId(b.data[0].id);
+    }
+    setLoading(false);
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  const filtered = rows.filter((r) =>
+    `${r.part_no} ${r.supplier.supplier_code} ${r.supplier.supplier_name}`
+      .toLowerCase()
+      .includes(search.toLowerCase().trim()),
+  );
+  const ordered = useMemo(
+    () =>
+      [...filtered].sort((a, b) => {
+        const av =
+          sort === "supplier" ? a.supplier.supplier_name : String(a[sort]);
+        const bv =
+          sort === "supplier" ? b.supplier.supplier_name : String(b[sort]);
+        const result = av.localeCompare(bv, undefined, { numeric: true });
+        return descending ? -result : result;
+      }),
+    [filtered, sort, descending],
+  );
+  const pages = Math.max(1, Math.ceil(ordered.length / 50));
+  const visible = ordered.slice(page * 50, page * 50 + 50);
+  const header = (label: string, key: typeof sort) => (
+    <th
+      data-sort
+      onClick={() => {
+        if (sort === key) setDescending(!descending);
+        else {
+          setSort(key);
+          setDescending(false);
+        }
+      }}
+    >
+      {label}
+      <span className="stock-table-sort">
+        {sort === key ? (descending ? "↓" : "↑") : "↕"}
+      </span>
+    </th>
+  );
+  const add = async () => {
+    if (!supabase || !partNo.trim() || !supplierId) {
+      setError("Enter a part number and choose a supplier.");
+      return;
+    }
+    const user = (await supabase.auth.getUser()).data.user;
+    const { error } = await supabase.from("stock_part_suppliers").insert({
+      part_no: partNo.trim(),
+      supplier_id: supplierId,
+      created_by: user?.id,
+      updated_by: user?.id,
+    });
+    if (error)
+      setError(
+        error.code === "23505"
+          ? "That part is already assigned to this supplier."
+          : error.message,
+      );
+    else {
+      setPartNo("");
+      setNotice("Part allocated to supplier.");
+      await load();
+    }
+  };
+  const importFile = async (file?: File) => {
+    if (!file || !supabase) return;
+    try {
+      const table = await parseStockImportFile(file, "booking");
+      const { data, error } = await supabase.rpc(
+        "import_stock_part_suppliers",
+        { p_rows: importedRows(table) },
+      );
+      if (error) throw new Error(error.message);
+      setNotice(`${data} supplier assignments imported.`);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const change = async (row: Row, supplier_id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("stock_part_suppliers")
+      .update({ supplier_id })
+      .eq("id", row.id);
+    if (error)
+      setError(
+        error.code === "23505"
+          ? "That part is already assigned to this supplier."
+          : error.message,
+      );
+    else await load();
+  };
+  const toggle = async (row: Row) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("stock_part_suppliers")
+      .update({ is_active: !row.is_active })
+      .eq("id", row.id);
+    if (error) setError(error.message);
+    else await load();
+  };
+  const remove = async (row: Row) => {
+    if (!supabase || !window.confirm(`Delete allocation for ${row.part_no}?`))
+      return;
+    const { error } = await supabase
+      .from("stock_part_suppliers")
+      .delete()
+      .eq("id", row.id);
+    if (error) setError(error.message);
+    else await load();
+  };
+  return (
+    <section className="rfq-workspace">
+      <div className="sd-session-bar">
+        <FileSpreadsheet size={18} />
+        <span>Smart Stock Control workspace</span>
+        <div className="sd-view-tabs">
+          <button className="active">Supplier Parts Allocation</button>
+        </div>
+        <button className="secondary" onClick={() => void load()}>
+          <RefreshCw size={14} />
+          Refresh
+        </button>
+      </div>
+      <div className="section-head">
+        <div>
+          <h2>Supplier Parts Allocation</h2>
+          <p>
+            Allocate parts to existing suppliers. Create suppliers in the
+            Suppliers app.
+          </p>
+        </div>
+        <label className="secondary">
+          <Upload size={15} />
+          Import Excel
+          <input
+            hidden
+            type="file"
+            accept=".xlsx,.csv,.tsv"
+            onChange={(e) => {
+              void importFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+      <div className="settings-card">
+        <h3>Add part allocation</h3>
+        <div className="account-fields">
+          <label>
+            Part No
+            <input
+              value={partNo}
+              onChange={(e) => setPartNo(e.target.value)}
+              placeholder="Leading zeroes are preserved"
+            />
+          </label>
+          <label>
+            Supplier
+            <select
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+            >
+              <option value="">Choose supplier</option>
+              {suppliers
+                .filter((s) => s.is_active)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.supplier_code} · {s.supplier_name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button className="primary" onClick={() => void add()}>
+            <Plus size={15} />
+            Add allocation
+          </button>
+        </div>
+      </div>
+      <div className="rfq-toolbar">
+        <label className="rfq-search">
+          Search
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Part number, supplier code or name"
+          />
+        </label>
+      </div>
+      {pages > 1 && (
+        <div className="stock-table-pagination">
+          <button
+            className="secondary"
+            disabled={page === 0}
+            onClick={() => setPage(page - 1)}
+          >
+            Previous
+          </button>
+          <span>
+            Page {page + 1} of {pages} · {ordered.length} records
+          </span>
+          <button
+            className="secondary"
+            disabled={page + 1 >= pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </button>
+        </div>
+      )}
+      {loading ? (
+        <p>Loading allocations…</p>
+      ) : (
+        <div className="rfq-table-wrap">
+          <table className="rfq-table">
+            <thead>
+              <tr>
+                {header("Part No", "part_no")}
+                {header("Supplier assignment", "supplier")}
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <b>{row.part_no}</b>
+                  </td>
+                  <td>
+                    <select
+                      value={row.supplier_id}
+                      onChange={(e) => void change(row, e.target.value)}
+                    >
+                      {suppliers
+                        .filter((s) => s.is_active || s.id === row.supplier_id)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.supplier_code} · {s.supplier_name}
+                          </option>
+                        ))}
+                    </select>
+                  </td>
+                  <td>
+                    <button
+                      className="icon-button"
+                      onClick={() => void toggle(row)}
+                    >
+                      {row.is_active ? "Archive" : "Activate"}
+                    </button>
+                    <button
+                      className="icon-button danger"
+                      onClick={() => void remove(row)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!visible.length && (
+                <tr>
+                  <td colSpan={3}>No part allocations found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {pages > 1 && (
+        <div className="stock-table-pagination">
+          <button
+            className="secondary"
+            disabled={page === 0}
+            onClick={() => setPage(page - 1)}
+          >
+            Previous
+          </button>
+          <span>
+            Page {page + 1} of {pages} · {ordered.length} records
+          </span>
+          <button
+            className="secondary"
+            disabled={page + 1 >= pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
