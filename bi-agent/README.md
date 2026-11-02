@@ -37,6 +37,7 @@ Part of the Impala Hub **Reporting** workspace (the Qlik Sense replacement): get
 | `bi-agent/tables.example.toml` | Example tables file, with every option explained |
 | `bi-agent/config.example.toml` | Connections: Supabase + ODBC sources |
 | `bi-agent/setup.bat`, `run_agent.bat`, `ui.bat`, `install_task.ps1` | Windows install and run helpers |
+| `bi-agent/agent_console.bat` | Menu for everyday jobs (asks for administrator rights): check, table picker, load now, log, edit config, restart, update from the clone. Copy it to the Desktop |
 | `bi-agent/tests/` | End-to-end tests of the agent against every migration |
 
 ---
